@@ -72,9 +72,26 @@ try {
   );
 }
 
-// createApp() already namespaces its own routes under /api/v1 and /uploads,
-// so it is mounted at the root rather than under a prefix.
-app.use(apiApp);
+// createApp() namespaces its own routes under /api/v1 and /uploads, but its
+// CORS middleware is GLOBAL — mounted at the root it ran on every request,
+// including the SPA's own JavaScript and CSS.
+//
+// In production `isAllowedOrigin` trusts only CORS_ORIGINS, which is empty in a
+// single-service deployment (the SPA and API share one origin, so CORS is not
+// needed at all). The browser sends `Origin: https://<app>` when fetching
+// /assets/*, the gate rejected it, and every script and stylesheet returned
+// 403 — a blank page served by a perfectly healthy container.
+//
+// Scoping the mount to the paths the API actually owns keeps the CORS policy
+// exactly as strict for the API while leaving same-origin static files alone.
+// Mounted with a path FILTER rather than a prefix: `app.use("/api", apiApp)`
+// would strip "/api" before the inner router sees it, so its own /api/v1
+// routes would 404. This forwards only API/upload requests while leaving the
+// URL intact.
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) return apiApp(req, res, next);
+  return next();
+});
 
 // ---------------------------------------------------------------------------
 // Static frontend

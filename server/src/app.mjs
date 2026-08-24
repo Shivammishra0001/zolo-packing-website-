@@ -37,18 +37,55 @@ export function createApp() {
   // are always allowed. An unknown Origin is rejected with a NAMED error so
   // the cause is obvious in the logs instead of surfacing as an opaque
   // browser-side "access control" failure.
+  // A request whose Origin matches the host it was sent to is same-origin: the
+  // browser attaches an Origin header, but nothing is crossing an origin
+  // boundary. In a single-service deployment (SPA + API on one host) this is
+  // every request the app makes about itself, so it must never be refused —
+  // rejecting it returned 403 for the SPA's own JavaScript and CSS.
+  //
+  // Cross-origin requests fall through to the strict allow-list below.
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (!origin) return next();
+    try {
+      const { host, protocol } = new URL(origin);
+      const forwardedProto = req.headers["x-forwarded-proto"] || req.protocol;
+      if (host === req.headers.host && protocol === `${forwardedProto}:`) {
+        // Mark it so the cors() gate below admits it without consulting the
+        // cross-origin allow-list. (`next("route")` does not skip middleware
+        // registered with app.use, so a flag is the reliable mechanism.)
+        req.isSameOrigin = true;
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Vary", "Origin");
+        if (req.method === "OPTIONS") return res.sendStatus(204);
+      }
+    } catch {
+      /* unparseable Origin — let the strict gate decide */
+    }
+    return next();
+  });
+
   app.use(
-    cors({
+    cors((req, done) =>
+      done(null, {
       origin(origin, callback) {
         if (!origin) return callback(null, true); // curl / same-origin / probes
+        // Same-origin was already established above; do not consult the
+        // cross-origin allow-list for a request that crosses nothing.
+        if (req.isSameOrigin) return callback(null, true);
         if (isAllowedOrigin(origin)) return callback(null, true);
         callback(new Error(`Origin ${origin} is not allowed by CORS`));
       },
+      // NOTE: same-origin requests are admitted by the `sameOrigin` middleware
+      // that runs BEFORE this one (see below) — a single-service deployment
+      // serves the SPA and API from one host, so the browser sends an Origin
+      // header that is not "cross-origin" in any meaningful sense.
       credentials: false,
       methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key"],
       maxAge: 86400,
-    }),
+      }),
+    ),
   );
   app.use(express.json({ limit: "15mb" })); // base64 image/document payloads
   app.use("/uploads", express.static(UPLOADS_PATH, { maxAge: "7d", immutable: true }));
