@@ -49,8 +49,19 @@ export function createApp() {
     if (!origin) return next();
     try {
       const { host, protocol } = new URL(origin);
-      const forwardedProto = req.headers["x-forwarded-proto"] || req.protocol;
-      if (host === req.headers.host && protocol === `${forwardedProto}:`) {
+      // Host equality is the security-relevant test: the browser sets both the
+      // Origin and the Host it dials, so a cross-site page cannot make them
+      // agree on OUR hostname.
+      //
+      // The scheme is deliberately NOT required to match req.protocol. Behind a
+      // TLS-terminating proxy (App Platform, nginx) the hop to this process is
+      // plain HTTP, so an `https://` Origin would look mismatched and be
+      // refused — a 403 on the SPA's own assets whenever X-Forwarded-Proto is
+      // absent. Accepting https-over-http grants nothing extra: the request
+      // already proved it targets this host.
+      const forwardedProto = req.headers["x-forwarded-proto"]?.split(",")[0].trim() || req.protocol;
+      const schemeOk = protocol === `${forwardedProto}:` || protocol === "https:";
+      if (host === req.headers.host && schemeOk) {
         // Mark it so the cors() gate below admits it without consulting the
         // cross-origin allow-list. (`next("route")` does not skip middleware
         // registered with app.use, so a flag is the reliable mechanism.)

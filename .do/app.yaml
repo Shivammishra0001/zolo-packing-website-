@@ -21,7 +21,10 @@ services:
   - name: web
     source_dir: /
     github:
-      repo: Shivammishra0001/Zolo-packaging.com
+      # Must match the repository App Platform actually builds from — this is
+      # the current `git remote -v` origin. A stale value here silently keeps
+      # deploying an old repo.
+      repo: Shivammishra0001/zolo-packing-website-
       branch: main
       deploy_on_push: true
 
@@ -29,6 +32,19 @@ services:
 
     # `npm install` runs postinstall, which installs server/ dependencies and
     # generates the Prisma client. `npm run build` then builds the SPA.
+    #
+    # NOTE: this does NOT run database migrations. If the production database
+    # has never been migrated, its tables do not exist and every data route
+    # returns 500 while /api/v1/public/health still returns 200.
+    #
+    # Apply migrations deliberately, from a machine with the production
+    # DATABASE_URL exported (safe and non-destructive — it only applies
+    # pending migrations and never drops data):
+    #   npm run migrate:deploy
+    #
+    # To run them automatically on every deploy instead, use:
+    #   build_command: npm run build && npm run migrate:deploy
+    # Only do that with DATABASE_URL scoped RUN_AND_BUILD_TIME (it is, below).
     build_command: npm run build
 
     # One process serves both halves: the Express API at /api/v1 and the built
@@ -59,19 +75,42 @@ services:
 
       # ---- Secrets: set these in the App Platform UI as encrypted values.
       # Never commit real values here.
+      #
+      # DATABASE_URL must be the FULL DigitalOcean Postgres URI including
+      # ?sslmode=require, on one unbroken line. If it is wrong or unreachable
+      # the container still starts and /api/v1/public/health still returns 200,
+      # but /products, /categories, /login and /register all return 500 and
+      # /api/v1/public/ready returns 503. Percent-encode any @ : / ? # % in the
+      # password. Prefer binding the managed database instead of pasting a URI:
+      #   value: ${zolo-db.DATABASE_URL}
       - key: DATABASE_URL
         scope: RUN_AND_BUILD_TIME
         type: SECRET
+
+      # Missing or placeholder JWT_SECRET makes the container REFUSE TO START
+      # (crash loop on deploy), by design — see server/src/lib/env.mjs.
       - key: JWT_SECRET
         scope: RUN_TIME
         type: SECRET
+
+      # WRITE-ONCE. Changing this permanently destroys every stored supplier
+      # bank account number (SupplierBankAccount.accountNumberEnc). Set it once
+      # and never rotate it while any such row exists.
       - key: BANK_ENC_KEY
         scope: RUN_TIME
         type: SECRET
 
       # Same-origin deployment: the SPA and API share one hostname, so the
-      # frontend calls "/api/v1" and CORS never applies. Leave CORS_ORIGINS
-      # unset unless a separate frontend domain is added.
+      # frontend calls "/api/v1" and CORS never applies — leave CORS_ORIGINS
+      # unset. Set it ONLY if you attach a separate frontend domain, or serve
+      # both www and non-www (which are different origins and would otherwise
+      # 403 the SPA's own assets):
+      #   - key: CORS_ORIGINS
+      #     scope: RUN_TIME
+      #     value: "https://zolopackaging.com,https://www.zolopackaging.com"
+
+      # ${APP_URL} is resolved by App Platform to this app's public URL, so
+      # product-image URLs are absolute and correct without hardcoding a domain.
       - key: UPLOADS_BASE_URL
         scope: RUN_TIME
         value: ${APP_URL}/uploads
