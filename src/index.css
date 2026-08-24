@@ -1,0 +1,238 @@
+@import "tailwindcss";
+
+/* Class-based dark mode: toggling `.dark` on <html> flips every dark: utility,
+   while still honouring the OS preference when the app is set to "system". */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-primary-50: #fff7ed;
+  --color-primary-100: #ffedd5;
+  --color-primary-200: #fed7aa;
+  --color-primary-300: #fdba74;
+  --color-primary-400: #fb923c;
+  --color-primary-500: #f97316;
+  --color-primary-600: #ea580c;
+  --color-primary-700: #c2410c;
+  --color-primary-800: #9a3412;
+  --color-primary-900: #7c2d12;
+  --color-dark-50: #f8fafc;
+  --color-dark-100: #f1f5f9;
+  --color-dark-200: #e2e8f0;
+  --color-dark-300: #cbd5e1;
+  --color-dark-400: #94a3b8;
+  --color-dark-500: #64748b;
+  --color-dark-600: #475569;
+  --color-dark-700: #334155;
+  --color-dark-800: #1e293b;
+  --color-dark-900: #0f172a;
+  --color-dark-950: #020617;
+  /* Backward compat aliases */
+  --color-ink-50: #f8fafc;
+  --color-ink-100: #f1f5f9;
+  --color-ink-200: #e2e8f0;
+  --color-ink-300: #cbd5e1;
+  --color-ink-400: #94a3b8;
+  --color-ink-500: #64748b;
+  --color-ink-600: #475569;
+  --color-ink-700: #334155;
+  --color-ink-800: #1e293b;
+  --color-ink-900: #0f172a;
+  --color-brand-50: #fff7ed;
+  --color-brand-100: #ffedd5;
+  --color-brand-200: #fed7aa;
+  --color-brand-300: #fdba74;
+  --color-brand-400: #fb923c;
+  --color-brand-500: #f97316;
+  --color-brand-600: #ea580c;
+  --color-brand-700: #c2410c;
+  --color-brand-800: #9a3412;
+  --color-brand-900: #7c2d12;
+  --color-amber-400: #fbbf24;
+  --color-accent-400: #22d3ee;
+  --color-accent-500: #06b6d4;
+}
+
+html,
+body {
+  background: #ffffff;
+  color: #0f172a;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: rgba(249, 115, 22, 0.2);
+  color: #0f172a;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.card-shadow {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+.card-shadow-hover:hover {
+  box-shadow: 0 4px 8px rgba(15, 23, 42, 0.06), 0 16px 40px rgba(15, 23, 42, 0.1);
+}
+.card-shadow-lg {
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08), 0 4px 8px rgba(15, 23, 42, 0.04);
+}
+
+.grad-text {
+  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid rgba(226, 232, 240, 0.6);
+}
+
+.glass-dark {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee-track { animation: marquee 35s linear infinite; }
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.animate-float { animation: float 6s ease-in-out infinite; }
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dot-bg {
+  background-image: radial-gradient(circle, rgba(15, 23, 42, 0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.grid-bg-light {
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #f97316;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 6px rgba(249, 115, 22, 0.4);
+}
+
+/* Premium button glow */
+.btn-glow {
+  box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4);
+  transition: all 0.3s ease;
+}
+.btn-glow:hover {
+  box-shadow: 0 0 0 8px rgba(249, 115, 22, 0);
+}
+
+/* Section divider */
+.section-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+}
+
+/* ============================================================
+   ERP admin — semantic surfaces (light + dark)
+   Used by the admin dashboard so cards/borders/text flip with
+   the theme from one place instead of per-utility dark: classes.
+   ============================================================ */
+:root {
+  --erp-bg: #f8fafc;          /* page background */
+  --erp-surface: #ffffff;     /* card / panel */
+  --erp-surface-2: #f8fafc;   /* subtle inset (table header, hover) */
+  --erp-border: #e2e8f0;
+  --erp-border-soft: #f1f5f9;
+  --erp-text: #0f172a;
+  --erp-text-muted: #64748b;
+  --erp-text-faint: #94a3b8;
+}
+.dark {
+  --erp-bg: #0b1120;
+  --erp-surface: #0f172a;
+  --erp-surface-2: #131f36;
+  --erp-border: #1e293b;
+  --erp-border-soft: #172033;
+  --erp-text: #f1f5f9;
+  --erp-text-muted: #94a3b8;
+  --erp-text-faint: #64748b;
+}
+
+.erp-bg { background-color: var(--erp-bg); }
+.erp-surface { background-color: var(--erp-surface); }
+.erp-surface-2 { background-color: var(--erp-surface-2); }
+.erp-border { border-color: var(--erp-border); }
+.erp-border-soft { border-color: var(--erp-border-soft); }
+.erp-text { color: var(--erp-text); }
+.erp-text-muted { color: var(--erp-text-muted); }
+.erp-text-faint { color: var(--erp-text-faint); }
+
+/* Card: the workhorse surface — rounded-xl, soft shadow, theme-aware */
+.erp-card {
+  background-color: var(--erp-surface);
+  border: 1px solid var(--erp-border);
+  border-radius: 0.75rem;
+}
+.dark .card-shadow { box-shadow: 0 1px 2px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.3); }
+
+/* Hover row / inset in dark mode */
+.erp-hover:hover { background-color: var(--erp-surface-2); }
+
+/* Skeleton shimmer that works on both themes */
+@keyframes erp-shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.erp-skeleton {
+  background: linear-gradient(90deg, var(--erp-surface-2) 25%, var(--erp-border-soft) 37%, var(--erp-surface-2) 63%);
+  background-size: 800px 100%;
+  animation: erp-shimmer 1.4s ease-in-out infinite;
+}

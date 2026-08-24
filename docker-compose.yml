@@ -1,0 +1,56 @@
+# Zolo — full local stack. One command: `docker compose up`.
+# Brings up PostgreSQL, the API (auto-migrates + seeds test users), and the
+# frontend. No more "Postgres isn't running" or "API not started" errors.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: zolo-db
+    environment:
+      POSTGRES_USER: zolo
+      POSTGRES_PASSWORD: zolo
+      POSTGRES_DB: zolo_packing
+    ports:
+      - "5432:5432"
+    volumes:
+      - zolo_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # API waits until the DB actually accepts connections.
+      test: ["CMD-SHELL", "pg_isready -U zolo -d zolo_packing"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: zolo-api
+    environment:
+      DATABASE_URL: "postgresql://zolo:zolo@db:5432/zolo_packing"
+      PORT: "5001"
+      JWT_SECRET: "docker-dev-jwt-secret-change-for-prod"
+      JWT_ACCESS_TTL: "15m"
+      JWT_REFRESH_TTL_DAYS: "30"
+      BANK_ENC_KEY: "docker-dev-32byte-key-change-me!!"
+      UPLOADS_BASE_URL: "http://localhost:5001/uploads"
+    ports:
+      - "5001:5001"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - zolo_uploads:/app/uploads
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: zolo-web
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+volumes:
+  zolo_pgdata:
+  zolo_uploads:

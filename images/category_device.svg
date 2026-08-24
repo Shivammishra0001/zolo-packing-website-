@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <defs>
+    <linearGradient id="device-box" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f9fafb" />
+      <stop offset="100%" stop-color="#e5e7eb" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="15" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  
+  <g filter="url(#shadow)">
+    <!-- Shadow -->
+    <ellipse cx="250" cy="380" rx="130" ry="20" fill="#e5e5e5"/>
+    
+    <!-- Device retail box (3D perspective) -->
+    <!-- Front Face -->
+    <path d="M 150 180 L 270 210 L 270 340 L 150 310 Z" fill="url(#device-box)"/>
+    <!-- Side Face -->
+    <path d="M 270 210 L 350 175 L 350 305 L 270 340 Z" fill="#d1d5db"/>
+    <!-- Top Face -->
+    <path d="M 150 180 L 230 145 L 350 175 L 270 210 Z" fill="#ffffff"/>
+    
+    <!-- Sleek seam detail -->
+    <line x1="270" y1="218" x2="270" y2="340" stroke="#9ca3af" stroke-width="1"/>
+  </g>
+</svg>

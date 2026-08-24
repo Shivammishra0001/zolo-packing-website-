@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <defs>
+    <linearGradient id="amber-bottle" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#b45309" />
+      <stop offset="50%" stop-color="#f59e0b" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#78350f" />
+    </linearGradient>
+    <linearGradient id="pharma-box" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#f3f4f6" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="15" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  
+  <g filter="url(#shadow)">
+    <!-- White Medicine Box (Back Left) -->
+    <ellipse cx="200" cy="380" rx="90" ry="18" fill="#e5e5e5"/>
+    <path d="M 110 240 L 220 270 L 220 360 L 110 330 Z" fill="url(#pharma-box)"/>
+    <path d="M 220 270 L 280 240 L 280 330 L 220 360 Z" fill="#e5e7eb"/>
+    <path d="M 110 240 L 170 210 L 280 240 L 220 270 Z" fill="#ffffff"/>
+    <!-- Minimalist medical blue band on box -->
+    <path d="M 110 290 L 220 320 L 220 325 L 110 295 Z" fill="#3b82f6"/>
+    
+    <!-- Amber Pill Bottle (Front Right) -->
+    <ellipse cx="310" cy="390" rx="50" ry="12" fill="#d4d4d4"/>
+    <path d="M 265 240 C 265 230 275 230 275 230 L 345 230 C 345 230 355 230 355 240 L 355 380 C 355 390 345 390 310 390 C 275 390 265 390 265 380 Z" fill="url(#amber-bottle)"/>
+    <!-- White Cap -->
+    <rect x="280" y="195" width="60" height="30" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+    <ellipse cx="310" cy="195" rx="30" ry="6" fill="#f9fafb"/>
+    <!-- Neck -->
+    <rect x="288" y="225" width="44" height="8" fill="#d1d5db"/>
+  </g>
+</svg>

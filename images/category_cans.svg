@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <defs>
+    <linearGradient id="metal-body" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f3f4f6" />
+      <stop offset="30%" stop-color="#e5e7eb" />
+      <stop offset="60%" stop-color="#d1d5db" />
+      <stop offset="100%" stop-color="#9ca3af" />
+    </linearGradient>
+    <linearGradient id="metal-cap" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="50%" stop-color="#e5e7eb" />
+      <stop offset="100%" stop-color="#9ca3af" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="15" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  
+  <g filter="url(#shadow)">
+    <!-- Tin Canister (Back Left) -->
+    <ellipse cx="200" cy="380" rx="75" ry="15" fill="#e5e5e5"/>
+    <!-- Body Cylinder -->
+    <path d="M 125 180 A 75 15 0 0 0 275 180 L 275 380 A 75 15 0 0 1 125 380 Z" fill="url(#metal-body)"/>
+    <!-- Lid / Cap -->
+    <ellipse cx="200" cy="180" rx="75" ry="15" fill="url(#metal-cap)"/>
+    <path d="M 125 170 A 75 15 0 0 0 275 170 L 275 180 A 75 15 0 0 1 125 180 Z" fill="#9ca3af"/>
+    <ellipse cx="200" cy="170" rx="75" ry="15" fill="url(#metal-cap)"/>
+    
+    <!-- Beverage Can (Front Right) -->
+    <ellipse cx="320" cy="390" rx="55" ry="10" fill="#d4d4d4"/>
+    <!-- Can Cylinder -->
+    <path d="M 265 240 A 55 10 0 0 0 375 240 L 375 390 A 55 10 0 0 1 265 390 Z" fill="url(#metal-body)"/>
+    <!-- Can Top Rim -->
+    <ellipse cx="320" cy="240" rx="55" ry="10" fill="url(#metal-cap)"/>
+    <!-- Bottom Rim -->
+    <path d="M 265 390 A 55 10 0 0 0 375 390" fill="none" stroke="#d1d5db" stroke-width="3"/>
+  </g>
+</svg>

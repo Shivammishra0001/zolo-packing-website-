@@ -1,0 +1,77 @@
+# DigitalOcean App Platform spec.
+#
+# IMPORTANT: this app builds with BUILDPACKS, not the Dockerfile.
+#
+# A `dockerfile_path` here (or an unignored Dockerfile at the repo root) makes
+# App Platform skip buildpack detection entirely — which means the Procfile is
+# never read and the deploy fails with:
+#
+#     no default process type
+#     This app may not specify any way to start a node process
+#
+# The root Dockerfile also only ever built the frontend: it never installed or
+# ran server/, so even a successful Docker deploy would have served the SPA
+# with no API behind it.
+#
+# The build/run commands below are declared explicitly so process detection
+# does not depend on Procfile parsing at all.
+name: zolo-packing
+
+services:
+  - name: web
+    source_dir: /
+    github:
+      repo: Shivammishra0001/Zolo-packaging.com
+      branch: main
+      deploy_on_push: true
+
+    environment_slug: node-js
+
+    # `npm install` runs postinstall, which installs server/ dependencies and
+    # generates the Prisma client. `npm run build` then builds the SPA.
+    build_command: npm run build
+
+    # One process serves both halves: the Express API at /api/v1 and the built
+    # SPA in front of it (see server.mjs).
+    run_command: npm start
+
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xxs
+
+    # App Platform marks an instance healthy only when this returns 2xx. It
+    # checks the database, so a container that cannot reach Postgres is never
+    # routed traffic.
+    health_check:
+      http_path: /api/v1/public/ready
+      initial_delay_seconds: 30
+      period_seconds: 15
+      failure_threshold: 3
+
+    envs:
+      - key: NODE_ENV
+        value: production
+
+      # One proxy hop in front of the container. req.ip must be the real
+      # client, because login rate limiting is keyed on it.
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+
+      # ---- Secrets: set these in the App Platform UI as encrypted values.
+      # Never commit real values here.
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: BANK_ENC_KEY
+        scope: RUN_TIME
+        type: SECRET
+
+      # Same-origin deployment: the SPA and API share one hostname, so the
+      # frontend calls "/api/v1" and CORS never applies. Leave CORS_ORIGINS
+      # unset unless a separate frontend domain is added.
+      - key: UPLOADS_BASE_URL
+        scope: RUN_TIME
+        value: ${APP_URL}/uploads

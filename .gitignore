@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example
+.DS_Store
+.vscode/
+coverage/
+*.log
+server/.env.backup-*
+
+# Runtime upload store — user-submitted files (product images, and KYC
+# documents such as GST/PAN certificates). This is application DATA, not
+# source: it must never enter version control. The directory itself is
+# tracked via .gitkeep so a fresh clone still has somewhere to write.
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Local database dumps
+*.sql

@@ -1,0 +1,1080 @@
+// Zolo Packaging — canonical persistence layer (PostgreSQL 16 via Prisma).
+// THE single source of truth for the database. The legacy MongoDB backend was
+// decommissioned; this schema now owns the full commerce domain.
+//
+// Conventions (see docs/DATABASE_DOMAIN_REFERENCE.md):
+//  - Money is ALWAYS an integer in minor units (paise). No floats. A
+//    basePriceMinor of 0 means "quotation-based" (never rendered as ₹0).
+//  - Order/quotation line items carry a frozen SNAPSHOT of product data so
+//    historical records are immune to later catalog edits.
+//  - History/ledger/audit tables are append-only and never cascade-deleted.
+//  - Soft-delete (deletedAt) only where a real archive is needed
+//    (products, categories, customers, coupons).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// IDENTITY & ORGANIZATION (auth foundation)
+// ============================================================
+
+enum UserRole {
+  buyer
+  seller_owner
+  seller_admin
+  seller_staff
+  admin
+  verification_admin
+  finance_admin
+  operations_admin
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  // Stored normalized (digits only, last 10). Unique+sparse so it can be used
+  // as a login identifier; null phones don't collide.
+  phone        String?   @unique
+  passwordHash String
+  firstName    String
+  lastName     String?
+  role         UserRole  @default(buyer)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  memberships    OrganizationMember[]
+  sessions       Session[]
+  // audit/notification back-references
+  auditLogs      AuditLog[]           @relation("AuditActor")
+  notifications  Notification[]
+  // commerce back-references
+  customer       Customer?
+  addresses      Address[]
+  orders         Order[]
+  reviews        Review[]
+  wishlist       Wishlist?
+  cart           Cart?
+  sellerProducts Product[]            @relation("ProductSeller")
+  stockMovements StockMovement[]      @relation("StockMovementActor")
+
+  @@index([role])
+}
+
+// A persisted session/refresh record. The access token is a short-lived JWT;
+// this row lets us revoke sessions (logout, suspension) server-side.
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique // sha256 of the refresh token — never the raw token
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+enum OrgKind {
+  buyer
+  supplier
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  kind      OrgKind  @default(supplier)
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members         OrganizationMember[]
+  supplierProfile SupplierProfile?
+
+  @@index([kind])
+}
+
+enum OrgMemberRole {
+  owner
+  admin
+  staff
+}
+
+model OrganizationMember {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberRole     OrgMemberRole @default(owner)
+  createdAt      DateTime      @default(now())
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+// ============================================================
+// SUPPLIER / SELLER ONBOARDING
+// ============================================================
+
+enum SupplierStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+  SUSPENDED
+  INACTIVE
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum BusinessType {
+  MANUFACTURER
+  CONVERTER
+  TRADER
+  DISTRIBUTOR
+  PRINTING
+  PACKAGING_SPECIALIST
+  OTHER
+}
+
+// The onboarding wizard step the seller has reached (0-based index into the
+// canonical step list defined in the application; persisted so drafts resume).
+model SupplierProfile {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Business details
+  legalName           String?
+  displayName         String?
+  businessType        BusinessType?
+  registrationNumber  String?
+  website             String?
+  yearEstablished     Int?
+  employeeCount       Int?
+  annualTurnoverMinor BigInt? // minor units; optional
+  description         String?
+  contactName         String?
+  contactEmail        String?
+  contactPhone        String?
+
+  // Legal & tax (normalized/uppercased on write; never government-verified here)
+  gstNumber String? @unique
+  panNumber String? @unique
+  cinNumber String?
+
+  // Workflow state
+  status             SupplierStatus     @default(DRAFT)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  onboardingStep     Int                @default(0)
+  submittedAt        DateTime?
+  approvedAt         DateTime?
+  rejectedAt         DateTime?
+  rejectionReason    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  locations      SupplierLocation[]
+  capabilities   SupplierCapability[]
+  certifications SupplierCertification[]
+  documents      SupplierDocument[]
+  machinery      SupplierMachine[]
+  materials      SupplierMaterial[]
+  bankAccounts   SupplierBankAccount[]
+  capacity       SupplierCapacity?
+  quality        SupplierQuality?
+  logistics      SupplierLogistics?
+  statusHistory  SupplierStatusHistory[]
+  changeRequests SupplierChangeRequest[]
+
+  @@index([status])
+  @@index([verificationStatus])
+}
+
+enum LocationType {
+  HEAD_OFFICE
+  FACTORY
+  WAREHOUSE
+  DISPATCH
+  BILLING
+}
+
+model SupplierLocation {
+  id           String          @id @default(cuid())
+  supplierId   String
+  supplier     SupplierProfile @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  locationType LocationType
+  isPrimary    Boolean         @default(false)
+  isActive     Boolean         @default(true)
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  state        String
+  postalCode   String
+  country      String          @default("India")
+  contactName  String?
+  contactPhone String?
+  createdAt    DateTime        @default(now())
+
+  @@index([supplierId])
+  @@index([locationType])
+}
+
+// Capabilities link to the existing product taxonomy by category name (Product.category)
+// so RFQ matching can query against real catalog categories.
+model SupplierCapability {
+  id                   String          @id @default(cuid())
+  supplierId           String
+  supplier             SupplierProfile @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  category             String // aligns with Product.category taxonomy
+  subCategory          String?
+  materials            String[]        @default([])
+  finishes             String[]        @default([])
+  printingMethods      String[]        @default([])
+  minimumOrderQuantity Int?
+  maximumOrderQuantity Int?
+  leadTimeDays         Int?
+  customization        Boolean         @default(false)
+  sampleAvailable      Boolean         @default(false)
+  createdAt            DateTime        @default(now())
+
+  @@index([supplierId])
+  @@index([category])
+}
+
+model SupplierCapacity {
+  id                   String          @id @default(cuid())
+  supplierId           String          @unique
+  supplier             SupplierProfile @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  monthlyCapacity      Int?
+  dailyCapacity        Int?
+  minimumOrderQuantity Int?
+  maximumOrderQuantity Int?
+  standardLeadTimeDays Int?
+  rushCapacity         Boolean         @default(false)
+  productionShifts     Int?
+  workingDays          Int? // days/week
+  seasonalNotes        String?
+  updatedAt            DateTime        @updatedAt
+}
+
+model SupplierMachine {
+  id           String          @id @default(cuid())
+  supplierId   String
+  supplier     SupplierProfile @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  machineName  String
+  machineType  String?
+  manufacturer String?
+  model        String?
+  quantity     Int             @default(1)
+  capacity     String?
+  year         Int?
+  status       String?
+  createdAt    DateTime        @default(now())
+
+  @@index([supplierId])
+}
+
+model SupplierMaterial {
+  id         String          @id @default(cuid())
+  supplierId String
+  supplier   SupplierProfile @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  material   String
+  grade      String?
+  thickness  String?
+  gsm        Int?
+  bf         Int? // bursting factor
+  flute      String?
+  paperType  String?
+  boardType  String?
+  coating    String?
+  lamination String?
+  createdAt  DateTime        @default(now())
+
+  @@index([supplierId])
+}
+
+model SupplierCertification {
+  id                 String             @id @default(cuid())
+  supplierId         String
+  supplier           SupplierProfile    @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  name               String
+  certificateNumber  String?
+  issuer             String?
+  issueDate          DateTime?
+  expiryDate         DateTime?
+  documentId         String?            @unique
+  document           SupplierDocument?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  createdAt          DateTime           @default(now())
+
+  @@index([supplierId])
+  @@index([expiryDate])
+}
+
+enum DocumentType {
+  GST_CERTIFICATE
+  PAN
+  COMPANY_REGISTRATION
+  FACTORY_LICENSE
+  ADDRESS_PROOF
+  BANK_PROOF
+  CANCELLED_CHEQUE
+  CERTIFICATION
+  QUALITY_CERTIFICATE
+  FACTORY_PHOTO
+  MACHINERY_DOCUMENT
+  OTHER
+}
+
+model SupplierDocument {
+  id                 String             @id @default(cuid())
+  supplierId         String
+  supplier           SupplierProfile    @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  type               DocumentType
+  fileName           String
+  storageKey         String // opaque key into the storage abstraction — never a public path
+  mimeType           String
+  size               Int
+  uploadedById       String?
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedById       String?
+  verifiedAt         DateTime?
+  rejectionReason    String?
+  expiresAt          DateTime?
+  createdAt          DateTime           @default(now())
+
+  certification SupplierCertification?
+
+  @@index([supplierId])
+  @@index([type])
+}
+
+// Bank details: sensitive. Full account number is never returned by the API —
+// only accountLast4 is exposed. accountNumberEnc holds an encrypted/opaque value.
+model SupplierBankAccount {
+  id                String          @id @default(cuid())
+  supplierId        String
+  supplier          SupplierProfile @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  accountHolderName String
+  bankName          String
+  accountNumberEnc  String // encrypted at the service layer; never plaintext in responses
+  accountLast4      String
+  ifsc              String
+  branch            String?
+  paymentTerms      String?
+  currency          String          @default("INR")
+  isPrimary         Boolean         @default(false)
+  createdAt         DateTime        @default(now())
+
+  @@index([supplierId])
+}
+
+model SupplierQuality {
+  id                  String          @id @default(cuid())
+  supplierId          String          @unique
+  supplier            SupplierProfile @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  qualityProcess      String?
+  inspectionProcess   String?
+  testingCapability   String?
+  qcCertifications    String[]        @default([])
+  samplingProcess     String?
+  defectHandling      String?
+  returnReworkProcess String?
+  updatedAt           DateTime        @updatedAt
+}
+
+model SupplierLogistics {
+  id                 String          @id @default(cuid())
+  supplierId         String          @unique
+  supplier           SupplierProfile @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  serviceableRegions String[]        @default([])
+  deliveryLocations  String[]        @default([])
+  dispatchCapability String?
+  shippingMethods    String[]        @default([])
+  avgDispatchDays    Int?
+  preferredPartners  String[]        @default([])
+  pickupAvailable    Boolean         @default(false)
+  updatedAt          DateTime        @updatedAt
+}
+
+// Immutable status-transition history (append-only).
+model SupplierStatusHistory {
+  id         String          @id @default(cuid())
+  supplierId String
+  supplier   SupplierProfile @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  fromStatus SupplierStatus?
+  toStatus   SupplierStatus
+  actorId    String?
+  reason     String?
+  createdAt  DateTime        @default(now())
+
+  @@index([supplierId])
+}
+
+// A change-request raised by an admin; carries section-specific issues.
+model SupplierChangeRequest {
+  id         String          @id @default(cuid())
+  supplierId String
+  supplier   SupplierProfile @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  raisedById String
+  resolved   Boolean         @default(false)
+  resolvedAt DateTime?
+  issues     Json            @default("[]") // [{ section, message }]
+  createdAt  DateTime        @default(now())
+
+  @@index([supplierId])
+  @@index([resolved])
+}
+
+// ============================================================
+// CROSS-CUTTING: AUDIT + NOTIFICATIONS + DOMAIN EVENTS
+// ============================================================
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  eventType      String
+  actorId        String?
+  actor          User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  organizationId String?
+  entityType     String?
+  entityId       String?
+  metadata       Json     @default("{}") // never contains secrets/PII like bank numbers
+  createdAt      DateTime @default(now())
+
+  @@index([eventType])
+  @@index([entityType, entityId])
+  @@index([organizationId])
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+}
+
+model Notification {
+  id         String             @id @default(cuid())
+  userId     String
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       String
+  title      String
+  body       String?
+  entityType String?
+  entityId   String?
+  status     NotificationStatus @default(UNREAD)
+  createdAt  DateTime           @default(now())
+
+  @@index([userId, status])
+}
+
+enum ProductStatus {
+  draft
+  active
+  archived
+}
+
+model Product {
+  id             String        @id // PRD-xxxx (app-generated, stable across UI)
+  sku            String        @unique
+  slug           String        @unique
+  name           String
+  // `category`/`subcategory` remain as denormalized taxonomy strings (used by
+  // SupplierCapability matching and legacy queries); categoryId is the
+  // normalized relation to the Category table.
+  category       String
+  subcategory    String        @default("General")
+  categoryId     String?
+  categoryRef    Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  // Normalized subcategory relation. The denormalized `subcategory` string
+  // above is kept in sync (legacy queries + SupplierCapability matching read
+  // it); this is the FK used for real taxonomy navigation.
+  subcategoryId  String?
+  subcategoryRef Category?     @relation("ProductSubcategory", fields: [subcategoryId], references: [id], onDelete: SetNull)
+  sellerId       String? // owning supplier user (null = house catalog)
+  seller         User?         @relation("ProductSeller", fields: [sellerId], references: [id], onDelete: SetNull)
+  status         ProductStatus @default(draft)
+  description    String?
+  // dimensions
+  length         Float?
+  width          Float?
+  height         Float?
+  dimUnit        String? // in | cm | mm
+  weightGrams    Int?
+  gsm            Int?
+  color          String?
+  material       String?
+  // Catalog "Type" column (e.g. "Packaging Box", "Cup") — a descriptor, not a
+  // taxonomy node.
+  productType    String?
+  // Catalog "Thickness" column; free text because sources mix units.
+  thickness      String?
+  // The Size cell VERBATIM ("12 oz", "500 ml", "A4", "12 x 4 x 4 inch").
+  // Only true 3D sizes populate length/width/height; capacities and sheet
+  // sizes would be meaningless as dimensions, so they are preserved here
+  // instead of being discarded.
+  sizeLabel      String?
+  printing       String? // printing method (offset, flexo, digital…)
+  finishing      String? // lamination / foil / spot-UV / emboss…
+  customizable   Boolean       @default(false)
+  // money — integer minor units (paise); base 0 = quotation-based
+  basePriceMinor Int           @default(0)
+  salePriceMinor Int? // optional promotional price
+  costMinor      Int? // internal unit cost (never exposed to buyers)
+  moq            Int           @default(500)
+  stock          Int           @default(0) // on-hand quantity
+  reservedStock  Int           @default(0) // held for in-flight orders (available = stock - reserved)
+  lowStockLevel  Int?
+  imageEmoji     String        @default("📦") // primary image (emoji or URL)
+  images         String[]      @default([]) // ordered; [0] = primary
+  variants       Json          @default("[]")
+  deletedAt      DateTime? // soft-delete; archived products keep order snapshots intact
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  reviews        Review[]
+  wishlistItems  WishlistItem[]
+  aiAnalysis     ProductAiAnalysis?
+  stockMovements StockMovement[]
+
+  @@index([status])
+  @@index([category])
+  @@index([categoryId])
+  @@index([subcategoryId])
+  @@index([sellerId])
+}
+
+// ============================================================
+// COMMERCE DOMAIN
+// (customers, catalog taxonomy, cart, orders, payments,
+//  shipping, coupons, reviews, wishlist)
+// ============================================================
+
+// A buyer's commercial profile, 1:1 with a User whose role is `buyer`.
+// Financial/order history is never hard-deleted — customers soft-archive.
+model Customer {
+  id                 String          @id @default(cuid())
+  userId             String          @unique
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customerCode       String          @unique // CUST-xxxx, app-generated
+  company            String?
+  gstin              String?
+  segment            CustomerSegment @default(small_seller)
+  status             CustomerStatus  @default(active)
+  lifetimeValueMinor Int             @default(0)
+  deletedAt          DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  orders             Order[]
+
+  @@index([status])
+}
+
+enum CustomerSegment {
+  small_seller
+  d2c_brand
+  enterprise
+}
+
+enum CustomerStatus {
+  active
+  archived
+}
+
+// One canonical address table (billing/shipping) owned by a user. Order
+// addresses are snapshotted onto the order, so editing this never rewrites
+// historical shipments.
+model Address {
+  id         String      @id @default(cuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind       AddressKind @default(shipping)
+  name       String
+  phone      String?
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  postalCode String
+  country    String      @default("India")
+  isDefault  Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@index([userId, kind])
+}
+
+enum AddressKind {
+  billing
+  shipping
+}
+
+// Hierarchical product taxonomy (self-referential parent).
+model Category {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  description String?
+  icon        String?
+  parentId    String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Category[] @relation("CategoryTree")
+  isActive    Boolean    @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  products    Product[]
+  subProducts Product[] @relation("ProductSubcategory")
+
+  @@index([parentId])
+  @@index([isActive])
+}
+
+// One active cart per customer (unique userId).
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id             String   @id @default(cuid())
+  cartId         String
+  cart           Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId      String
+  variant        String? // selected variant descriptor (size/material/etc.)
+  quantity       Int      @default(1)
+  unitPriceMinor Int // price snapshot at add-to-cart time
+  createdAt      DateTime @default(now())
+
+  @@unique([cartId, productId, variant])
+  @@index([cartId])
+}
+
+model Order {
+  id              String        @id @default(cuid())
+  orderNumber     String        @unique // ORD-xxxx, app-generated
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  customerId      String?
+  customer        Customer?     @relation(fields: [customerId], references: [id])
+  status          OrderStatus   @default(PENDING)
+  paymentStatus   PaymentStatus @default(PENDING)
+  // money — integer minor units (paise)
+  subtotalMinor   Int           @default(0)
+  discountMinor   Int           @default(0)
+  taxMinor        Int           @default(0)
+  shippingMinor   Int           @default(0)
+  grandTotalMinor Int           @default(0)
+  paidMinor       Int           @default(0)
+  couponId        String?
+  coupon          Coupon?       @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  couponCode      String? // snapshot of the code applied (coupon may later change)
+  paymentMethod   String        @default("cod") // cod | upi | card | netbanking …
+  currency        String        @default("INR")
+  notes           String?
+  cancelReason    String?
+  // frozen shipping-address snapshot (never a live FK — addresses must freeze)
+  shipName        String?
+  shipPhone       String?
+  shipLine1       String?
+  shipLine2       String?
+  shipCity        String?
+  shipState       String?
+  shipPostalCode  String?
+  shipCountry     String?       @default("India")
+  // frozen billing-address snapshot (falls back to shipping when omitted)
+  billName        String?
+  billPhone       String?
+  billLine1       String?
+  billLine2       String?
+  billCity        String?
+  billState       String?
+  billPostalCode  String?
+  billCountry     String?       @default("India")
+  placedAt        DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  items            OrderItem[]
+  statusHistory    OrderStatusHistory[]
+  payments         Payment[]
+  shipments        Shipment[]
+  invoice          Invoice?
+  couponRedemption CouponRedemption?
+
+  @@index([userId])
+  @@index([customerId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([placedAt])
+}
+
+// Frozen snapshot — immune to later product/price edits.
+model OrderItem {
+  id             String  @id @default(cuid())
+  orderId        String
+  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      String? // reference only; snapshot below is the source of truth
+  productName    String
+  sku            String?
+  variant        String?
+  specs          Json    @default("{}") // dimensions/gsm/material/printing/finishes
+  quantity       Int
+  unitPriceMinor Int
+  discountMinor  Int     @default(0)
+  taxMinor       Int     @default(0)
+  lineTotalMinor Int
+
+  @@index([orderId])
+}
+
+// Append-only order status transitions.
+model OrderStatusHistory {
+  id        String      @id @default(cuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus
+  note      String?
+  actorId   String?
+  createdAt DateTime    @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  PACKED
+  SHIPPED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  RETURN_REQUESTED
+  RETURNED
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  paymentNumber String        @unique // PAY-xxxx
+  orderId       String
+  order         Order         @relation(fields: [orderId], references: [id])
+  method        String // upi | card | neft | cheque | cash
+  amountMinor   Int
+  status        PaymentStatus @default(PENDING)
+  reference     String? // gateway/transaction reference
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  refunds Refund[]
+
+  @@index([orderId])
+  @@index([status])
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  SUCCESS
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+model Refund {
+  id           String       @id @default(cuid())
+  refundNumber String       @unique
+  paymentId    String
+  payment      Payment      @relation(fields: [paymentId], references: [id])
+  amountMinor  Int
+  reason       String?
+  status       RefundStatus @default(requested)
+  processedAt  DateTime?
+  createdAt    DateTime     @default(now())
+
+  @@index([paymentId])
+}
+
+enum RefundStatus {
+  requested
+  approved
+  processed
+  rejected
+}
+
+model Shipment {
+  id             String         @id @default(cuid())
+  shipmentNumber String         @unique // SHP-xxxx
+  orderId        String
+  order          Order          @relation(fields: [orderId], references: [id])
+  courier        String? // FedEx | BlueDart | DHL | Delhivery…
+  trackingNumber String?
+  status         ShipmentStatus @default(PACKING)
+  shippedAt      DateTime?
+  deliveredAt    DateTime?
+  expectedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  events ShipmentEvent[]
+
+  @@index([orderId])
+  @@index([status])
+}
+
+model ShipmentEvent {
+  id         String         @id @default(cuid())
+  shipmentId String
+  shipment   Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  status     ShipmentStatus
+  location   String?
+  note       String?
+  createdAt  DateTime       @default(now())
+
+  @@index([shipmentId, createdAt])
+}
+
+enum ShipmentStatus {
+  PACKING
+  AWB_BOOKED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+model Coupon {
+  id               String       @id @default(cuid())
+  code             String       @unique // stored uppercased
+  discountType     DiscountType
+  discountValue    Int // percent (basis) OR flat minor units, per type
+  minOrderMinor    Int?
+  maxDiscountMinor Int?
+  usageLimit       Int?
+  usedCount        Int          @default(0)
+  validFrom        DateTime?
+  validUntil       DateTime? // NEVER auto-deleted (no TTL) — history is preserved
+  isActive         Boolean      @default(true)
+  deletedAt        DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  orders      Order[]
+  redemptions CouponRedemption[]
+
+  @@index([isActive])
+}
+
+// Per-user coupon usage ledger — enforces per-customer usage limits and gives
+// an auditable redemption history (the global Coupon.usedCount is a fast counter).
+model CouponRedemption {
+  id            String   @id @default(cuid())
+  couponId      String
+  coupon        Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  userId        String
+  orderId       String   @unique // one redemption per order
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  discountMinor Int
+  createdAt     DateTime @default(now())
+
+  @@index([couponId, userId])
+}
+
+// A tax invoice for a paid/confirmed order. Invoice numbers are a safe,
+// server-generated monotonic series (see InvoiceCounter). One invoice per order.
+model Invoice {
+  id              String        @id @default(cuid())
+  invoiceNumber   String        @unique // ZOLO/2026/000001 — generated server-side
+  orderId         String        @unique
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status          InvoiceStatus @default(issued)
+  // money snapshot at issue time (paise)
+  subtotalMinor   Int
+  discountMinor   Int           @default(0)
+  taxMinor        Int           @default(0)
+  shippingMinor   Int           @default(0)
+  grandTotalMinor Int
+  gstin           String? // seller/company GSTIN if configured
+  issuedAt        DateTime      @default(now())
+
+  @@index([status])
+}
+
+enum InvoiceStatus {
+  issued
+  paid
+  cancelled
+}
+
+// Single-row counter table for gapless, race-safe invoice sequence numbers.
+// Incremented inside the order transaction with a row lock.
+model InvoiceCounter {
+  id   Int @id @default(1)
+  year Int
+  seq  Int @default(0)
+}
+
+enum DiscountType {
+  percent
+  flat
+}
+
+// One review per user per product (unique constraint).
+model Review {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int // 1..5
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, userId])
+  @@index([productId])
+}
+
+// One wishlist per user; items reference products.
+model Wishlist {
+  id        String         @id @default(cuid())
+  userId    String         @unique
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     WishlistItem[]
+  createdAt DateTime       @default(now())
+}
+
+model WishlistItem {
+  id         String   @id @default(cuid())
+  wishlistId String
+  wishlist   Wishlist @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([wishlistId, productId])
+  @@index([wishlistId])
+}
+
+// ============================================================
+// AI PRODUCT GENERATION (from existing catalog images)
+// ============================================================
+
+// One analysis per source image. Caches the derived product data keyed by an
+// image content hash so the same image is never re-analyzed (cost control).
+// The analysis is the source for a DRAFT Product the admin reviews & approves.
+// Tags + SEO live here (not on Product) so the Product schema stays lean.
+model ProductAiAnalysis {
+  id               String           @id @default(cuid())
+  imageHash        String           @unique // sha256 of the source image bytes (cache key)
+  sourceName       String // original filename (never modified/renamed on disk)
+  status           AiAnalysisStatus @default(ANALYZED)
+  // derived product fields (all nullable — REVIEW_REQUIRED rows carry little)
+  name             String?
+  suggestedSku     String?
+  category         String?
+  isNewCategory    Boolean          @default(false) // category not in existing taxonomy
+  productType      String?
+  material         String?
+  color            String?
+  shape            String?
+  usage            String[]         @default([])
+  description      String?
+  shortDescription String?
+  tags             String[]         @default([])
+  seoTitle         String?
+  seoDescription   String?
+  imageUrl         String? // uploaded copy's permanent URL (original file untouched)
+  // per-field confidence (0..100) + overall
+  confidence       Json             @default("{}") // { overall, name, category, material }
+  reviewReason     String? // why REVIEW_REQUIRED, when applicable
+  // link to the created draft product (set once a draft exists)
+  productId        String?          @unique
+  product          Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([status])
+}
+
+enum AiAnalysisStatus {
+  NOT_ANALYZED
+  ANALYZING
+  ANALYZED
+  REVIEW_REQUIRED
+  FAILED
+  APPROVED
+  REJECTED
+}
+
+// ============================================================
+// INVENTORY LEDGER
+// ============================================================
+
+// Append-only record of every stock change.
+//
+// `Product.stock` remains the fast read path, but it must only ever move
+// through recordMovement(), which writes the matching ledger row in the SAME
+// transaction. `quantity` is signed: positive adds to stock, negative removes,
+// so the sum of a product's movements reconciles against Product.stock.
+//
+// Rows are never updated or deleted — a mistake is corrected by posting a
+// compensating ADJUSTMENT, which keeps the audit trail intact.
+model StockMovement {
+  id        String       @id @default(cuid())
+  productId String
+  product   Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type      MovementType
+  // Signed delta applied to Product.stock (+receipt / -consumption).
+  quantity  Int
+  // Running on-hand quantity immediately AFTER this movement, so history can
+  // be read back without replaying the whole ledger.
+  balance   Int
+  reason    String?
+  // Free-form provenance: the order, purchase order or job card that caused
+  // this movement. Kept as a loose reference so the ledger does not need a
+  // foreign key to models that may not exist yet.
+  refType   String?
+  refId     String?
+  actorId   String?
+  actor     User?        @relation("StockMovementActor", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt DateTime     @default(now())
+
+  @@index([productId, createdAt])
+  @@index([type])
+  @@index([refType, refId])
+}
+
+enum MovementType {
+  RECEIPT // goods received (purchase, opening stock)
+  CONSUMPTION // materials consumed by production
+  PRODUCTION_OUTPUT // finished goods produced
+  DISPATCH // shipped against an order
+  RETURN // customer/production return back into stock
+  ADJUSTMENT // manual correction (stock take)
+  DAMAGE // written off
+}

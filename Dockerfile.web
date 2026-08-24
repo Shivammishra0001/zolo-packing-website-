@@ -1,0 +1,15 @@
+# Zolo frontend — build the Vite SPA, serve it with nginx.
+# The app calls the API at http://localhost:5001 (resolved by the BROWSER to the
+# published api container port), so no build-time API URL wiring is needed.
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:1.27-alpine
+# SPA routing: serve index.html for any unknown path (React Router).
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <defs>
+    <linearGradient id="kraft-tape-roll" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ebd5bb" />
+      <stop offset="100%" stop-color="#bda07b" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="15" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  
+  <g filter="url(#shadow)">
+    <!-- Kraft tape roll (Back Left) -->
+    <ellipse cx="200" cy="380" rx="80" ry="18" fill="#e5e5e5"/>
+    <path d="M 130 260 A 70 20 0 0 0 270 260 L 270 360 A 70 20 0 0 1 130 360 Z" fill="url(#kraft-tape-roll)"/>
+    <ellipse cx="200" cy="260" rx="70" ry="20" fill="#f3f4f6"/>
+    <!-- Cardboard core -->
+    <ellipse cx="200" cy="260" rx="40" ry="12" fill="#d1a677"/>
+    <ellipse cx="200" cy="260" rx="32" ry="9" fill="#ffffff"/>
+    
+    <!-- Clear tape roll (Front Right) -->
+    <ellipse cx="300" cy="390" rx="75" ry="15" fill="#d4d4d4"/>
+    <!-- Acrylic clear look -->
+    <path d="M 235 290 A 65 18 0 0 0 365 290 L 365 380 A 65 18 0 0 1 235 380 Z" fill="#38bdf8" fill-opacity="0.15" stroke="#0ea5e9" stroke-opacity="0.3" stroke-width="1"/>
+    <ellipse cx="300" cy="290" rx="65" ry="18" fill="#38bdf8" fill-opacity="0.2" stroke="#0ea5e9" stroke-opacity="0.4" stroke-width="1"/>
+    <!-- Cardboard core -->
+    <ellipse cx="300" cy="290" rx="35" ry="10" fill="#ebd5bb"/>
+    <ellipse cx="300" cy="290" rx="28" ry="8" fill="#ffffff"/>
+  </g>
+</svg>

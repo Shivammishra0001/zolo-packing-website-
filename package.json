@@ -1,0 +1,54 @@
+{
+  "name": "react-vite-tailwind",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "preview": "vite preview",
+    "start": "node server.mjs",
+    "heroku-postbuild": "npm run build",
+    "server": "npm --prefix server run dev",
+    "dev:all": "(trap \"kill 0\" INT TERM; npm --prefix server run dev & npm run dev; wait)",
+    "build:server": "npm --prefix server ci --omit=dev && npm --prefix server run db:generate",
+    "build:all": "npm run build:server && npm run build",
+    "postinstall": "npm --prefix server install --omit=dev && npm --prefix server run db:generate",
+    "migrate:deploy": "npm --prefix server run db:migrate:deploy"
+  },
+  "engines": {
+    "node": "20.x",
+    "npm": ">=10"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.5.7",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@types/three": "^0.184.1",
+    "clsx": "2.1.1",
+    "express": "^5.2.1",
+    "fflate": "^0.8.3",
+    "framer-motion": "^12.39.0",
+    "lucide-react": "^1.16.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "react-hook-form": "^7.83.0",
+    "react-router-dom": "^7.15.1",
+    "tailwind-merge": "3.4.0",
+    "three": "^0.184.0",
+    "xlsx": "^0.18.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.1.17",
+    "@types/node": "22.19.17",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.1.1",
+    "tailwindcss": "4.1.17",
+    "typescript": "5.9.3",
+    "vite": "7.3.2",
+    "vite-plugin-singlefile": "2.3.0"
+  }
+}

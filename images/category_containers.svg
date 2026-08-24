@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <defs>
+    <linearGradient id="paper-bowl" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ebd5bb" />
+      <stop offset="100%" stop-color="#cbb194" />
+    </linearGradient>
+    <linearGradient id="lid-glass" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.7"/>
+      <stop offset="50%" stop-color="#f3f4f6" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#d1d5db" stop-opacity="0.6"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  
+  <g filter="url(#shadow)">
+    <!-- Shadow under bowl -->
+    <ellipse cx="250" cy="380" rx="140" ry="20" fill="#e5e5e5"/>
+    
+    <!-- Bowl Body -->
+    <path d="M 130 250 L 370 250 L 330 370 L 170 370 Z" fill="url(#paper-bowl)"/>
+    
+    <!-- Bowl Bottom Rim -->
+    <path d="M 170 370 A 80 10 0 0 0 330 370 L 330 375 A 80 10 0 0 1 170 375 Z" fill="#a89279"/>
+    
+    <!-- Bowl Lid Rim -->
+    <path d="M 120 240 A 130 15 0 0 0 380 240 L 380 250 A 130 15 0 0 1 120 250 Z" fill="#b99e82"/>
+    
+    <!-- Clear Salad Lid -->
+    <path d="M 120 240 A 130 15 0 0 1 380 240 C 380 210 350 180 250 180 C 150 180 120 210 120 240 Z" fill="url(#lid-glass)"/>
+    <!-- Glass shine reflection -->
+    <path d="M 150 220 Q 200 190 250 190" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity="0.6"/>
+  </g>
+</svg>

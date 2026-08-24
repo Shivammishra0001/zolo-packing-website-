@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <defs>
+    <linearGradient id="glass" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#a7f3d0" stop-opacity="0.8"/>
+      <stop offset="30%" stop-color="#d1fae5" stop-opacity="0.4"/>
+      <stop offset="70%" stop-color="#a7f3d0" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#34d399" stop-opacity="0.8"/>
+    </linearGradient>
+    <linearGradient id="bamboo" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#d5b48e" />
+      <stop offset="50%" stop-color="#bd9a6e" />
+      <stop offset="100%" stop-color="#a47d51" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="15" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  
+  <g filter="url(#shadow)">
+    <!-- Shadow -->
+    <ellipse cx="250" cy="380" rx="85" ry="15" fill="#e5e5e5"/>
+    
+    <!-- Jar Glass Body -->
+    <path d="M 165 200 C 165 180 180 180 180 180 L 320 180 C 320 180 335 180 335 200 L 335 360 C 335 375 320 380 250 380 C 180 380 165 375 165 360 Z" fill="url(#glass)"/>
+    
+    <!-- Shine Highlights -->
+    <path d="M 180 200 L 180 360" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
+    
+    <!-- Bamboo Screw Lid -->
+    <rect x="175" y="145" width="150" height="35" rx="5" fill="url(#bamboo)"/>
+    <ellipse cx="250" cy="145" rx="75" ry="8" fill="#e6cdb2"/>
+    
+    <!-- Lid details -->
+    <line x1="210" y1="150" x2="210" y2="175" stroke="#87653d" stroke-width="2"/>
+    <line x1="250" y1="150" x2="250" y2="175" stroke="#87653d" stroke-width="2"/>
+    <line x1="290" y1="150" x2="290" y2="175" stroke="#87653d" stroke-width="2"/>
+  </g>
+</svg>

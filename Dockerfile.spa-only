@@ -1,0 +1,33 @@
+# RENAMED FROM "Dockerfile" — do not rename it back.
+#
+# A Dockerfile at the repository ROOT makes DigitalOcean App Platform skip
+# buildpack detection, which means the Procfile is never read and the deploy
+# fails with "no default process type / This app may not specify any way to
+# start a node process". Renaming it restores buildpack builds.
+#
+# It is also incomplete as a production image: it builds ONLY the frontend and
+# never installs or runs server/, so a container from this file serves the SPA
+# with no API behind it. Production uses buildpacks + server.mjs, which mounts
+# the real Express app.
+#
+# Kept for the local static-only preview case:
+#   docker build -f Dockerfile.spa-only -t zolo-spa .
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+RUN npm prune --omit=dev
+
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV PORT=8080
+
+EXPOSE 8080
+
+CMD ["npm", "start"]
