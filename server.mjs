@@ -92,6 +92,37 @@ if (process.env.SKIP_MIGRATIONS !== "1" && process.env.DATABASE_URL) {
 }
 
 // ---------------------------------------------------------------------------
+// Admin user
+//
+// Runs only when ADMIN_EMAIL and ADMIN_PASSWORD are both set, and only AFTER
+// migrations — a freshly migrated database has no users, so there would
+// otherwise be no way to sign in to the admin portal.
+//
+// The seed is idempotent: it upserts on the unique email, so redeploys never
+// create duplicates. It does reset that account's password to ADMIN_PASSWORD
+// on every boot, which is why you should delete ADMIN_PASSWORD from the
+// environment once you have signed in and changed it in the app — otherwise a
+// redeploy silently reverts the password to the env value.
+//
+// The password is only ever stored as a bcrypt hash (scripts/seed-admin.mjs);
+// it is never logged here or written to the database in plain text.
+// ---------------------------------------------------------------------------
+if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD && process.env.DATABASE_URL) {
+  const { spawnSync } = await import("node:child_process");
+  console.log("  Ensuring admin user…");
+  const seed = spawnSync("node", ["scripts/seed-admin.mjs"], {
+    cwd: resolve(__dirname, "server"),
+    stdio: "inherit",
+    env: process.env,
+  });
+  // A failed seed is not fatal: the API is still healthy and every other user
+  // can sign in. Warn loudly rather than refusing to serve traffic.
+  if (seed.status !== 0) {
+    console.warn("  ! Admin seed failed — check ADMIN_EMAIL / ADMIN_PASSWORD. Continuing.");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // API
 //
 // Mounted first so it can never be shadowed by the SPA fallback below. If the
