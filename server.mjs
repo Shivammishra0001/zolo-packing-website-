@@ -54,6 +54,44 @@ const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS ?? 1));
 
 // ---------------------------------------------------------------------------
+// Database migrations
+//
+// Applied at STARTUP, not at build time. `.do/app.yaml` is only read when an
+// app is created from that spec (or updated with `doctl apps update`) — a
+// Build Command set in the App Platform UI overrides it, so a migration step
+// living only in the spec can silently never run. That is how this database
+// stayed empty while deploys kept succeeding, and every data route returned
+//   P2021  The table `public.User` does not exist in the current database
+// `npm start` always runs, so putting it here makes it unskippable.
+//
+// `prisma migrate deploy` is the production-safe command: it applies pending
+// migrations in order and never resets, drops or rewrites data. It is
+// idempotent, so a boot with nothing pending costs one quick no-op.
+//
+// Set SKIP_MIGRATIONS=1 to opt out (e.g. if you run migrations in a separate
+// release step and want faster boots).
+// ---------------------------------------------------------------------------
+if (process.env.SKIP_MIGRATIONS !== "1" && process.env.DATABASE_URL) {
+  const { spawnSync } = await import("node:child_process");
+  console.log("\n  Applying database migrations…");
+  const migrate = spawnSync(
+    "npx",
+    ["prisma", "migrate", "deploy", "--schema", resolve(__dirname, "server/prisma/schema.prisma")],
+    { cwd: resolve(__dirname, "server"), stdio: "inherit", env: process.env },
+  );
+  // A failed migration means the schema is not what the code expects. Starting
+  // anyway would serve 500s from a half-migrated database; fail loudly instead.
+  // Nothing is rolled back or reset — the database is left exactly as it was.
+  if (migrate.status !== 0) {
+    fail(
+      "Database migration failed — the database was NOT reset and no data was removed.",
+      "Read the Prisma error above. Common causes: DATABASE_URL unreachable (check the\n" +
+        "  database's Trusted Sources), a wrong password, or a missing ?sslmode=require.",
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // API
 //
 // Mounted first so it can never be shadowed by the SPA fallback below. If the
