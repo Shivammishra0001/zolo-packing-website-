@@ -15,7 +15,9 @@
     "build:server": "npm --prefix server ci --omit=dev && npm --prefix server run db:generate",
     "build:all": "npm run build:server && npm run build",
     "postinstall": "npm --prefix server install --omit=dev && npm --prefix server run db:generate",
-    "migrate:deploy": "npm --prefix server run db:migrate:deploy"
+    "migrate:deploy": "npm --prefix server run db:migrate:deploy",
+    "migrate:prod": "npm --prefix server run migrate:prod",
+    "migrate:status": "npm --prefix server run db:status"
   },
   "engines": {
     "node": "20.x",

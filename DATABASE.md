@@ -136,5 +136,46 @@ restores on a schedule, and keep credentials least-privilege.
 
 Deploy target is DigitalOcean App Platform (`.do/app.yaml`); Docker images exist
 for API (`server/Dockerfile`) and web (`Dockerfile.web`). The app needs only
-`DATABASE_URL` plus the secrets above. Run `npm run db:migrate:deploy` on release —
-never hand-edit production tables.
+`DATABASE_URL` plus the secrets above. Never hand-edit production tables.
+
+Migrations now run as part of the App Platform build:
+
+```
+build_command: npm run build && npm run migrate:deploy
+```
+
+`prisma migrate deploy` is production-safe and idempotent — it applies pending
+migrations in order and never resets, drops or rewrites data. A deploy with
+nothing pending is a no-op. It needs `DATABASE_URL` at BUILD time, so that
+variable is scoped `RUN_AND_BUILD_TIME`.
+
+### Symptom: every data route 500s, health still 200
+
+```
+PrismaClientKnownRequestError  code: P2021
+The table `public.User` does not exist in the current database.
+```
+
+The database is reachable but has no tables — it was created and never
+migrated. `/api/v1/public/health` still returns 200 because it never touches
+the database; `/api/v1/public/ready` returns 200 too (it connects fine). That
+combination — ready 200, `/products` 500 — means *schema missing*, as opposed
+to ready 503 which means *cannot connect*.
+
+Fix it by applying the existing migrations. From a machine with the production
+connection string exported:
+
+```bash
+export DATABASE_URL='postgresql://USER:PASSWORD@HOST:25060/DB?sslmode=require'
+npm run migrate:status   # inspect first — reports pending migrations
+npm run migrate:prod     # applies them
+npm run migrate:status   # expect "Database schema is up to date!"
+```
+
+`migrate:prod` wraps `migrate deploy` with guards: it refuses to run without
+`DATABASE_URL`, refuses a localhost target unless `ALLOW_LOCAL_MIGRATE=1`, and
+can only ever invoke `migrate deploy` — never `reset` or `db push`. It also
+neutralises `server/.env`, which Prisma otherwise auto-loads and which would
+**override** the URL you exported and silently migrate the dev database.
+
+Never run `prisma migrate reset` or `db push --force-reset` against production.

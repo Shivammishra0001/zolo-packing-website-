@@ -15,7 +15,8 @@
     "db:status": "prisma migrate status",
     "db:generate": "prisma generate",
     "db:seed": "node --env-file=.env scripts/seed-admin.mjs",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "migrate:prod": "node scripts/migrate-production.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

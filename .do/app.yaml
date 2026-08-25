@@ -33,19 +33,19 @@ services:
     # `npm install` runs postinstall, which installs server/ dependencies and
     # generates the Prisma client. `npm run build` then builds the SPA.
     #
-    # NOTE: this does NOT run database migrations. If the production database
-    # has never been migrated, its tables do not exist and every data route
-    # returns 500 while /api/v1/public/health still returns 200.
+    # `npm run migrate:deploy` applies any PENDING Prisma migrations before the
+    # app starts. It runs `prisma migrate deploy`, which is production-safe and
+    # idempotent: it never resets, drops or rewrites data, and a deploy with
+    # nothing pending is a no-op.
     #
-    # Apply migrations deliberately, from a machine with the production
-    # DATABASE_URL exported (safe and non-destructive — it only applies
-    # pending migrations and never drops data):
-    #   npm run migrate:deploy
+    # Without this step a newly created database stays EMPTY, and every data
+    # route fails with P2021 ("The table `public.User` does not exist") while
+    # /api/v1/public/health still returns 200 — the exact failure this app hit.
     #
-    # To run them automatically on every deploy instead, use:
-    #   build_command: npm run build && npm run migrate:deploy
-    # Only do that with DATABASE_URL scoped RUN_AND_BUILD_TIME (it is, below).
-    build_command: npm run build
+    # Requires DATABASE_URL at BUILD time, which is why it is scoped
+    # RUN_AND_BUILD_TIME below. If the migration fails the build fails, so a
+    # container is never promoted against a half-migrated schema.
+    build_command: npm run build && npm run migrate:deploy
 
     # One process serves both halves: the Express API at /api/v1 and the built
     # SPA in front of it (see server.mjs).
