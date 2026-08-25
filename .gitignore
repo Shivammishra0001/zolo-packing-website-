@@ -19,3 +19,9 @@ server/uploads/*
 
 # Local database dumps
 *.sql
+# ...but NEVER the Prisma migrations: they ARE the schema history and must ship
+# with the code. Without them a deployed container logs
+#   No migration found in prisma/migrations
+# applies nothing, and every query fails with P2021 ("table does not exist")
+# against a database that is reachable and empty.
+!server/prisma/migrations/**/*.sql
