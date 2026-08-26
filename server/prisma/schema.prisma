@@ -50,20 +50,23 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  memberships    OrganizationMember[]
-  sessions       Session[]
+  memberships        OrganizationMember[]
+  sessions           Session[]
   // audit/notification back-references
-  auditLogs      AuditLog[]           @relation("AuditActor")
-  notifications  Notification[]
+  auditLogs          AuditLog[]           @relation("AuditActor")
+  notifications      Notification[]
   // commerce back-references
-  customer       Customer?
-  addresses      Address[]
-  orders         Order[]
-  reviews        Review[]
-  wishlist       Wishlist?
-  cart           Cart?
-  sellerProducts Product[]            @relation("ProductSeller")
-  stockMovements StockMovement[]      @relation("StockMovementActor")
+  customer           Customer?
+  addresses          Address[]
+  orders             Order[]
+  reviews            Review[]
+  wishlist           Wishlist?
+  cart               Cart?
+  sellerProducts     Product[]            @relation("ProductSeller")
+  stockMovements     StockMovement[]      @relation("StockMovementActor")
+  rfqs               Rfq[]
+  quotations         Quotation[]
+  authoredQuotations Quotation[]          @relation("QuotationAuthor")
 
   @@index([role])
 }
@@ -553,6 +556,8 @@ model Product {
   wishlistItems  WishlistItem[]
   aiAnalysis     ProductAiAnalysis?
   stockMovements StockMovement[]
+  rfqItems       RfqItem[]
+  quotationItems QuotationItem[]
 
   @@index([status])
   @@index([category])
@@ -583,6 +588,7 @@ model Customer {
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   orders             Order[]
+  rfqs               Rfq[]
 
   @@index([status])
 }
@@ -722,6 +728,11 @@ model Order {
   shipments        Shipment[]
   invoice          Invoice?
   couponRedemption CouponRedemption?
+  // Provenance when this order came from an accepted quotation.
+  rfqId            String?
+  rfq              Rfq?                 @relation(fields: [rfqId], references: [id])
+  quotationId      String?
+  quotation        Quotation?           @relation(fields: [quotationId], references: [id])
 
   @@index([userId])
   @@index([customerId])
@@ -1077,4 +1088,147 @@ enum MovementType {
   RETURN // customer/production return back into stock
   ADJUSTMENT // manual correction (stock take)
   DAMAGE // written off
+}
+
+// ============================================================
+// RFQ (Request for Quotation) -> Quotation -> Order
+//
+// A buyer collects MULTIPLE products into ONE RFQ (RFQ-1001 may hold
+// Product A x5000, B x10000, C x2000) — never one RFQ per product.
+// Admin answers an RFQ with a Quotation; the buyer accepts it and the
+// quotation converts to an Order that references both.
+// ============================================================
+
+enum RfqStatus {
+  DRAFT // buyer is still building it (RFQ cart)
+  SUBMITTED // waiting for admin
+  UNDER_REVIEW // admin has opened it
+  QUOTED // at least one quotation sent
+  ACCEPTED // buyer accepted a quotation
+  REJECTED // buyer rejected, or admin declined to quote
+  CANCELLED // buyer withdrew
+  EXPIRED
+}
+
+enum QuotationStatus {
+  DRAFT // admin is composing
+  SENT // visible to the buyer
+  ACCEPTED
+  REJECTED
+  CHANGES_REQUESTED // buyer asked for a revision -> admin sends a new version
+  EXPIRED
+  WITHDRAWN
+}
+
+model Rfq {
+  id             String    @id @default(cuid())
+  rfqNumber      String    @unique // RFQ-1001, app-generated
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  customerId     String?
+  customer       Customer? @relation(fields: [customerId], references: [id])
+  status         RfqStatus @default(DRAFT)
+  // Buyer-supplied context for the whole request.
+  title          String?
+  notes          String?
+  currency       String    @default("INR")
+  requiredBy     DateTime? // buyer's needed-by date
+  // Delivery target — snapshot, never a live FK (addresses must freeze).
+  shipCity       String?
+  shipState      String?
+  shipPostalCode String?
+  shipCountry    String?   @default("India")
+  submittedAt    DateTime?
+  closedAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  items      RfqItem[]
+  quotations Quotation[]
+  orders     Order[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// One line per requested product. quantity is what the buyer asked for.
+model RfqItem {
+  id               String   @id @default(cuid())
+  rfqId            String
+  rfq              Rfq      @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  productId        String? // reference only; snapshot below is the source of truth
+  product          Product? @relation(fields: [productId], references: [id])
+  productName      String
+  sku              String?
+  variant          String?
+  specs            Json     @default("{}") // dimensions/gsm/material/printing/finishes
+  quantity         Int
+  unit             String   @default("pcs")
+  targetPriceMinor Int? // optional buyer expectation
+  notes            String?
+
+  @@index([rfqId])
+  @@index([productId])
+}
+
+// Admin's priced answer to an RFQ. A revision is a NEW row with version+1 so
+// the negotiation history is preserved rather than overwritten.
+model Quotation {
+  id              String          @id @default(cuid())
+  quotationNumber String          @unique // QT-1001, app-generated
+  rfqId           String
+  rfq             Rfq             @relation(fields: [rfqId], references: [id])
+  userId          String // buyer this was sent to (denormalised for scoping)
+  user            User            @relation(fields: [userId], references: [id])
+  createdById     String? // admin author
+  createdBy       User?           @relation("QuotationAuthor", fields: [createdById], references: [id])
+  version         Int             @default(1)
+  status          QuotationStatus @default(DRAFT)
+  // money — integer minor units (paise), same convention as Order
+  subtotalMinor   Int             @default(0)
+  discountMinor   Int             @default(0)
+  taxMinor        Int             @default(0)
+  shippingMinor   Int             @default(0)
+  grandTotalMinor Int             @default(0)
+  currency        String          @default("INR")
+  leadTimeDays    Int?
+  paymentTerms    String?
+  terms           String?
+  notes           String?
+  buyerMessage    String? // reason on reject / requested changes
+  validUntil      DateTime?
+  sentAt          DateTime?
+  respondedAt     DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  items  QuotationItem[]
+  orders Order[]
+
+  @@index([rfqId])
+  @@index([userId])
+  @@index([status])
+}
+
+model QuotationItem {
+  id             String    @id @default(cuid())
+  quotationId    String
+  quotation      Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  rfqItemId      String? // which requested line this answers
+  productId      String?
+  product        Product?  @relation(fields: [productId], references: [id])
+  productName    String
+  sku            String?
+  variant        String?
+  specs          Json      @default("{}")
+  quantity       Int
+  unit           String    @default("pcs")
+  unitPriceMinor Int
+  discountMinor  Int       @default(0)
+  taxMinor       Int       @default(0)
+  lineTotalMinor Int
+  notes          String?
+
+  @@index([quotationId])
 }

@@ -159,7 +159,7 @@ export default function CartPage() {
               >
                 Proceed to Checkout <ArrowRight className="h-4 w-4" />
               </button>
-              <Link to="/contact" className="flex w-full items-center justify-center gap-2 rounded-xl border border-dark-200 py-3 text-sm font-bold text-dark-800 hover:bg-dark-50">
+              <Link to="/rfq" className="flex w-full items-center justify-center gap-2 rounded-xl border border-dark-200 py-3 text-sm font-bold text-dark-800 hover:bg-dark-50">
                 <FileText className="h-4 w-4" /> Request Quotation
               </Link>
             </div>

@@ -16,8 +16,9 @@ import {
   Toolbar,
 } from "../components/ui";
 import { inr, relativeTime } from "../format";
-import { useMockQuery, useNow } from "../hooks";
-import { customers, rfqs } from "../mock-data";
+import { useNow } from "../hooks";
+import { customers } from "../mock-data";
+import { useQuotations } from "../quotations-store";
 import type { Rfq } from "../types";
 
 type RfqStatus = Rfq["status"];
@@ -75,7 +76,9 @@ function NewQuotationDialog({ open, onClose }: { open: boolean; onClose: () => v
 }
 
 export default function Quotations() {
-  const q = useMockQuery(rfqs, 500);
+  // Live from /api/v1/admin/rfqs. Polled so a newly submitted RFQ shows up
+  // without the admin reloading the page.
+  const q = useQuotations(30_000);
   const [tab, setTab] = useState<"all" | RfqStatus>("all");
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);

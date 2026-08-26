@@ -183,9 +183,21 @@ test("the activity feed paginates and describes events in words", async () => {
 });
 
 test("inventory reports availability as stock minus reservations", async () => {
-  const { status, body } = await api("/admin/inventory?limit=100", { token: adminToken });
-  assert.equal(status, 200);
-  const row = body.data.inventory.find((p) => p.sku === "TST-FLOW-PRODUCT");
+  // Page through rather than assuming the fixture lands in the first N rows:
+  // the endpoint orders by name and caps `limit` at 200, so a single page only
+  // found this product while the catalog happened to be small. Other suites
+  // add products, which pushed it past the window and failed the test for a
+  // reason that had nothing to do with inventory maths.
+  let row, offset = 0, status;
+  for (;;) {
+    const page = await api(`/admin/inventory?limit=200&offset=${offset}`, { token: adminToken });
+    status = page.status;
+    assert.equal(status, 200);
+    const { inventory, total } = page.body.data;
+    row = inventory.find((p) => p.sku === "TST-FLOW-PRODUCT");
+    offset += inventory.length;
+    if (row || inventory.length === 0 || offset >= total) break;
+  }
   assert.ok(row, "the product is listed");
   assert.equal(row.available, row.stock - row.reserved);
   assert.ok(["in_stock", "low_stock", "out_of_stock"].includes(row.state));

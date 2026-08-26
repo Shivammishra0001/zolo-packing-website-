@@ -24,6 +24,7 @@ import { useWishlist } from "../App";
 import { useAuthGuard } from "../components/auth/AuthGuard";
 import { useAuthSession } from "../components/auth/AuthContext";
 import { useBuyerProductBySlug, useBuyerProducts } from "../lib/products";
+import { addToRfq } from "../lib/rfq-cart-store";
 import { addToCart } from "../lib/cart-store";
 import { useToast } from "../components/ui/Toast";
 import { Button, SectionHeader } from "../components/UI";
@@ -178,15 +179,27 @@ export default function Details() {
 
   const handleRequestQuote = () => {
     // Protected action: guests are prompted to authenticate first, then this
-    // resumes automatically after a successful (future) backend login.
+    // resumes automatically after a successful login.
     guard(
       () => {
-        const message = `Hi! I would like to get a custom quote for:
-- Product: ${product.name}
-- Quantity: ${quantity} ${product.unit}s
-- Size: ${product.sizes[selectedSize] || "Default"}
-- Material: ${product.materials[selectedMaterial] || "Default"}${artworkName ? `\n- Artwork file: ${artworkName}` : ""}`;
-        nav("/contact", { state: { message } });
+        // Adds to the RFQ cart rather than submitting immediately, so the buyer
+        // can collect several products into ONE quotation request. Previously
+        // this navigated to /contact with a prefilled message, which never
+        // created an RFQ the admin could see.
+        addToRfq({
+          productId: product._id || product.id,
+          productName: product.name,
+          sku: product.sku,
+          quantity,
+          unit: product.unit,
+          specs: {
+            size: product.sizes[selectedSize] || "Default",
+            material: product.materials[selectedMaterial] || "Default",
+            ...(artworkName ? { artwork: artworkName } : {}),
+          },
+        });
+        toast.success("Added to your quotation request", "Add more products, or review and send it.");
+        nav("/rfq");
       },
       { label: "request a custom quote" },
     );

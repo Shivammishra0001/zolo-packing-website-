@@ -831,6 +831,9 @@ function AnimatedRoutes() {
           <Route path="/eco-rewards" element={<EcoRewards />} />
           <Route path="/sustainability" element={<Navigate to="/eco-rewards" replace />} />
            <Route path="/cart" element={<CartPage />} />
+           {/* RFQ: collect many products into one request, then review/send. */}
+           <Route path="/rfq" element={<RfqPage />} />
+           <Route path="/account/quotations" element={<MyQuotations />} />
           {/* Multi-step checkout — buyer-guarded, wrapped in the checkout state provider. */}
           <Route
             path="/checkout/*"
@@ -864,6 +867,8 @@ import Details from "./pages/Details";
 import Categories from "./pages/Categories";
 import EcoRewards from "./pages/EcoRewards";
 import CartPage from "./pages/CartPage";
+import RfqPage from "./pages/RfqPage";
+import MyQuotations from "./pages/MyQuotations";
 import Contact from "./pages/Contact";
 import AdminRoutes from "./admin/AdminRoutes";
 import BuyerRoutes from "./buyer/BuyerRoutes";
