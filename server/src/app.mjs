@@ -123,6 +123,13 @@ export function createApp() {
     }
   });
 
+  // Homepage merchandising blocks — public, so the storefront renders without
+  // authentication. Only ACTIVE blocks are exposed.
+  app.get(`${API}/public/cms`, wrap(async (_req, res) => {
+    const { listActiveBlocks } = await import("./services/cms.mjs");
+    ok(res, { blocks: await listActiveBlocks() });
+  }));
+
   app.get(`${API}/health`, wrap(async (_req, res) => {
     const products = await prisma.product.count();
     ok(res, { db: "postgresql/zolo_packing", products });

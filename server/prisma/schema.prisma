@@ -68,6 +68,7 @@ model User {
   quotations         Quotation[]
   authoredQuotations Quotation[]          @relation("QuotationAuthor")
   sentMessages       Message[]            @relation("MessageSender")
+  savedRequirements  SavedRequirement[]
 
   @@index([role])
 }
@@ -210,6 +211,7 @@ model SupplierProfile {
   changeRequests SupplierChangeRequest[]
   rfqMatches     RfqMatch[]
   quotations     Quotation[]             @relation("QuotationSupplier")
+  payouts        Payout[]
 
   @@index([status])
   @@index([verificationStatus])
@@ -1350,4 +1352,81 @@ model Message {
   createdAt  DateTime  @default(now())
 
   @@index([rfqId, supplierId, createdAt])
+}
+
+// ============================================================
+// Phase 3: settlement, saved requirements, CMS
+// ============================================================
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  ON_HOLD
+}
+
+// A settlement cycle for one supplier.
+//
+// Without a row per cycle a payout has no id, date or bank reference, and a
+// dispute is unanswerable — so the whole chain is STORED, not recomputed:
+//   gross - commission - GST on commission - refunds = net payable
+model Payout {
+  id                   String          @id @default(cuid())
+  payoutNumber         String          @unique // PO-xxxx
+  supplierId           String
+  supplier             SupplierProfile @relation(fields: [supplierId], references: [id])
+  periodStart          DateTime
+  periodEnd            DateTime
+  grossMinor           Int             @default(0)
+  commissionMinor      Int             @default(0)
+  // GST charged on the platform's commission (18% in India), not on the goods.
+  taxOnCommissionMinor Int             @default(0)
+  refundsMinor         Int             @default(0)
+  netPayableMinor      Int             @default(0)
+  currency             String          @default("INR")
+  status               PayoutStatus    @default(PENDING)
+  // Bank reference from the transfer — what makes a settlement auditable.
+  utr                  String?
+  paidAt               DateTime?
+  notes                String?
+  orderIds             String[]        @default([]) // orders settled in this cycle
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  // One settlement per supplier per period.
+  @@unique([supplierId, periodStart, periodEnd])
+  @@index([supplierId, status])
+}
+
+// A buyer's reusable requirement profile, so a repeat order does not mean
+// re-entering every spec.
+model SavedRequirement {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  notes     String?
+  // The RFQ line shape, stored as-is so it can seed a new RFQ directly.
+  items     Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Homepage merchandising as data, so a change needs no deploy.
+model CmsBlock {
+  id          String   @id @default(cuid())
+  key         String   @unique // hero, featured-categories, banner-strip…
+  title       String?
+  body        String?
+  payload     Json     @default("{}")
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
 }

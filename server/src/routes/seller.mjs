@@ -106,3 +106,9 @@ sellerRouter.get("/me/ai/suggested-categories", wrap(async (req, res) => {
 sellerRouter.get("/me/ai/missing-documents", wrap(async (req, res) => {
   ok(res, { missing: await ai.detectMissingDocuments(profileOf(req).id) });
 }));
+
+// Settlement ledger, scoped to the caller's own supplier profile.
+sellerRouter.get("/me/payouts", wrap(async (req, res) => {
+  const { listPayouts } = await import("../services/payouts.mjs");
+  ok(res, await listPayouts({ supplierId: profileOf(req).id, status: req.query.status }));
+}));

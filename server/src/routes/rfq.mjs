@@ -116,3 +116,19 @@ rfqRouter.post("/:id/messages", wrap(async (req, res) => {
 adminRfqRouter.post("/:id/match", wrap(async (req, res) => {
   ok(res, await marketplace.matchRfqToSuppliers(req.params.id));
 }));
+
+// ---- Saved requirement profiles (buyer) ---------------------------------
+import * as saved from "../services/saved-requirements.mjs";
+
+rfqRouter.get("/saved/list", wrap(async (req, res) => {
+  ok(res, { requirements: await saved.listMine(req.user.id) });
+}));
+
+rfqRouter.post("/saved", wrap(async (req, res) => {
+  ok(res, await saved.save(req.user.id, req.body ?? {}), 201);
+}));
+
+rfqRouter.delete("/saved/:id", wrap(async (req, res) => {
+  const removed = await saved.remove(req.user.id, req.params.id);
+  return removed ? ok(res, { deleted: true }) : notFound(res);
+}));

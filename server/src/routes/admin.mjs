@@ -9,6 +9,8 @@ import * as aiGen from "../services/ai-generate.mjs";
 import * as dashboards from "../services/dashboards.mjs";
 import * as inventory from "../services/inventory.mjs";
 import * as pricing from "../services/pricing.mjs";
+import * as payouts from "../services/payouts.mjs";
+import * as cms from "../services/cms.mjs";
 import { z } from "zod";
 
 export const adminRouter = Router();
@@ -250,4 +252,42 @@ adminRouter.put("/products/:id/tiers", wrap(async (req, res) => {
 
 adminRouter.patch("/products/:id/commission", wrap(async (req, res) => {
   ok(res, await pricing.setCommissionBps(req.params.id, req.body?.commissionBps));
+}));
+
+// ---- Payouts (admin-only settlement ledger) -----------------------------
+adminRouter.get("/payouts", wrap(async (req, res) => {
+  ok(res, await payouts.listPayouts({ supplierId: req.query.supplierId, status: req.query.status, take: req.query.take, skip: req.query.skip }));
+}));
+
+// Preview computes the chain WITHOUT writing, so an admin can check a cycle
+// before freezing it.
+adminRouter.get("/payouts/preview", wrap(async (req, res) => {
+  ok(res, await payouts.previewPayout(req.query.supplierId, {
+    periodStart: req.query.periodStart, periodEnd: req.query.periodEnd,
+  }));
+}));
+
+adminRouter.post("/payouts", wrap(async (req, res) => {
+  const { supplierId, periodStart, periodEnd, notes } = req.body ?? {};
+  ok(res, await payouts.createPayout(req.user.id, supplierId, { periodStart, periodEnd, notes }), 201);
+}));
+
+adminRouter.post("/payouts/:id/pay", wrap(async (req, res) => {
+  const updated = await payouts.markPaid(req.user.id, req.params.id, req.body ?? {});
+  return updated ? ok(res, updated) : res.status(404).json({ success: false, error: "Not found", code: "NOT_FOUND" });
+}));
+
+adminRouter.patch("/payouts/:id/status", wrap(async (req, res) => {
+  const updated = await payouts.updatePayoutStatus(req.user.id, req.params.id, req.body?.status);
+  return updated ? ok(res, updated) : res.status(404).json({ success: false, error: "Not found", code: "NOT_FOUND" });
+}));
+
+// ---- CMS ----------------------------------------------------------------
+adminRouter.get("/cms", wrap(async (_req, res) => ok(res, { blocks: await cms.listAllBlocks() })));
+
+adminRouter.put("/cms", wrap(async (req, res) => ok(res, await cms.saveBlock(req.user.id, req.body ?? {}))));
+
+adminRouter.delete("/cms/:key", wrap(async (req, res) => {
+  const removed = await cms.deleteBlock(req.user.id, req.params.key);
+  return removed ? ok(res, removed) : res.status(404).json({ success: false, error: "Not found", code: "NOT_FOUND" });
 }));
