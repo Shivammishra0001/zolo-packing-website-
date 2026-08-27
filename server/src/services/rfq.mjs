@@ -15,7 +15,7 @@ import { badRequest, notFound, conflict } from "../lib/http.mjs";
 import { recordEvent, notify, notifyRoles } from "./events.mjs";
 // Orders use the codebase's existing ORD-xxxx generator. Deriving a sequential
 // number here instead collided with it on the @unique column (P2002).
-import { newOrderNumber } from "../lib/commerce.mjs";
+import { newOrderNumber, newQuotationNumber } from "../lib/commerce.mjs";
 
 // Sequential, human-readable numbers. Allocated inside the caller's
 // transaction and derived from the current max so concurrent submits cannot
@@ -54,7 +54,7 @@ export async function listMyRfqs(userId, { status } = {}) {
  * three RfqItem rows — never three RFQs. A partial write here would strand an
  * RFQ with no lines, so the rows and the audit event share the transaction.
  */
-export async function createRfq(userId, { items, title, notes, requiredBy, ship = {}, submit = true }) {
+export async function createRfq(userId, { items, title, notes, requiredBy, ship = {}, submit = true, autoMatch = true }) {
   if (!Array.isArray(items) || items.length === 0) {
     throw badRequest("An RFQ needs at least one product", "RFQ_EMPTY");
   }
@@ -132,6 +132,21 @@ export async function createRfq(userId, { items, title, notes, requiredBy, ship 
     }
     return rfq;
   });
+
+  // Fan out to matching suppliers AFTER the RFQ is committed. A matching
+  // failure must not roll back a valid RFQ — the buyer's request still stands
+  // and admin can re-run matching.
+  //
+  // Callers can opt out (autoMatch: false) when they need an RFQ nobody else
+  // quotes — a test asserting on an exact quotation count, for instance.
+  if (submit && autoMatch) {
+    try {
+      const { matchRfqToSuppliers } = await import("./marketplace.mjs");
+      await matchRfqToSuppliers(created.id);
+    } catch (e) {
+      console.error("[rfq] supplier matching failed:", e.message);
+    }
+  }
 
   return shapeRfq(created);
 }
@@ -269,7 +284,7 @@ export async function adminCreateQuotation(adminId, rfqId, { items, leadTimeDays
 
   const created = await prisma.$transaction(async (tx) => {
     const prior = await tx.quotation.findFirst({ where: { rfqId }, orderBy: { version: "desc" }, select: { version: true } });
-    const quotationNumber = await nextNumber(tx, "quotation", "quotationNumber", "QT", 1001);
+    const quotationNumber = newQuotationNumber();
     const quotation = await tx.quotation.create({
       data: {
         quotationNumber,

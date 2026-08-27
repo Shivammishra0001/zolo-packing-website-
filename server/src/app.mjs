@@ -14,7 +14,7 @@ import { sellerRouter } from "./routes/seller.mjs";
 import { adminRouter } from "./routes/admin.mjs";
 import { notificationsRouter } from "./routes/notifications.mjs";
 import { cartRouter } from "./routes/cart.mjs";
-import { rfqRouter, quotationRouter, adminRfqRouter } from "./routes/rfq.mjs";
+import { rfqRouter, quotationRouter, adminRfqRouter, sellerRfqRouter } from "./routes/rfq.mjs";
 import { addressRouter } from "./routes/addresses.mjs";
 import { orderRouter } from "./routes/orders.mjs";
 
@@ -140,6 +140,7 @@ export function createApp() {
   app.use(`${API}/cart`, authenticate, requireBuyer, cartRouter);
   app.use(`${API}/addresses`, authenticate, requireBuyer, addressRouter);
   app.use(API, authenticate, requireBuyer, orderRouter); // /checkout/*, /orders/*
+  app.use(`${API}/sellers/rfqs`, authenticate, requireSeller, loadSupplierOrg, sellerRfqRouter);
   app.use(`${API}/sellers`, authenticate, requireSeller, loadSupplierOrg, sellerRouter);
   // RFQ -> Quotation -> Order. These routers authenticate internally (and the
   // admin one also requires the admin role), so they mount without a guard here.

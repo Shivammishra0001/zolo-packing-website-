@@ -14,6 +14,15 @@ export const FLAT_SHIP_MINOR = 5_00; // ₹5.00
 const rand = (n) => randomBytes(n).toString("hex").toUpperCase().slice(0, n * 2);
 export const newOrderNumber = () => `ORD-${rand(4)}`;
 export const newPaymentNumber = () => `PAY-${rand(4)}`;
+
+/**
+ * Quotation number. Sequential numbers derived from max(QT-…) collide when two
+ * quotes are created concurrently (both read the same max, both write the same
+ * value, one dies on the @unique with P2002 -> a spurious 409). A random token
+ * removes the race entirely, matching how order and payment numbers already
+ * work in this file.
+ */
+export const newQuotationNumber = () => `QT-${rand(4)}`;
 export const newShipmentNumber = () => `SHP-${rand(4)}`;
 export const newCustomerCode = () => `CUST-${rand(4)}`;
 

@@ -21,6 +21,10 @@ async function threeProductRfq() {
     method: "POST",
     token: buyer.token,
     body: {
+      // This suite asserts on EXACT quotation counts, so it must be the only
+      // quoter on its own RFQs. Auto-matching would let approved suppliers
+      // created by other suites add competing quotes and break those counts.
+      autoMatch: false,
       title: "Q3 packaging",
       notes: "Need matte lamination on the mailer.",
       ship: { city: "Bengaluru", state: "Karnataka", postalCode: "560001" },
@@ -53,7 +57,7 @@ test("one RFQ holds many products — 3 products create 1 RFQ with 3 items", asy
 
 test("an RFQ with no items is refused rather than stored empty", async () => {
   const buyer = await registerBuyer();
-  const res = await api("/rfqs", { method: "POST", token: buyer.token, body: { items: [] } });
+  const res = await api("/rfqs", { method: "POST", token: buyer.token, body: { autoMatch: false, items: [] } });
   assert.equal(res.status, 400);
   assert.equal(res.body.code, "RFQ_EMPTY");
 });
@@ -65,7 +69,7 @@ test("an unknown product fails the whole RFQ — no partial write", async () => 
   const res = await api("/rfqs", {
     method: "POST",
     token: buyer.token,
-    body: { items: [{ productId: p.id, quantity: 10 }, { productId: "does-not-exist", quantity: 5 }] },
+    body: { autoMatch: false, items: [{ productId: p.id, quantity: 10 }, { productId: "does-not-exist", quantity: 5 }] },
   });
   assert.equal(res.status, 400);
   assert.equal(res.body.code, "PRODUCT_NOT_FOUND");
@@ -76,7 +80,7 @@ test("quantities must be positive whole numbers", async () => {
   const buyer = await registerBuyer();
   const p = await makeProduct();
   for (const quantity of [0, -5, 2.5]) {
-    const res = await api("/rfqs", { method: "POST", token: buyer.token, body: { items: [{ productId: p.id, quantity }] } });
+    const res = await api("/rfqs", { method: "POST", token: buyer.token, body: { autoMatch: false, items: [{ productId: p.id, quantity }] } });
     assert.equal(res.status, 400, `quantity ${quantity} should be refused`);
   }
 });
@@ -122,7 +126,7 @@ test("a buyer cannot read another buyer's RFQ", async () => {
 
 test("RFQ endpoints reject unauthenticated callers", async () => {
   assert.equal((await api("/rfqs")).status, 401);
-  assert.equal((await api("/rfqs", { method: "POST", body: { items: [] } })).status, 401);
+  assert.equal((await api("/rfqs", { method: "POST", body: { autoMatch: false, items: [] } })).status, 401);
 });
 
 test("a non-admin cannot reach the admin RFQ queue", async () => {
@@ -153,7 +157,7 @@ test("full chain: quote -> accept -> order carries both references", async () =>
   });
   assert.equal(quote.status, 201);
   const q = quote.body.data;
-  assert.match(q.quotationNumber, /^QT-\d+$/);
+  assert.match(q.quotationNumber, /^QT-[A-Za-z0-9]+$/);
   assert.equal(q.version, 1);
   assert.equal(q.status, "SENT");
 

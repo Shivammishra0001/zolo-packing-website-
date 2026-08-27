@@ -67,6 +67,7 @@ model User {
   rfqs               Rfq[]
   quotations         Quotation[]
   authoredQuotations Quotation[]          @relation("QuotationAuthor")
+  sentMessages       Message[]            @relation("MessageSender")
 
   @@index([role])
 }
@@ -207,6 +208,8 @@ model SupplierProfile {
   logistics      SupplierLogistics?
   statusHistory  SupplierStatusHistory[]
   changeRequests SupplierChangeRequest[]
+  rfqMatches     RfqMatch[]
+  quotations     Quotation[]             @relation("QuotationSupplier")
 
   @@index([status])
   @@index([verificationStatus])
@@ -1158,6 +1161,8 @@ model Rfq {
   items      RfqItem[]
   quotations Quotation[]
   orders     Order[]
+  matches    RfqMatch[]
+  messages   Message[]
 
   @@index([userId])
   @@index([status])
@@ -1215,8 +1220,12 @@ model Quotation {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  items  QuotationItem[]
-  orders Order[]
+  items      QuotationItem[]
+  orders     Order[]
+  versions   QuoteVersion[]
+  // Null = quoted by admin (house). Set = quoted by a competing seller.
+  supplierId String?
+  supplier   SupplierProfile? @relation("QuotationSupplier", fields: [supplierId], references: [id])
 
   @@index([rfqId])
   @@index([userId])
@@ -1267,4 +1276,78 @@ model PriceTier {
   // resolution ambiguous.
   @@unique([productId, minQty])
   @@index([productId, minQty])
+}
+
+// ============================================================
+// Marketplace: seller competition on RFQs
+// ============================================================
+
+enum RfqMatchStatus {
+  INVITED
+  VIEWED
+  QUOTED
+  DECLINED
+}
+
+// An RFQ invitation to one supplier. The score and reasons are SNAPSHOT here
+// so the shortlist stays explainable later, even after the supplier's
+// capabilities change — the buyer can see why this seller was invited.
+model RfqMatch {
+  id          String          @id @default(cuid())
+  rfqId       String
+  rfq         Rfq             @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  supplierId  String
+  supplier    SupplierProfile @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  status      RfqMatchStatus  @default(INVITED)
+  score       Int             @default(0)
+  reasons     String[]        @default([])
+  viewedAt    DateTime?
+  respondedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  // One invitation per supplier per RFQ.
+  @@unique([rfqId, supplierId])
+  @@index([supplierId, status])
+}
+
+// Append-only negotiation history. Re-quoting UPDATES the live Quotation row
+// but APPENDS here, so a buyer can see that a price moved and by how much.
+model QuoteVersion {
+  id              String    @id @default(cuid())
+  quotationId     String
+  quotation       Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  version         Int
+  subtotalMinor   Int
+  discountMinor   Int       @default(0)
+  taxMinor        Int       @default(0)
+  shippingMinor   Int       @default(0)
+  grandTotalMinor Int
+  leadTimeDays    Int?
+  paymentTerms    String?
+  notes           String?
+  // Full line snapshot at this version, so history survives line edits.
+  items           Json      @default("[]")
+  createdById     String?
+  createdAt       DateTime  @default(now())
+
+  @@unique([quotationId, version])
+  @@index([quotationId])
+}
+
+// Buyer <-> seller thread on one RFQ. Keyed by rfq + supplier so each
+// negotiation is private to that pair — a seller must never read a rival's
+// conversation.
+model Message {
+  id         String    @id @default(cuid())
+  rfqId      String
+  rfq        Rfq       @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  supplierId String? // which negotiation thread; null = buyer <-> admin
+  senderId   String
+  sender     User      @relation("MessageSender", fields: [senderId], references: [id])
+  body       String
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([rfqId, supplierId, createdAt])
 }

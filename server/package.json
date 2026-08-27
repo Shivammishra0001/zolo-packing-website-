@@ -9,7 +9,7 @@
     "migrate": "prisma migrate dev",
     "studio": "prisma studio",
     "seed:admin": "node --env-file=.env scripts/seed-admin.mjs",
-    "test": "node --env-file=.env --test 'test/*.test.mjs'",
+    "test": "node --env-file=.env --test --test-concurrency=1 \"test/*.test.mjs\"",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:status": "prisma migrate status",

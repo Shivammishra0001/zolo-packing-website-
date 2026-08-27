@@ -20,8 +20,8 @@ rfqRouter.use(authenticate);
 rfqRouter.get("/", wrap(async (req, res) => ok(res, { rfqs: await rfq.listMyRfqs(req.user.id, { status: req.query.status }) })));
 
 rfqRouter.post("/", wrap(async (req, res) => {
-  const { items, title, notes, requiredBy, ship, submit } = req.body ?? {};
-  ok(res, await rfq.createRfq(req.user.id, { items, title, notes, requiredBy, ship, submit: submit !== false }), 201);
+  const { items, title, notes, requiredBy, ship, submit, autoMatch } = req.body ?? {};
+  ok(res, await rfq.createRfq(req.user.id, { items, title, notes, requiredBy, ship, submit: submit !== false, autoMatch: autoMatch !== false }), 201);
 }));
 
 rfqRouter.get("/:id", wrap(async (req, res) => {
@@ -70,4 +70,49 @@ adminRfqRouter.post("/:id/review", wrap(async (req, res) => {
 
 adminRfqRouter.post("/:id/quotations", wrap(async (req, res) => {
   ok(res, await rfq.adminCreateQuotation(req.user.id, req.params.id, req.body ?? {}), 201);
+}));
+
+// ---- Marketplace: seller leads, competing quotes, messaging --------------
+// Mounted at /api/v1/sellers/rfqs (seller) and extended onto the buyer routers.
+// supplierId ALWAYS comes from req.supplierProfile — never from the body — so
+// a seller cannot act as one of their rivals.
+import * as marketplace from "../services/marketplace.mjs";
+
+export const sellerRfqRouter = Router();
+
+sellerRfqRouter.get("/", wrap(async (req, res) => {
+  ok(res, { leads: await marketplace.listSellerLeads(req.supplierProfile.id, { status: req.query.status }) });
+}));
+
+sellerRfqRouter.post("/:rfqId/view", wrap(async (req, res) => {
+  const m = await marketplace.markLeadViewed(req.supplierProfile.id, req.params.rfqId);
+  return m ? ok(res, m) : notFound(res);
+}));
+
+sellerRfqRouter.post("/:rfqId/decline", wrap(async (req, res) => {
+  const m = await marketplace.declineLead(req.supplierProfile.id, req.params.rfqId);
+  return m ? ok(res, m) : notFound(res);
+}));
+
+sellerRfqRouter.post("/:rfqId/quote", wrap(async (req, res) => {
+  ok(res, await marketplace.sellerSubmitQuote(req.supplierProfile.id, req.user.id, req.params.rfqId, req.body ?? {}), 201);
+}));
+
+// ---- Messaging (buyer or invited seller) ---------------------------------
+quotationRouter.get("/:id/history", wrap(async (req, res) => {
+  ok(res, { versions: await marketplace.quoteHistory(req.params.id) });
+}));
+
+rfqRouter.get("/:id/messages", wrap(async (req, res) => {
+  const msgs = await marketplace.listMessages(req.user, req.params.id, req.query.supplierId);
+  return msgs ? ok(res, { messages: msgs }) : notFound(res);
+}));
+
+rfqRouter.post("/:id/messages", wrap(async (req, res) => {
+  ok(res, await marketplace.postMessage(req.user, req.params.id, req.body ?? {}), 201);
+}));
+
+// Admin can re-run matching if the first fan-out found nobody.
+adminRfqRouter.post("/:id/match", wrap(async (req, res) => {
+  ok(res, await marketplace.matchRfqToSuppliers(req.params.id));
 }));
