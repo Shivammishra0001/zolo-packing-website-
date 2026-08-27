@@ -23,6 +23,8 @@ import {
   CUSTOMER_CANCELLABLE,
 } from "../lib/commerce.mjs";
 import { recordEvent, notify, notifyRoles } from "./events.mjs";
+// Tiered pricing + commission are resolved server-side; see pricing.mjs.
+import { resolveUnitPriceMinor, commissionBpsFor, commissionFor } from "./pricing.mjs";
 
 const availableStock = (p) => Math.max(0, p.stock - p.reservedStock);
 
@@ -34,7 +36,12 @@ async function buildPricedItems(userId, tx = prisma) {
   const items = cart ? await tx.cartItem.findMany({ where: { cartId: cart.id } }) : [];
   if (items.length === 0) throw badRequest("Your cart is empty", "CART_EMPTY");
 
-  const products = await tx.product.findMany({ where: { id: { in: items.map((i) => i.productId) } } });
+  // Tiers come along so the ladder is resolved against the SAME rows the
+  // stock check uses — pricing and availability must agree.
+  const products = await tx.product.findMany({
+    where: { id: { in: items.map((i) => i.productId) } },
+    include: { priceTiers: { orderBy: { minQty: "asc" } } },
+  });
   const byId = new Map(products.map((p) => [p.id, p]));
 
   const priced = items.map((it) => {
@@ -45,8 +52,17 @@ async function buildPricedItems(userId, tx = prisma) {
     if (it.quantity > availableStock(p)) {
       throw badRequest(`"${p.name}" has only ${availableStock(p)} in stock`, "INSUFFICIENT_STOCK");
     }
-    const unitPriceMinor = effectiveUnitPriceMinor(p);
+    // Tiered B2B pricing: the highest minQty not exceeding this quantity wins.
+    // Falls back to the product's effective base price when it has no ladder.
+    const tierPrice = p.priceTiers?.length ? resolveUnitPriceMinor(p, it.quantity) : null;
+    const unitPriceMinor = tierPrice ?? effectiveUnitPriceMinor(p);
+    const lineTotalMinor = unitPriceMinor * it.quantity;
+    // Commission SNAPSHOT: rate and amount are frozen onto the line at order
+    // time, so an admin repricing the product later cannot restate payouts.
+    const commissionBps = commissionBpsFor(p);
     return {
+      commissionBps,
+      commissionMinor: commissionFor(lineTotalMinor, commissionBps),
       product: p,
       productId: p.id,
       productName: p.name,
@@ -54,7 +70,7 @@ async function buildPricedItems(userId, tx = prisma) {
       variant: it.variant,
       quantity: it.quantity,
       unitPriceMinor,
-      lineTotalMinor: unitPriceMinor * it.quantity,
+      lineTotalMinor,
       specs: {
         dimensions:
           p.length || p.width || p.height
@@ -192,6 +208,8 @@ export async function placeOrder(user, input) {
         status: "PENDING",
         paymentStatus: "PENDING",
         paymentMethod,
+        // Roll-up of the line snapshots, so payout queries never re-derive it.
+        commissionMinor: priced.reduce((n, it) => n + it.commissionMinor, 0),
         subtotalMinor: totals.subtotalMinor,
         discountMinor: totals.discountMinor,
         taxMinor: totals.taxMinor,
@@ -220,6 +238,8 @@ export async function placeOrder(user, input) {
               : 0,
             taxMinor: 0, // filled below once discount is known (kept simple: order-level tax authoritative)
             lineTotalMinor: it.lineTotalMinor,
+            commissionBps: it.commissionBps,
+            commissionMinor: it.commissionMinor,
           })),
         },
         statusHistory: { create: { status: "PENDING", note: "Order placed", actorId: user.id } },

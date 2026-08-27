@@ -558,6 +558,11 @@ model Product {
   stockMovements StockMovement[]
   rfqItems       RfqItem[]
   quotationItems QuotationItem[]
+  // Commission the platform takes on this product, in BASIS POINTS
+  // (800 = 8.00%). Integer, like money, so a rate never suffers float
+  // drift. Admin-set per product; null falls back to the platform default.
+  commissionBps  Int?
+  priceTiers     PriceTier[]
 
   @@index([status])
   @@index([category])
@@ -733,6 +738,8 @@ model Order {
   rfq              Rfq?                 @relation(fields: [rfqId], references: [id])
   quotationId      String?
   quotation        Quotation?           @relation(fields: [quotationId], references: [id])
+  // Sum of the line-level commission snapshots.
+  commissionMinor  Int                  @default(0)
 
   @@index([userId])
   @@index([customerId])
@@ -743,19 +750,24 @@ model Order {
 
 // Frozen snapshot — immune to later product/price edits.
 model OrderItem {
-  id             String  @id @default(cuid())
-  orderId        String
-  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId      String? // reference only; snapshot below is the source of truth
-  productName    String
-  sku            String?
-  variant        String?
-  specs          Json    @default("{}") // dimensions/gsm/material/printing/finishes
-  quantity       Int
-  unitPriceMinor Int
-  discountMinor  Int     @default(0)
-  taxMinor       Int     @default(0)
-  lineTotalMinor Int
+  id              String  @id @default(cuid())
+  orderId         String
+  order           Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String? // reference only; snapshot below is the source of truth
+  productName     String
+  sku             String?
+  variant         String?
+  specs           Json    @default("{}") // dimensions/gsm/material/printing/finishes
+  quantity        Int
+  unitPriceMinor  Int
+  discountMinor   Int     @default(0)
+  taxMinor        Int     @default(0)
+  lineTotalMinor  Int
+  // Commission SNAPSHOT. Both the rate and the resolved amount are frozen
+  // here at order creation, so changing a product's rate later never
+  // restates historical payouts.
+  commissionBps   Int     @default(0)
+  commissionMinor Int     @default(0)
 
   @@index([orderId])
 }
@@ -1231,4 +1243,28 @@ model QuotationItem {
   notes          String?
 
   @@index([quotationId])
+}
+
+// ============================================================
+// Marketplace: tiered pricing + commission
+// ============================================================
+
+// B2B price ladder. Resolution walks tiers ascending and the HIGHEST minQty
+// not exceeding the order quantity wins:
+//   base 1800 - tiers: 500 -> 1650, 2000 -> 1475
+//   qty 400 -> 1800   qty 1200 -> 1650   qty 5000 -> 1475
+// Prices are integer minor units (paise), like every other money column.
+model PriceTier {
+  id             String   @id @default(cuid())
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  minQty         Int
+  unitPriceMinor Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // One price per threshold per product — a duplicate minQty would make
+  // resolution ambiguous.
+  @@unique([productId, minQty])
+  @@index([productId, minQty])
 }

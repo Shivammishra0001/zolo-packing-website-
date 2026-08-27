@@ -8,6 +8,7 @@ import * as orders from "../services/orders.mjs";
 import * as aiGen from "../services/ai-generate.mjs";
 import * as dashboards from "../services/dashboards.mjs";
 import * as inventory from "../services/inventory.mjs";
+import * as pricing from "../services/pricing.mjs";
 import { z } from "zod";
 
 export const adminRouter = Router();
@@ -232,4 +233,21 @@ adminRouter.get("/documents/:id/file", wrap(async (req, res) => {
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.send(buffer);
+}));
+
+// ---- Tiered pricing + commission (admin-only) ---------------------------
+// Prices and rates are set here and resolved server-side at checkout; the
+// browser never supplies either.
+adminRouter.get("/products/:id/tiers", wrap(async (req, res) => {
+  ok(res, { tiers: await pricing.listTiers(req.params.id) });
+}));
+
+// Replaces the whole ladder, so a partial edit can never leave two tiers
+// claiming the same threshold.
+adminRouter.put("/products/:id/tiers", wrap(async (req, res) => {
+  ok(res, { tiers: await pricing.setTiers(req.params.id, req.body?.tiers ?? []) });
+}));
+
+adminRouter.patch("/products/:id/commission", wrap(async (req, res) => {
+  ok(res, await pricing.setCommissionBps(req.params.id, req.body?.commissionBps));
 }));
