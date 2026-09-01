@@ -1,419 +1,529 @@
-import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, FileDown, FileText, Image, Send } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { Download, FileText, LogIn, Paperclip, RefreshCw, Send, Users } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
-import { EmptyState, Panel } from "../components/Panel";
+import { EmptyState, ErrorState, ListSkeleton, Panel } from "../components/Panel";
+import { Badge, Button, KeyValue, PageHeader, Timeline } from "../components/ui";
+import { formatDateTime, inrMinor } from "../format";
 import {
-  Badge,
-  Button,
-  Dialog,
-  Drawer,
-  KeyValue,
-  PageHeader,
-} from "../components/ui";
-import { formatDate, inr, relativeTime } from "../format";
-import { rfqs } from "../mock-data";
-import type { Rfq } from "../types";
+  adminRfqApi,
+  type AdminRfqDetail,
+  type RfqStatus,
+} from "@/lib/api/rfq";
+import { describeApiError, saveBlob } from "@/lib/api/client";
 
-const QTY_SLABS = [500, 1000, 3000, 5000];
+// ============================================================
+// Admin RFQ / quotation detail — REAL data from /api/v1/admin/rfqs/:id.
+//
+// Replaces the mock page that read empty arrays and answered every route with
+// "We couldn't find that RFQ" — including for RFQs that existed. Errors are
+// now told apart: 401 renders a sign-in prompt, 404 a real not-found, network
+// failure a retry — never a fake not-found.
+// ============================================================
 
-interface CostLines {
-  paper: number;
-  printing: number;
-  lamination: number;
-  die: number;
-  conversion: number;
-  freight: number;
+const STATUS_TONE: Record<RfqStatus, "warning" | "info" | "success" | "danger" | "neutral"> = {
+  DRAFT: "neutral",
+  SUBMITTED: "warning",
+  UNDER_REVIEW: "info",
+  QUOTED: "info",
+  ACCEPTED: "success",
+  REJECTED: "danger",
+  CANCELLED: "danger",
+  EXPIRED: "neutral",
+};
+
+const MATCH_TONE: Record<string, "warning" | "info" | "success" | "danger"> = {
+  INVITED: "warning",
+  VIEWED: "info",
+  QUOTED: "success",
+  DECLINED: "danger",
+};
+
+const QUOTE_TONE: Record<string, "warning" | "info" | "success" | "danger" | "neutral"> = {
+  DRAFT: "neutral",
+  SENT: "info",
+  ACCEPTED: "success",
+  REJECTED: "danger",
+  CHANGES_REQUESTED: "warning",
+  EXPIRED: "neutral",
+  WITHDRAWN: "neutral",
+};
+
+const EVENT_LABEL: Record<string, string> = {
+  "rfq.created": "RFQ submitted",
+  "rfq.cancelled": "RFQ cancelled",
+  "rfq.matched": "Sellers matched",
+  "rfq.file.attached": "Requirement sheet attached",
+  "quotation.created": "Quotation sent",
+  "quotation.accepted": "Quotation accepted — order created",
+  "quotation.rejected": "Quotation rejected by customer",
+  "quotation.changes_requested": "Customer requested changes",
+};
+
+const prettySpecs = (specs: Record<string, unknown>) =>
+  Object.entries(specs ?? {})
+    .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== "")
+    .map(([k, v]) => ({ key: k, value: String(v) }));
+
+const prettySize = (bytes: number) =>
+  bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+// ---- Quotation composer ----------------------------------------------------
+
+interface ComposerLine {
+  rfqItemId: string;
+  productName: string;
+  quantity: number;
+  unit: string;
+  /** Rupees, as typed. Converted to paise on submit; blank lines are skipped. */
+  price: string;
 }
 
-const COST_FIELDS: { key: keyof CostLines; label: string }[] = [
-  { key: "paper", label: "Paper / Board" },
-  { key: "printing", label: "Printing" },
-  { key: "lamination", label: "Lamination / Coating" },
-  { key: "die", label: "Die & Tooling" },
-  { key: "conversion", label: "Conversion" },
-  { key: "freight", label: "Freight" },
-];
+function QuoteComposer({ rfq, onSent }: { rfq: AdminRfqDetail; onSent: () => void }) {
+  const toast = useToast();
+  const [lines, setLines] = useState<ComposerLine[]>(
+    rfq.items.map((i) => ({ rfqItemId: i.id, productName: i.productName, quantity: i.quantity, unit: i.unit, price: "" })),
+  );
+  const [shipping, setShipping] = useState("");
+  const [discount, setDiscount] = useState("");
+  const [leadTimeDays, setLeadTimeDays] = useState("");
+  const [validDays, setValidDays] = useState("15");
+  const [paymentTerms, setPaymentTerms] = useState("50% advance, balance before dispatch");
+  const [notes, setNotes] = useState("");
+  const [sending, setSending] = useState(false);
 
-/** Per-unit cost at a given quantity. Die is a one-time cost spread over qty;
- *  everything else scales per unit with mild volume efficiency. */
-function unitCostAt(lines: CostLines, qty: number): number {
-  const efficiency = qty >= 5000 ? 0.9 : qty >= 3000 ? 0.94 : qty >= 1000 ? 0.98 : 1;
-  const perUnit = (lines.paper + lines.printing + lines.lamination + lines.conversion + lines.freight) * efficiency;
-  const diePerUnit = qty > 0 ? lines.die / qty : 0;
-  return perUnit + diePerUnit;
-}
+  const toPaise = (rupees: string) => Math.round(Number(rupees) * 100);
+  const priced = lines.filter((l) => l.price.trim() !== "" && Number(l.price) >= 0);
+  const subtotal = priced.reduce((s, l) => s + l.quantity * toPaise(l.price), 0);
+  const grand = subtotal - (Number(discount) ? toPaise(discount) : 0) + (Number(shipping) ? toPaise(shipping) : 0);
 
-function priceWithMargin(cost: number, marginPct: number): number {
-  return cost / (1 - Math.min(marginPct, 99) / 100);
-}
-
-function statusBadge(status: Rfq["status"]) {
-  const map = {
-    pending: { label: "Awaiting Quote", tone: "warning" as const },
-    quoted: { label: "Quoted", tone: "info" as const },
-    won: { label: "Approved · Won", tone: "success" as const },
-    lost: { label: "Lost", tone: "danger" as const },
+  const send = async () => {
+    if (priced.length === 0) {
+      toast.error("Price at least one line", "Enter a unit price for the products you are quoting.");
+      return;
+    }
+    setSending(true);
+    try {
+      const validUntil = new Date(Date.now() + (Number(validDays) || 15) * 86400_000).toISOString();
+      await adminRfqApi.createQuotation(rfq.id, {
+        items: priced.map((l) => ({ rfqItemId: l.rfqItemId, unitPriceMinor: toPaise(l.price) })),
+        shippingMinor: Number(shipping) ? toPaise(shipping) : 0,
+        discountMinor: Number(discount) ? toPaise(discount) : 0,
+        leadTimeDays: leadTimeDays ? Number(leadTimeDays) : undefined,
+        paymentTerms: paymentTerms.trim() || undefined,
+        notes: notes.trim() || undefined,
+        validUntil,
+        send: true,
+      });
+      toast.success("Quotation sent", `The customer has been notified on ${rfq.rfqNumber}.`);
+      onSent();
+    } catch (e) {
+      toast.error("Couldn't send the quotation", describeApiError(e).message);
+    } finally {
+      setSending(false);
+    }
   };
-  return map[status];
+
+  const numCls =
+    "w-28 rounded-lg border erp-border bg-transparent px-2.5 py-1.5 text-right text-sm erp-text focus:border-primary-500 focus:outline-none";
+
+  return (
+    <Panel title="Build quotation">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[36rem] text-left text-sm">
+          <thead>
+            <tr className="border-b erp-border-soft text-xs erp-text-muted">
+              <th className="py-2 pr-3 font-bold">Product</th>
+              <th className="py-2 pr-3 font-bold">Qty</th>
+              <th className="py-2 pr-3 font-bold">Unit price (₹)</th>
+              <th className="py-2 font-bold text-right">Line total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((l, idx) => (
+              <tr key={l.rfqItemId} className="border-b erp-border-soft last:border-0">
+                <td className="py-2 pr-3 erp-text">{l.productName}</td>
+                <td className="py-2 pr-3 erp-text-muted">
+                  {l.quantity.toLocaleString("en-IN")} {l.unit}
+                </td>
+                <td className="py-2 pr-3">
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={l.price}
+                    onChange={(e) => {
+                      const next = [...lines];
+                      next[idx] = { ...l, price: e.target.value };
+                      setLines(next);
+                    }}
+                    placeholder="0.00"
+                    className={numCls}
+                    aria-label={`Unit price for ${l.productName}`}
+                  />
+                </td>
+                <td className="py-2 text-right font-semibold erp-text">
+                  {l.price.trim() !== "" ? inrMinor(l.quantity * toPaise(l.price)) : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: "Shipping (₹)", value: shipping, set: setShipping, placeholder: "0" },
+          { label: "Discount (₹)", value: discount, set: setDiscount, placeholder: "0" },
+          { label: "Lead time (days)", value: leadTimeDays, set: setLeadTimeDays, placeholder: "14" },
+          { label: "Valid for (days)", value: validDays, set: setValidDays, placeholder: "15" },
+        ].map((f) => (
+          <label key={f.label} className="block">
+            <span className="mb-1 block text-xs font-semibold erp-text-muted">{f.label}</span>
+            <input
+              type="number"
+              min={0}
+              value={f.value}
+              onChange={(e) => f.set(e.target.value)}
+              placeholder={f.placeholder}
+              className="w-full rounded-lg border erp-border bg-transparent px-2.5 py-1.5 text-sm erp-text focus:border-primary-500 focus:outline-none"
+            />
+          </label>
+        ))}
+        <label className="col-span-2 block">
+          <span className="mb-1 block text-xs font-semibold erp-text-muted">Payment terms</span>
+          <input
+            type="text"
+            value={paymentTerms}
+            onChange={(e) => setPaymentTerms(e.target.value)}
+            className="w-full rounded-lg border erp-border bg-transparent px-2.5 py-1.5 text-sm erp-text focus:border-primary-500 focus:outline-none"
+          />
+        </label>
+        <label className="col-span-2 block">
+          <span className="mb-1 block text-xs font-semibold erp-text-muted">Notes to customer</span>
+          <input
+            type="text"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Optional"
+            className="w-full rounded-lg border erp-border bg-transparent px-2.5 py-1.5 text-sm erp-text focus:border-primary-500 focus:outline-none"
+          />
+        </label>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t erp-border-soft pt-4">
+        <p className="text-sm erp-text-muted">
+          Subtotal <span className="font-bold erp-text">{inrMinor(subtotal)}</span>
+          <span className="mx-2">·</span>
+          Grand total <span className="font-bold erp-text">{inrMinor(Math.max(0, grand))}</span>
+          <span className="ml-2 text-xs erp-text-faint">(totals are recomputed server-side)</span>
+        </p>
+        <Button variant="primary" icon={Send} onClick={send} disabled={sending}>
+          {sending ? "Sending…" : "Send quotation"}
+        </Button>
+      </div>
+    </Panel>
+  );
 }
+
+// ---- Page ------------------------------------------------------------------
 
 export default function QuotationDetail() {
-  const { id } = useParams<{ id: string }>();
+  const { id = "" } = useParams();
+  const nav = useNavigate();
   const toast = useToast();
-  const rfq = useMemo(() => rfqs.find((r) => r.id === id), [id]);
+  const [rfq, setRfq] = useState<AdminRfqDetail | null>(null);
+  const [error, setError] = useState<ReturnType<typeof describeApiError> | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const [lines, setLines] = useState<CostLines>({
-    paper: 8,
-    printing: 4,
-    lamination: 2,
-    die: 6000,
-    conversion: 3,
-    freight: 1.5,
-  });
-  const [margin, setMargin] = useState(22);
-  const [validity, setValidity] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 15);
-    return d.toISOString().slice(0, 10);
-  });
-  const [convertOpen, setConvertOpen] = useState(false);
-  const [pdfOpen, setPdfOpen] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setRfq(await adminRfqApi.get(id));
+    } catch (e) {
+      setRfq(null);
+      setError(describeApiError(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
-  if (!rfq) {
+  useEffect(() => { void load(); }, [load]);
+
+  // Opening the queue item marks it under review (idempotent server-side).
+  useEffect(() => {
+    if (rfq && rfq.status === "SUBMITTED") {
+      adminRfqApi.markUnderReview(rfq.id).then(() => void load()).catch(() => {/* non-fatal */});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rfq?.id, rfq?.status]);
+
+  const timeline = useMemo(
+    () =>
+      (rfq?.activity ?? []).map((a) => ({
+        id: a.id,
+        title: EVENT_LABEL[a.eventType] ?? a.eventType,
+        meta: [
+          a.actor,
+          a.metadata?.quotationNumber ? String(a.metadata.quotationNumber) : null,
+          a.metadata?.invited != null ? `${a.metadata.invited} seller(s) invited` : null,
+          a.metadata?.fileName ? String(a.metadata.fileName) : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        time: formatDateTime(a.createdAt),
+        tone: (a.eventType.includes("accepted") ? "success" : a.eventType.includes("rejected") || a.eventType.includes("cancelled") ? "danger" : "primary") as "success" | "danger" | "primary",
+      })),
+    [rfq?.activity],
+  );
+
+  const download = async (fileId: string, fileName: string) => {
+    if (!rfq) return;
+    try {
+      saveBlob(await adminRfqApi.downloadFile(rfq.id, fileId), fileName);
+    } catch (e) {
+      toast.error("Download failed", describeApiError(e).message);
+    }
+  };
+
+  if (loading) {
     return (
-      <div className="mx-auto max-w-[1400px]">
-        <PageHeader
-          breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Quotations", to: "/admin/quotes" }, { label: "Not found" }]}
-          title="Quotation not found"
-        />
+      <div className="mx-auto max-w-5xl">
+        <Panel><ListSkeleton rows={6} /></Panel>
+      </div>
+    );
+  }
+
+  if (error || !rfq) {
+    // Honest error taxonomy — a session problem must never read as "not found".
+    const kind = error?.kind ?? "notFound";
+    return (
+      <div className="mx-auto max-w-3xl">
+        <PageHeader breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Quotations", to: "/admin/quotes" }, { label: id }]} title="Quotation request" />
         <Panel>
-          <EmptyState
-            icon={FileText}
-            title="We couldn't find that RFQ"
-            message="It may have been removed or the link is incorrect."
-            action={
-              <Link to="/admin/quotes" className="inline-flex items-center gap-1.5 text-sm font-bold text-primary-600 hover:text-primary-700">
-                <ArrowLeft className="h-4 w-4" aria-hidden /> Back to quotations
-              </Link>
-            }
-          />
+          {kind === "unauthorized" ? (
+            <EmptyState
+              icon={LogIn}
+              title="Please sign in again"
+              message="Your admin session has expired. Sign back in to view this RFQ."
+              action={<Button variant="primary" onClick={() => nav("/")}>Go to sign in</Button>}
+            />
+          ) : kind === "notFound" ? (
+            <EmptyState
+              icon={FileText}
+              title="RFQ not found"
+              message={`No quotation request matches “${id}”. It may have been removed.`}
+              action={<Button variant="secondary" onClick={() => nav("/admin/quotes")}>Back to quotations</Button>}
+            />
+          ) : (
+            <ErrorState message={error?.message ?? "Unable to load this RFQ."} onRetry={() => void load()} />
+          )}
         </Panel>
       </div>
     );
   }
 
-  const primaryQty = rfq.quantity;
-  const unitCost = unitCostAt(lines, primaryQty);
-  const unitPrice = priceWithMargin(unitCost, margin);
-  const totalPrice = unitPrice * primaryQty;
-  const lowMargin = margin < 15;
-  const badge = statusBadge(rfq.status);
-
-  const setLine = (key: keyof CostLines, raw: string) => {
-    const v = Number(raw);
-    setLines((prev) => ({ ...prev, [key]: Number.isFinite(v) ? v : 0 }));
-  };
-
-  const numberInput =
-    "h-10 w-full rounded-lg border erp-border erp-surface px-3 text-sm tabular-nums erp-text outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-500/20";
+  const canQuote = !["ACCEPTED", "CANCELLED", "REJECTED", "EXPIRED"].includes(rfq.status);
 
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="mx-auto max-w-6xl">
       <PageHeader
-        breadcrumb={[
-          { label: "Home", to: "/admin" },
-          { label: "Quotations", to: "/admin/quotes" },
-          { label: rfq.id },
-        ]}
+        breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Quotations", to: "/admin/quotes" }, { label: rfq.rfqNumber }]}
         title={
-          <span className="flex flex-wrap items-center gap-3">
-            {rfq.id}
-            <Badge tone={badge.tone}>{badge.label}</Badge>
+          <span className="flex items-center gap-3">
+            {rfq.rfqNumber}
+            <Badge tone={STATUS_TONE[rfq.status]}>{rfq.status.replace(/_/g, " ")}</Badge>
           </span>
         }
-        subtitle={`${rfq.customerName} · received ${relativeTime(rfq.submittedAt)}`}
+        subtitle={`Submitted ${rfq.submittedAt ? formatDateTime(rfq.submittedAt) : formatDateTime(rfq.createdAt)}`}
         actions={
-          <Button variant="secondary" icon={FileText} onClick={() => setPdfOpen(true)}>
-            PDF Preview
-          </Button>
+          <>
+            <Button variant="secondary" icon={RefreshCw} onClick={() => void load()}>Refresh</Button>
+            {canQuote && (
+              <Button
+                variant="secondary"
+                icon={Users}
+                onClick={async () => {
+                  try {
+                    const r = await adminRfqApi.rematch(rfq.id);
+                    toast.success("Matching re-run", `${r.invited} new seller(s) invited.`);
+                    void load();
+                  } catch (e) {
+                    toast.error("Matching failed", describeApiError(e).message);
+                  }
+                }}
+              >
+                Re-run matching
+              </Button>
+            )}
+          </>
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        {/* LEFT: requested config */}
-        <div className="space-y-4 lg:col-span-2">
-          <Panel title="Requested Configuration">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="space-y-4 xl:col-span-2">
+          {/* Customer + delivery */}
+          <Panel title="Customer & delivery">
             <KeyValue
               items={[
-                { label: "Box Type", value: rfq.boxType },
-                { label: "Dimensions", value: rfq.dimensions },
-                { label: "Material", value: rfq.material },
-                { label: "GSM", value: rfq.gsm > 0 ? rfq.gsm : "—" },
-                { label: "Printing", value: rfq.printing },
-                { label: "Finishes", value: rfq.finishes.length > 0 ? rfq.finishes.join(", ") : "None" },
-                { label: "Quantity", value: `${rfq.quantity.toLocaleString("en-IN")} pcs` },
+                { label: "Customer", value: rfq.customer?.name ?? "—" },
+                { label: "Email", value: rfq.customer?.email ?? "—" },
+                { label: "Phone", value: rfq.customer?.phone ?? "—" },
+                {
+                  label: "Delivery location",
+                  value: [rfq.ship.city, rfq.ship.state, rfq.ship.postalCode].filter(Boolean).join(", ") || "—",
+                },
+                { label: "Required by", value: rfq.requiredBy ? formatDateTime(rfq.requiredBy) : "—" },
+                { label: "Customer notes", value: rfq.notes || "—" },
               ]}
             />
+            {rfq.customer && (
+              <Link to={`/admin/customers/${rfq.customer.id}`} className="mt-3 inline-block text-xs font-bold text-primary-600 hover:underline dark:text-primary-400">
+                View customer profile →
+              </Link>
+            )}
           </Panel>
 
-          <Panel title="Artwork">
-            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed erp-border erp-surface-2 p-6 text-center">
-              <span className="flex h-14 w-14 items-center justify-center rounded-xl erp-surface text-2xl" aria-hidden>
-                📦
-              </span>
-              <div>
-                <p className="text-sm font-semibold erp-text">{rfq.artworkFile ?? "No artwork uploaded"}</p>
-                <p className="text-xs erp-text-muted">Customer-supplied dieline / print file</p>
-              </div>
-              {rfq.artworkFile && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon={FileDown}
-                  onClick={() => toast.info("Download started", rfq.artworkFile)}
-                >
-                  Download artwork
-                </Button>
-              )}
-              {!rfq.artworkFile && (
-                <span className="inline-flex items-center gap-1.5 text-xs erp-text-faint">
-                  <Image className="h-4 w-4" aria-hidden /> Awaiting upload
-                </span>
-              )}
-            </div>
-          </Panel>
-        </div>
-
-        {/* RIGHT: quotation builder */}
-        <div className="space-y-4 lg:col-span-3">
-          <Panel title="Quotation Builder">
-            <div className="space-y-5">
-              {/* cost lines */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {COST_FIELDS.map((f) => (
-                  <label key={f.key} className="block">
-                    <span className="mb-1 block text-xs font-semibold erp-text-muted">
-                      {f.label} {f.key === "die" ? "(one-time ₹)" : "(₹/unit)"}
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      inputMode="decimal"
-                      value={lines[f.key]}
-                      onChange={(e) => setLine(f.key, e.target.value)}
-                      className={numberInput}
-                    />
-                  </label>
-                ))}
-              </div>
-
-              {/* margin + validity */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1 flex items-center justify-between text-xs font-semibold erp-text-muted">
-                    Margin %
-                    <span className={cn("font-bold", lowMargin ? "text-red-600" : "text-emerald-600")}>
-                      {lowMargin ? "Below target" : "Healthy"}
-                    </span>
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={99}
-                    value={margin}
-                    onChange={(e) => setMargin(Number(e.target.value) || 0)}
-                    className={cn(numberInput, lowMargin && "border-red-400 focus:border-red-500 dark:border-red-500/60")}
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs font-semibold erp-text-muted">Quote valid until</span>
-                  <input
-                    type="date"
-                    value={validity}
-                    onChange={(e) => setValidity(e.target.value)}
-                    className={numberInput}
-                  />
-                </label>
-              </div>
-
-              {/* live per-unit summary */}
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: "Unit Cost", value: inr(unitCost) },
-                  { label: "Unit Price", value: inr(unitPrice) },
-                  { label: `Total @ ${primaryQty.toLocaleString("en-IN")}`, value: inr(totalPrice) },
-                ].map((s) => (
-                  <div key={s.label} className="rounded-lg border erp-border-soft erp-surface-2 p-3">
-                    <p className="text-xs erp-text-muted">{s.label}</p>
-                    <p className="mt-0.5 text-sm font-bold tabular-nums erp-text">{s.value}</p>
-                  </div>
-                ))}
-              </div>
-
-              {lowMargin && (
-                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-                  Margin is below the 15% floor — review before sending.
-                </p>
-              )}
-            </div>
-          </Panel>
-
-          {/* qty slab pricing */}
-          <Panel title="Price by Quantity" bodyClassName="p-0">
-            <div className="overflow-x-auto px-4 py-4 sm:px-5">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b erp-border text-left text-xs font-bold uppercase tracking-wide erp-text-faint">
-                    <th className="px-3 py-2.5 first:pl-0">Quantity</th>
-                    <th className="px-3 py-2.5 text-right">Unit Cost</th>
-                    <th className="px-3 py-2.5 text-right">Unit Price</th>
-                    <th className="px-3 py-2.5 text-right last:pr-0">Order Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {QTY_SLABS.map((qty) => {
-                    const c = unitCostAt(lines, qty);
-                    const p = priceWithMargin(c, margin);
-                    return (
-                      <tr key={qty} className="border-b erp-border-soft last:border-0">
-                        <td className="px-3 py-3 font-semibold erp-text first:pl-0">
-                          {qty.toLocaleString("en-IN")} pcs
-                          {qty === primaryQty && <Badge tone="primary" className="ml-2">Requested</Badge>}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums erp-text-muted">{inr(c)}</td>
-                        <td className="px-3 py-3 text-right font-semibold tabular-nums erp-text">{inr(p)}</td>
-                        <td className="px-3 py-3 text-right font-bold tabular-nums erp-text last:pr-0">{inr(p * qty)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-xs erp-text-muted">
-              Approval Status: <Badge tone={badge.tone}>{badge.label}</Badge>
-            </span>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="secondary"
-                icon={Send}
-                disabled={lowMargin}
-                onClick={() => toast.success("Quote sent", `Quotation for ${rfq.id} emailed to ${rfq.customerName}.`)}
-              >
-                Send Quote
-              </Button>
-              <Button variant="primary" onClick={() => setConvertOpen(true)}>
-                Convert to Order
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Convert dialog */}
-      <Dialog
-        open={convertOpen}
-        onClose={() => setConvertOpen(false)}
-        title="Convert to Order"
-        description={`Create a firm order from ${rfq.id} at ${inr(unitPrice)}/unit.`}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setConvertOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                const newId = `ORD-${2500 + Math.floor(Math.random() * 500)}`;
-                toast.success("Order created", `Order ${newId} created from ${rfq.id}.`);
-                setConvertOpen(false);
-              }}
-            >
-              Confirm & create
-            </Button>
-          </>
-        }
-      >
-        <KeyValue
-          items={[
-            { label: "Customer", value: rfq.customerName },
-            { label: "Quantity", value: `${primaryQty.toLocaleString("en-IN")} pcs` },
-            { label: "Unit Price", value: inr(unitPrice) },
-            { label: "Order Value", value: inr(totalPrice) },
-          ]}
-        />
-      </Dialog>
-
-      {/* PDF preview drawer */}
-      <Drawer open={pdfOpen} onClose={() => setPdfOpen(false)} title="Quotation Preview" width="max-w-xl">
-        <div className="rounded-lg border erp-border erp-surface-2 p-6 text-sm">
-          <div className="flex items-start justify-between gap-3 border-b erp-border-soft pb-4">
-            <div>
-              <p className="font-display text-xl font-extrabold erp-text">Zolo Packaging</p>
-              <p className="text-xs erp-text-muted">Quotation · {rfq.id}</p>
-            </div>
-            <div className="text-right text-xs erp-text-muted">
-              <p>Date: {formatDate(new Date().toISOString())}</p>
-              <p>Valid until: {formatDate(new Date(validity).toISOString())}</p>
-            </div>
-          </div>
-
-          <div className="py-4">
-            <p className="text-xs font-semibold erp-text-faint">Prepared For</p>
-            <p className="mt-0.5 font-semibold erp-text">{rfq.customerName}</p>
-          </div>
-
-          <div className="rounded-lg border erp-border-soft erp-surface p-3">
-            <p className="text-xs font-semibold erp-text-faint">Specification</p>
-            <p className="mt-1 erp-text">
-              {rfq.boxType} · {rfq.dimensions} · {rfq.material}
-              {rfq.gsm > 0 ? ` ${rfq.gsm} GSM` : ""} · {rfq.printing}
-              {rfq.finishes.length > 0 ? ` · ${rfq.finishes.join(", ")}` : ""}
-            </p>
-          </div>
-
-          <table className="mt-4 w-full text-sm">
-            <thead>
-              <tr className="border-b erp-border text-left text-xs font-bold uppercase erp-text-faint">
-                <th className="py-2">Qty</th>
-                <th className="py-2 text-right">Unit Price</th>
-                <th className="py-2 text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {QTY_SLABS.map((qty) => {
-                const p = priceWithMargin(unitCostAt(lines, qty), margin);
+          {/* Product requirements */}
+          <Panel title={`Product requirements (${rfq.items.length})`}>
+            <div className="space-y-4">
+              {rfq.items.map((item, idx) => {
+                const specs = prettySpecs(item.specs as Record<string, unknown>);
                 return (
-                  <tr key={qty} className="border-b erp-border-soft last:border-0">
-                    <td className="py-2 erp-text">{qty.toLocaleString("en-IN")} pcs</td>
-                    <td className="py-2 text-right tabular-nums erp-text">{inr(p)}</td>
-                    <td className="py-2 text-right font-semibold tabular-nums erp-text">{inr(p * qty)}</td>
-                  </tr>
+                  <div key={item.id} className="rounded-lg border erp-border-soft p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-bold erp-text">
+                        {idx + 1}. {item.productName}
+                        {item.sku && <span className="ml-2 text-xs font-normal erp-text-faint">SKU {item.sku}</span>}
+                      </p>
+                      <p className="text-sm font-semibold erp-text">
+                        {item.quantity.toLocaleString("en-IN")} {item.unit}
+                      </p>
+                    </div>
+                    {specs.length > 0 && (
+                      <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs sm:grid-cols-3">
+                        {specs.map((s) => (
+                          <div key={s.key}>
+                            <dt className="font-medium capitalize erp-text-faint">{s.key}</dt>
+                            <dd className="erp-text">{s.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                    {item.notes && <p className="mt-2 text-xs erp-text-muted">Note: {item.notes}</p>}
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+          </Panel>
 
-          <p className="mt-4 text-xs erp-text-muted">
-            Prices exclusive of GST. Lead time 10–14 working days from artwork approval. Terms: 50% advance,
-            balance before dispatch.
-          </p>
+          {/* Files */}
+          <Panel title="Requirement files">
+            {rfq.files.length === 0 ? (
+              <EmptyState icon={Paperclip} message="No requirement sheet was attached to this request." />
+            ) : (
+              <ul className="space-y-2">
+                {rfq.files.map((f) => (
+                  <li key={f.id} className="flex items-center gap-3 rounded-lg border erp-border-soft px-3 py-2 text-sm">
+                    <Paperclip className="h-4 w-4 shrink-0 text-primary-500" aria-hidden />
+                    <span className="min-w-0 flex-1 truncate erp-text">{f.fileName}</span>
+                    <span className="shrink-0 text-xs erp-text-faint">{prettySize(f.size)}</span>
+                    <Button variant="secondary" size="sm" icon={Download} onClick={() => void download(f.id, f.fileName)}>
+                      Download
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+
+          {/* Quotations already on this RFQ */}
+          <Panel title={`Quotations (${rfq.quotations.length})`}>
+            {rfq.quotations.length === 0 ? (
+              <EmptyState icon={FileText} message="No quotation has been sent yet — build one below or wait for matched sellers." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[40rem] text-left text-sm">
+                  <thead>
+                    <tr className="border-b erp-border-soft text-xs erp-text-muted">
+                      <th className="py-2 pr-3 font-bold">Quotation</th>
+                      <th className="py-2 pr-3 font-bold">Seller</th>
+                      <th className="py-2 pr-3 font-bold">Total</th>
+                      <th className="py-2 pr-3 font-bold">Lead time</th>
+                      <th className="py-2 pr-3 font-bold">Valid until</th>
+                      <th className="py-2 font-bold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rfq.quotations.map((q) => (
+                      <tr key={q.id} className="border-b erp-border-soft align-top last:border-0">
+                        <td className="py-2.5 pr-3">
+                          <span className="font-semibold erp-text">{q.quotationNumber}</span>
+                          {q.version > 1 && <span className="ml-1 text-xs erp-text-faint">v{q.version}</span>}
+                          <div className="mt-1 space-y-0.5 text-xs erp-text-muted">
+                            {q.items.map((i) => (
+                              <p key={i.id}>
+                                {i.productName} × {i.quantity.toLocaleString("en-IN")} @ {inrMinor(i.unitPriceMinor)}
+                              </p>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="py-2.5 pr-3 erp-text-muted">{q.seller?.name ?? "House (Zolo)"}</td>
+                        <td className="py-2.5 pr-3 font-bold erp-text">{inrMinor(q.grandTotalMinor)}</td>
+                        <td className="py-2.5 pr-3 erp-text-muted">{q.leadTimeDays != null ? `${q.leadTimeDays}d` : "—"}</td>
+                        <td className="py-2.5 pr-3 erp-text-muted">
+                          {q.validUntil ? new Date(q.validUntil).toLocaleDateString("en-IN") : "—"}
+                        </td>
+                        <td className="py-2.5">
+                          <Badge tone={QUOTE_TONE[q.status] ?? "neutral"}>{q.status.replace(/_/g, " ")}</Badge>
+                          {q.buyerMessage && <p className="mt-1 max-w-40 text-xs erp-text-muted">“{q.buyerMessage}”</p>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Panel>
+
+          {/* Composer */}
+          {canQuote && <QuoteComposer rfq={rfq} onSent={() => void load()} />}
         </div>
 
-        <div className="mt-4 flex justify-end">
-          <Button
-            variant="primary"
-            icon={FileDown}
-            onClick={() => toast.success("PDF generated", `Quotation ${rfq.id} exported.`)}
-          >
-            Download PDF
-          </Button>
+        <div className="space-y-4">
+          {/* Matched sellers */}
+          <Panel title={`Matched sellers (${rfq.matches.length})`}>
+            {rfq.matches.length === 0 ? (
+              <EmptyState icon={Users} message="No sellers matched yet. Approve suppliers with this capability, or re-run matching." />
+            ) : (
+              <ul className="space-y-2.5">
+                {rfq.matches.map((m) => (
+                  <li key={m.id} className="flex items-start justify-between gap-3 rounded-lg border erp-border-soft p-2.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold erp-text">{m.supplier?.name ?? m.supplierId}</p>
+                      <p className="mt-0.5 text-xs erp-text-faint">
+                        Score {m.score}
+                        {m.reasons.length > 0 && ` · ${m.reasons.join(", ")}`}
+                      </p>
+                    </div>
+                    <Badge tone={MATCH_TONE[m.status] ?? "neutral"}>{m.status}</Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+
+          {/* Activity */}
+          <Panel title="Activity">
+            {timeline.length === 0 ? (
+              <EmptyState message="No activity recorded yet." />
+            ) : (
+              <Timeline entries={timeline} />
+            )}
+          </Panel>
         </div>
-      </Drawer>
+      </div>
     </div>
   );
 }

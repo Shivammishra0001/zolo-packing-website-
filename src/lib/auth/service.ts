@@ -19,6 +19,7 @@ import { API_BASE } from "../api-config";
 
 // Storefront-scoped token keys (distinct from the seller portal's keys).
 import { LEGACY_AUTH_KEYS, clearAllAuthStorage } from "./session-keys";
+import { refreshStoreSession } from "./refresh";
 
 const TOKEN_KEY = "zolo.store.accessToken";
 const REFRESH_KEY = "zolo.store.refreshToken";
@@ -131,8 +132,15 @@ export class AuthUnavailableError extends Error {
 // Map the backend user shape onto the frontend AuthUser. The backend role set
 // is richer (seller_owner, admin, …); the storefront only distinguishes
 // "admin" from everyone-else ("buyer").
+//
+// ALL admin variants count as admin here. The backend's requireAdmin accepts
+// the four roles below, so collapsing verification/finance/operations admins to
+// "buyer" locked real operators out of /admin at the router while their tokens
+// would have been accepted by every admin API.
+const ADMIN_ROLES = new Set(["admin", "verification_admin", "finance_admin", "operations_admin"]);
+
 function toAuthUser(u: BackendUser): AuthUser {
-  const role = u.role === "admin" ? "admin" : "buyer";
+  const role = ADMIN_ROLES.has(u.role ?? "") ? "admin" : "buyer";
   return {
     id: u.id,
     email: u.email,
@@ -261,20 +269,15 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     // 1. Access token still valid?
     let me = await authedGet<{ user: BackendUser }>("/auth/me");
 
-    // 2. Expired → refresh the access token and retry once.
+    // 2. Expired → refresh (via the SHARED single-flight helper — a parallel
+    // refresh from the API client would rotate the token out from under us and
+    // trip the server's reuse detection, revoking the whole session) and retry.
     if (me.status === 401) {
-      const refreshed = await post<{ accessToken: string; refreshToken?: string; user: BackendUser }>(
-        "/auth/refresh",
-        { refreshToken },
-      );
-      if (!refreshed.success || !refreshed.data) {
+      const refreshed = await refreshStoreSession();
+      if (!refreshed) {
         tokenStore.clear(); // 3. refresh token dead → become a guest
         return null;
       }
-      tokenStore.setAccess(refreshed.data.accessToken);
-      // The server ROTATES the refresh token — persist the new one, or the
-      // next refresh presents an already-revoked token and (correctly) fails.
-      if (refreshed.data.refreshToken) tokenStore.setRefresh(refreshed.data.refreshToken);
       me = await authedGet<{ user: BackendUser }>("/auth/me");
     }
 

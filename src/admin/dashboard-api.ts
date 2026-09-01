@@ -81,6 +81,39 @@ export function useAdminQuery<T>(path: string, pollMs = 20_000): QueryState<T> &
 }
 
 export const useAdminDashboard = (pollMs = 20_000) => useAdminQuery<AdminDashboard>("/admin/dashboard", pollMs);
+
+// ---- In-app notifications (the bell) --------------------------------------
+
+export interface AppNotificationRow {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  entityType: string | null;
+  entityId: string | null;
+  status: "UNREAD" | "READ";
+  createdAt: string;
+}
+
+/** Where a notification should take the operator when clicked. */
+export function notificationHref(n: AppNotificationRow): string {
+  if (n.entityType === "Rfq") return "/admin/quotes";
+  if (n.entityType === "Quotation") return "/admin/quotes";
+  if (n.entityType === "Order") return "/admin/orders";
+  if (n.entityType === "SupplierDocument" || n.entityType === "SupplierProfile") return "/admin/sellers";
+  return "/admin";
+}
+
+/**
+ * The signed-in admin's notifications, polled so a new RFQ shows on the bell
+ * without a reload. Backed by GET /api/v1/notifications (DB rows written
+ * transactionally with the events that caused them).
+ */
+export const useAdminNotifications = (pollMs = 30_000) =>
+  useAdminQuery<{ items: AppNotificationRow[]; unread: number }>("/notifications", pollMs);
+
+export const markNotificationRead = (id: string) => request<unknown>(`/notifications/${id}/read`, { method: "POST" });
+export const markAllNotificationsRead = () => request<unknown>("/notifications/read-all", { method: "POST" });
 export const useAdminActivity = (limit = 30) => useAdminQuery<{ activity: ActivityEntry[]; nextCursor: string | null }>(`/admin/activity?limit=${limit}`);
 export const useAdminAnalytics = (days = 30) =>
   useAdminQuery<{ days: number; series: { day: string; orders: number; revenueMinor: number }[]; topProducts: { productId: string; name: string; sku: string; units: number; revenueMinor: number }[] }>(`/admin/analytics?days=${days}`, 60_000);

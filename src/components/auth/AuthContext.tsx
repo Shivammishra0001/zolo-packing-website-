@@ -144,6 +144,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // Same-tab session expiry: the API client fires this after a failed refresh
+  // clears storage. Without it the UI kept rendering as signed-in against
+  // empty storage — every request 401'd until a manual reload.
+  useEffect(() => {
+    const onExpired = () => {
+      setUser(null);
+      resetCart();
+    };
+    window.addEventListener("zolo:session-expired", onExpired);
+    return () => window.removeEventListener("zolo:session-expired", onExpired);
+  }, []);
+
   // Restore an existing session on first load: validate/refresh the stored
   // token against the backend and rehydrate the user, or stay a guest.
   useEffect(() => {

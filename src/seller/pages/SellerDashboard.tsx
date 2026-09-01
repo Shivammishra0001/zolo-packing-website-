@@ -89,7 +89,12 @@ export default function SellerDashboard() {
           <EmptyState title="Operational modules unlock after approval" hint="RFQs, quotes, orders, production, QC, inventory and payments appear here once your account is approved." />
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {["pendingRfqs", "quotes", "orders", "production", "qc", "inventory", "payments"].map((k) => (
+            {/* Live: the RFQ lead inbox + quoting. */}
+            <Link to="/seller/rfqs" className="rounded-lg border border-orange-200 bg-orange-50/50 p-3 text-center transition hover:bg-orange-50">
+              <p className="text-xs font-bold uppercase tracking-wide text-orange-700">RFQ Leads</p>
+              <p className="mt-1 text-xs text-orange-600">View &amp; quote →</p>
+            </Link>
+            {["orders", "production", "qc", "inventory", "payments"].map((k) => (
               <div key={k} className="rounded-lg border border-dashed border-slate-200 p-3 text-center">
                 <p className="text-xs uppercase tracking-wide text-slate-400">{k.replace(/([A-Z])/g, " $1")}</p>
                 <p className="mt-1 text-xs text-slate-400">Coming soon</p>

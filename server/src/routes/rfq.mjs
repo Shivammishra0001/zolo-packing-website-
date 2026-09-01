@@ -29,9 +29,43 @@ rfqRouter.get("/:id", wrap(async (req, res) => {
   return found ? ok(res, found) : notFound(res);
 }));
 
+// Submit a DRAFT (created with submit:false so requirement sheets could be
+// attached first). Triggers admin notification + matching + owner WhatsApp.
+rfqRouter.post("/:id/submit", wrap(async (req, res) => {
+  const updated = await rfq.submitMyRfq(req.user.id, req.params.id);
+  return updated ? ok(res, updated) : notFound(res);
+}));
+
 rfqRouter.post("/:id/cancel", wrap(async (req, res) => {
   const updated = await rfq.cancelMyRfq(req.user.id, req.params.id);
   return updated ? ok(res, updated) : notFound(res);
+}));
+
+// ---- Requirement sheets (buyer-owned attachments) -------------------------
+import * as rfqFiles from "../services/rfq-files.mjs";
+
+/** Stream file bytes with the right headers for view/download. */
+function sendFile(res, { buffer, fileName, mimeType }) {
+  res.setHeader("Content-Type", mimeType);
+  res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.send(buffer);
+}
+
+rfqRouter.get("/:id/files", wrap(async (req, res) => {
+  ok(res, { files: await rfqFiles.listMine(req.user.id, req.params.id) });
+}));
+
+rfqRouter.post("/:id/files", wrap(async (req, res) => {
+  ok(res, await rfqFiles.attach(req.user.id, req.params.id, req.body ?? {}), 201);
+}));
+
+rfqRouter.get("/:id/files/:fileId/download", wrap(async (req, res) => {
+  sendFile(res, await rfqFiles.readFile({ kind: "buyer", userId: req.user.id }, req.params.id, req.params.fileId));
+}));
+
+rfqRouter.delete("/:id/files/:fileId", wrap(async (req, res) => {
+  ok(res, await rfqFiles.removeMine(req.user.id, req.params.id, req.params.fileId));
 }));
 
 // ---- Buyer responds to a quotation ---------------------------------------
@@ -72,6 +106,11 @@ adminRfqRouter.post("/:id/quotations", wrap(async (req, res) => {
   ok(res, await rfq.adminCreateQuotation(req.user.id, req.params.id, req.body ?? {}), 201);
 }));
 
+// Admin reads any RFQ's requirement sheet; requireAdmin on the router is the gate.
+adminRfqRouter.get("/:id/files/:fileId/download", wrap(async (req, res) => {
+  sendFile(res, await rfqFiles.readFile({ kind: "admin" }, req.params.id, req.params.fileId));
+}));
+
 // ---- Marketplace: seller leads, competing quotes, messaging --------------
 // Mounted at /api/v1/sellers/rfqs (seller) and extended onto the buyer routers.
 // supplierId ALWAYS comes from req.supplierProfile — never from the body — so
@@ -96,6 +135,11 @@ sellerRfqRouter.post("/:rfqId/decline", wrap(async (req, res) => {
 
 sellerRfqRouter.post("/:rfqId/quote", wrap(async (req, res) => {
   ok(res, await marketplace.sellerSubmitQuote(req.supplierProfile.id, req.user.id, req.params.rfqId, req.body ?? {}), 201);
+}));
+
+// An invited seller reads the buyer's requirement sheet for that lead only.
+sellerRfqRouter.get("/:rfqId/files/:fileId/download", wrap(async (req, res) => {
+  sendFile(res, await rfqFiles.readFile({ kind: "seller", supplierId: req.supplierProfile.id }, req.params.rfqId, req.params.fileId));
 }));
 
 // ---- Messaging (buyer or invited seller) ---------------------------------

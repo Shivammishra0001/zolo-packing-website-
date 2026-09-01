@@ -2,7 +2,10 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { BuyerGuard } from "@/components/auth/RoleGuards";
 import BuyerLayout from "./BuyerLayout";
 import Dashboard from "./pages/Dashboard";
-import Quotations from "./pages/Quotations";
+// The REAL quotations page (live /rfqs API: list, compare, accept, reject).
+// The previous ./pages/Quotations rendered mock arrays that are permanently
+// empty, so a buyer could never see or act on an actual quotation.
+import Quotations from "@/pages/MyQuotations";
 import Orders from "./pages/OrdersReal";
 import OrderDetail from "./pages/OrderDetailReal";
 import InvoiceView from "./pages/InvoiceView";

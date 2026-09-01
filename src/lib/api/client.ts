@@ -8,9 +8,9 @@
 export { API_BASE } from "../api-config";
 import { API_BASE, describeNetworkError } from "../api-config";
 import { clearAllAuthStorage } from "../auth/session-keys";
+import { refreshStoreSession, notifySessionExpired } from "../auth/refresh";
 
 const TOKEN_KEY = "zolo.store.accessToken";
-const REFRESH_KEY = "zolo.store.refreshToken";
 
 export class ApiError extends Error {
   status: number;
@@ -37,33 +37,12 @@ export class NetworkError extends Error {
 }
 
 const getToken = () => localStorage.getItem(TOKEN_KEY);
-const getRefresh = () => localStorage.getItem(REFRESH_KEY);
-const setAccess = (t: string) => localStorage.setItem(TOKEN_KEY, t);
-const setRefresh = (t: string) => localStorage.setItem(REFRESH_KEY, t);
 
-async function attemptRefresh(): Promise<boolean> {
-  const refreshToken = getRefresh();
-  if (!refreshToken) return false;
-  try {
-    const res = await fetch(`${API_BASE}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
-    });
-    if (!res.ok) return false;
-    const body = await res.json();
-    if (body?.data?.accessToken) {
-      setAccess(body.data.accessToken);
-      // Refresh tokens ROTATE server-side — store the replacement, otherwise
-      // the next refresh replays a revoked token and the session dies.
-      if (body.data.refreshToken) setRefresh(body.data.refreshToken);
-      return true;
-    }
-  } catch {
-    /* fall through */
-  }
-  return false;
-}
+// Refresh goes through the SHARED single-flight module: concurrent 401s from
+// different stores (cart, auth restore, admin polling) share one rotation.
+// Racing two refreshes trips the server's token-reuse detection and revokes
+// the whole session — which is how valid admins were getting logged out.
+const attemptRefresh = refreshStoreSession;
 
 interface RequestOptions {
   method?: string;
@@ -98,6 +77,9 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
   if (res.status === 401 && auth && !opts._retried) {
     if (await attemptRefresh()) return request<T>(path, { ...opts, _retried: true });
     clearAllAuthStorage();
+    // Tell React the session is over. Clearing storage alone left the UI
+    // rendering as signed-in against empty storage until a manual reload.
+    notifySessionExpired();
   }
 
   const payload = await res.json().catch(() => ({}));
@@ -110,4 +92,56 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
     );
   }
   return payload.data as T;
+}
+
+/**
+ * Fetch a binary response (a requirement sheet, an invoice PDF) as a Blob.
+ * These files are streamed by AUTHORIZED routes, never static URLs, so the
+ * bearer token must travel with the request — window.open(url) cannot work.
+ */
+export async function requestBlob(path: string, opts: { _retried?: boolean } = {}): Promise<Blob> {
+  const token = getToken();
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  } catch {
+    throw new NetworkError(`GET ${path}`);
+  }
+  if (res.status === 401 && !opts._retried && (await attemptRefresh())) {
+    return requestBlob(path, { _retried: true });
+  }
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, payload?.error ?? `Request failed (${res.status})`, payload?.code);
+  }
+  return res.blob();
+}
+
+/**
+ * Classify an API failure for display. Keeps pages honest: a 401 must read as
+ * "sign in again", never as "not found" — converting every error into a
+ * not-found screen is how a broken session masqueraded as missing data.
+ */
+export function describeApiError(e: unknown): { kind: "unauthorized" | "forbidden" | "notFound" | "network" | "server"; message: string } {
+  if (e instanceof NetworkError) return { kind: "network", message: "Unable to connect. Check your connection and try again." };
+  if (e instanceof ApiError) {
+    if (e.status === 401) return { kind: "unauthorized", message: "Your session has expired. Please sign in again." };
+    if (e.status === 403) return { kind: "forbidden", message: "You do not have permission to view this." };
+    if (e.status === 404) return { kind: "notFound", message: "This record does not exist." };
+    return { kind: "server", message: e.message || "Something went wrong on the server." };
+  }
+  return { kind: "server", message: e instanceof Error ? e.message : "Something went wrong." };
+}
+
+/** Open a fetched file in the browser (view/download) via an object URL. */
+export function saveBlob(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Give the browser a beat to start the download before revoking.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }

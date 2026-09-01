@@ -833,7 +833,9 @@ function AnimatedRoutes() {
            <Route path="/cart" element={<CartPage />} />
            {/* RFQ: collect many products into one request, then review/send. */}
            <Route path="/rfq" element={<RfqPage />} />
-           <Route path="/account/quotations" element={<MyQuotations />} />
+           {/* NOTE: /account/* never reaches this router — Shell() hands those
+               paths to BuyerRoutes, where /account/quotations renders the real
+               quotations page. A duplicate route here would be dead code. */}
           {/* Multi-step checkout — buyer-guarded, wrapped in the checkout state provider. */}
           <Route
             path="/checkout/*"
@@ -868,7 +870,6 @@ import Categories from "./pages/Categories";
 import EcoRewards from "./pages/EcoRewards";
 import CartPage from "./pages/CartPage";
 import RfqPage from "./pages/RfqPage";
-import MyQuotations from "./pages/MyQuotations";
 import Contact from "./pages/Contact";
 import AdminRoutes from "./admin/AdminRoutes";
 import BuyerRoutes from "./buyer/BuyerRoutes";
@@ -882,4 +883,3 @@ import CheckoutSuccess from "./pages/checkout/CheckoutSuccess";
 
 export { TopBar, Navbar, Footer };
 export type { Product };
-export { CATEGORIES } from "./data/products";

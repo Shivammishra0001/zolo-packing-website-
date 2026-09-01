@@ -17,7 +17,6 @@ import {
 import { Link, NavLink } from "react-router-dom";
 import { cn } from "@/utils/cn";
 import logoImg from "../../../images/logo.jpg";
-import { pendingRfqs } from "../mock-data";
 
 interface NavItem {
   to: string;
@@ -42,7 +41,9 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
       { to: "/admin/customers", label: "Customers", icon: Users },
       { to: "/admin/sellers", label: "Sellers", icon: Store },
-      { to: "/admin/quotes", label: "Quotations (RFQ)", icon: FileText, badge: pendingRfqs.length },
+      // Badge dropped: it counted a mock array that was permanently empty.
+      // The Quotations page itself shows live pending counts.
+      { to: "/admin/quotes", label: "Quotations (RFQ)", icon: FileText },
       { to: "/admin/orders", label: "Orders", icon: ShoppingCart },
       { to: "/admin/catalog", label: "Product Catalog", icon: Package },
       { to: "/admin/shipping", label: "Shipping", icon: Truck },

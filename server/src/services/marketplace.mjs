@@ -105,7 +105,7 @@ export async function listSellerLeads(supplierId, { status } = {}) {
   const matches = await prisma.rfqMatch.findMany({
     where: { supplierId, ...(status ? { status } : {}) },
     orderBy: { createdAt: "desc" },
-    include: { rfq: { include: { items: true } } },
+    include: { rfq: { include: { items: true, files: true } } },
   });
   return matches.map((m) => ({
     matchId: m.id,
@@ -119,11 +119,14 @@ export async function listSellerLeads(supplierId, { status } = {}) {
       id: m.rfq.id,
       rfqNumber: m.rfq.rfqNumber,
       title: m.rfq.title,
+      notes: m.rfq.notes,
       status: m.rfq.status,
       requiredBy: m.rfq.requiredBy,
       itemCount: m.rfq.items.length,
       totalQuantity: m.rfq.items.reduce((s, i) => s + i.quantity, 0),
       items: m.rfq.items,
+      // Requirement sheets — downloadable via /sellers/rfqs/:rfqId/files/:fileId/download.
+      files: m.rfq.files.map((f) => ({ id: f.id, fileName: f.fileName, mimeType: f.mimeType, size: f.size })),
       ship: { city: m.rfq.shipCity, state: m.rfq.shipState },
     },
   }));

@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { CircleCheckBig, FileText, IndianRupee, Plus } from "lucide-react";
-import { useToast } from "@/components/ui/Toast";
 import { MetricCard } from "../components/MetricCard";
 import { DataTable, TableSkeleton, type Column } from "../components/DataTable";
 import { EmptyState, Panel, QueryState } from "../components/Panel";
@@ -11,13 +10,11 @@ import {
   Dialog,
   PageHeader,
   SearchInput,
-  Select,
   Tabs,
   Toolbar,
 } from "../components/ui";
 import { inr, relativeTime } from "../format";
 import { useNow } from "../hooks";
-import { customers } from "../mock-data";
 import { useQuotations } from "../quotations-store";
 import type { Rfq } from "../types";
 
@@ -35,42 +32,26 @@ function estValue(r: Rfq): number {
   return r.quantity * (r.gsm >= 400 ? 42 : r.gsm >= 350 ? 28 : 18);
 }
 
+// A quotation is always built FROM a customer RFQ (the composer lives on the
+// RFQ detail page). This dialog used to fake-create one with a success toast
+// and no API call; now it honestly points the operator at the pending queue.
 function NewQuotationDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const toast = useToast();
-  const [customer, setCustomer] = useState("");
-  const submit = () => {
-    toast.success("Quotation started", customer ? `New RFQ opened for ${customer}.` : "New RFQ opened.");
-    setCustomer("");
-    onClose();
-  };
   return (
     <Dialog
       open={open}
       onClose={onClose}
       title="New Quotation"
-      description="Open a blank RFQ and build the quote from a configuration."
+      description="Quotations are priced against a customer's RFQ."
       footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" icon={Plus} onClick={submit}>
-            Create
-          </Button>
-        </>
+        <Button variant="ghost" onClick={onClose}>
+          Close
+        </Button>
       }
     >
-      <label className="block">
-        <span className="mb-1 block text-xs font-semibold erp-text-muted">Customer</span>
-        <Select value={customer} onChange={setCustomer} aria-label="Customer" className="w-full">
-          <option value="">Select customer…</option>
-          {customers.map((c) => (
-            <option key={c.id} value={c.company}>
-              {c.company}
-            </option>
-          ))}
-        </Select>
-      </label>
+      <p className="text-sm erp-text-muted">
+        Open a pending RFQ from the list below and use <span className="font-bold erp-text">Build quotation</span> on its
+        detail page — the customer's products, quantities and requirement sheets are already there.
+      </p>
     </Dialog>
   );
 }

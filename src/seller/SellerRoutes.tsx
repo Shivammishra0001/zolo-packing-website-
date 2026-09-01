@@ -4,6 +4,7 @@ import { SellerAuthProvider, RequireSeller, useSellerAuth } from "./SellerAuth";
 import SellerLogin from "./pages/SellerLogin";
 import Onboarding from "./pages/Onboarding";
 import SellerDashboard from "./pages/SellerDashboard";
+import SellerRfqs from "./pages/SellerRfqs";
 
 function SellerShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useSellerAuth();
@@ -17,6 +18,7 @@ function SellerShell({ children }: { children: React.ReactNode }) {
             <span className="font-bold text-slate-900">Zolo <span className="text-orange-600">Supplier</span></span>
             <nav className="flex gap-1">
               <NavLink to="/seller/dashboard" className={({ isActive }) => `${link} ${isActive ? "bg-orange-50 text-orange-700" : "text-slate-600 hover:bg-slate-100"}`}>Dashboard</NavLink>
+              <NavLink to="/seller/rfqs" className={({ isActive }) => `${link} ${isActive ? "bg-orange-50 text-orange-700" : "text-slate-600 hover:bg-slate-100"}`}>RFQ Leads</NavLink>
               <NavLink to="/seller/onboarding" className={({ isActive }) => `${link} ${isActive ? "bg-orange-50 text-orange-700" : "text-slate-600 hover:bg-slate-100"}`}>Onboarding</NavLink>
             </nav>
           </div>
@@ -38,6 +40,7 @@ export default function SellerRoutes() {
         <Route path="/seller/login" element={<SellerLogin />} />
         <Route path="/seller" element={<Navigate to="/seller/dashboard" replace />} />
         <Route path="/seller/dashboard" element={<RequireSeller><SellerShell><SellerDashboard /></SellerShell></RequireSeller>} />
+        <Route path="/seller/rfqs" element={<RequireSeller><SellerShell><SellerRfqs /></SellerShell></RequireSeller>} />
         <Route path="/seller/onboarding" element={<RequireSeller><SellerShell><Onboarding /></SellerShell></RequireSeller>} />
         <Route path="/seller/*" element={<Navigate to="/seller/dashboard" replace />} />
       </Routes>

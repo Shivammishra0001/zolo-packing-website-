@@ -18,7 +18,7 @@ import { getProductBySku, hydrateCatalog } from "../../catalog-store";
 import { hydrateCategories } from "../../categories-store";
 import { hydrateCategoryTree } from "@/lib/categories";
 import { catalogApi } from "@/lib/catalog-api";
-import { categories } from "../../mock-data-ext";
+import { getCategories } from "../../categories-store";
 import type { CatalogProduct } from "../../types";
 import {
   LIMITS,
@@ -244,7 +244,9 @@ export function BulkImportButton() {
 
       const parsed = validateRows(raws, {
         existingSku: (sku) => !!getProductBySku(sku),
-        knownCategories: categories.map((c) => c.name),
+        // Real category list from the API-backed store (hydrated on page load),
+        // not the old mock array that was always empty.
+        knownCategories: getCategories().map((c) => c.name),
         zipImages: images.size > 0 ? images : undefined,
         embeddedByRow: embeddedKeys.size > 0 ? embeddedKeys : undefined,
       });
@@ -285,7 +287,7 @@ export function BulkImportButton() {
         newCategories: new Set(
           rows
             .map((r) => r.category.trim())
-            .filter((c) => c && !categories.some((k) => k.name.toLowerCase() === c.toLowerCase()))
+            .filter((c) => c && !getCategories().some((k) => k.name.toLowerCase() === c.toLowerCase()))
             .map((c) => c.toLowerCase()),
         ).size,
         duplicateSkus: rows.filter((r) => r.isDuplicate).length,

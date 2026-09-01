@@ -12,7 +12,7 @@ import { cn } from "@/utils/cn";
 import { useToast } from "@/components/ui/Toast";
 import { MetricCard } from "../components/MetricCard";
 import { DataTable, TableSkeleton, type Column } from "../components/DataTable";
-import { EmptyState, Panel, QueryState } from "../components/Panel";
+import { EmptyState, ErrorState, ListSkeleton, Panel, QueryState } from "../components/Panel";
 import {
   Badge,
   Button,
@@ -26,7 +26,6 @@ import {
 } from "../components/ui";
 import { inrMinor, formatDate } from "../format";
 import { useMockQuery } from "../hooks";
-import { lowStockAlerts } from "../mock-data";
 import { useAdminInventory, useAdminStockMovements, asMockQuery, type StockMovementRow } from "../dashboard-api";
 import { useCatalog } from "../catalog-store";
 import type { ProductStatus } from "../types";
@@ -344,24 +343,32 @@ function StockMovementTab() {
 // ---------- Low Stock tab ----------
 
 function LowStockTab() {
-  const toast = useToast();
-  const alerts = useMemo(() => lowStockAlerts(), []);
+  // REAL data: the same /admin/inventory endpoint the dashboard tile uses,
+  // filtered to low/out-of-stock. The previous version read a mock array that
+  // was permanently empty, so this tab always claimed "All healthy" while the
+  // dashboard showed genuine low-stock products.
+  const live = useAdminInventory(true);
+  const alerts = useMemo(() => live.data?.inventory ?? [], [live.data]);
 
+  if (live.status === "loading") return <ListSkeleton rows={4} />;
+  if (live.status === "error") return <ErrorState message={live.error} onRetry={live.refetch} />;
   if (alerts.length === 0) {
-    return <EmptyState icon={PackageCheck} title="All healthy" message="No materials are below reorder or running low." />;
+    return <EmptyState icon={PackageCheck} title="All healthy" message="No products are below their low-stock threshold." />;
   }
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      {alerts.map(({ item, daysLeft, belowReorder }) => {
-        const critical = Number.isFinite(daysLeft) ? daysLeft <= 2 : belowReorder;
+      {alerts.map((item) => {
+        const critical = item.available <= 0;
         return (
           <div key={item.id} className="flex flex-col gap-3 rounded-xl border erp-border erp-surface card-shadow p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold erp-text">{item.name}</p>
                 <p className="mt-0.5 text-xs erp-text-faint">
-                  {item.inStock.toLocaleString("en-IN")} {item.unit} · reorder at {item.reorderLevel.toLocaleString("en-IN")}
+                  {item.available.toLocaleString("en-IN")} available ({item.stock.toLocaleString("en-IN")} on hand
+                  {item.reserved > 0 ? `, ${item.reserved.toLocaleString("en-IN")} reserved` : ""})
+                  {item.threshold != null && ` · threshold ${item.threshold.toLocaleString("en-IN")}`}
                 </p>
               </div>
               <span
@@ -373,20 +380,9 @@ function LowStockTab() {
                 )}
               >
                 <TriangleAlert className="h-3.5 w-3.5" aria-hidden />
-                {Number.isFinite(daysLeft)
-                  ? `${Math.max(Math.floor(daysLeft), 0)} day${Math.floor(daysLeft) === 1 ? "" : "s"} left`
-                  : "Below reorder level"}
+                {critical ? "Out of stock" : "Low stock"}
               </span>
             </div>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={Package}
-              className="self-start"
-              onClick={() => toast.success("Purchase order drafted", `Raised a PO for ${item.name}.`)}
-            >
-              Raise PO
-            </Button>
           </div>
         );
       })}

@@ -69,6 +69,7 @@ model User {
   authoredQuotations Quotation[]          @relation("QuotationAuthor")
   sentMessages       Message[]            @relation("MessageSender")
   savedRequirements  SavedRequirement[]
+  rfqFiles           RfqFile[]            @relation("RfqFileUploader")
 
   @@index([role])
 }
@@ -476,6 +477,35 @@ model AuditLog {
 enum NotificationStatus {
   UNREAD
   READ
+}
+
+// Outbound (out-of-app) delivery attempts — WhatsApp/SMS/email to the owner or
+// a customer. Separate from Notification (the in-app bell): a delivery has a
+// provider, can fail, and must record WHAT happened truthfully. SKIPPED means
+// no provider was configured — never faked as SENT.
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model NotificationDelivery {
+  id                String         @id @default(cuid())
+  channel           String // "whatsapp"
+  provider          String // "meta" | "none"
+  recipient         String // E.164-ish phone; "unconfigured" when no owner number is set
+  messageType       String // e.g. "rfq.created"
+  entityType        String?
+  entityId          String?
+  status            DeliveryStatus @default(PENDING)
+  providerMessageId String?
+  error             String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([entityType, entityId])
+  @@index([status])
 }
 
 model Notification {
@@ -1165,10 +1195,30 @@ model Rfq {
   orders     Order[]
   matches    RfqMatch[]
   messages   Message[]
+  files      RfqFile[]
 
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+}
+
+// A requirement sheet / reference document attached to an RFQ (spec sheet,
+// artwork, dimension drawing). Stored in the PRIVATE uploads tree and streamed
+// only through authorized routes — never via the static /uploads mount, since a
+// requirement sheet can carry customer contact data and target prices.
+model RfqFile {
+  id           String   @id @default(cuid())
+  rfqId        String
+  rfq          Rfq      @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  fileName     String // original name, for display/download only
+  storageKey   String // private-tree key; never exposed to the client
+  mimeType     String
+  size         Int
+  uploadedById String
+  uploadedBy   User     @relation("RfqFileUploader", fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([rfqId])
 }
 
 // One line per requested product. quantity is what the buyer asked for.

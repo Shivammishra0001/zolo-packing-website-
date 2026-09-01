@@ -12,6 +12,7 @@
 // ============================================================
 import { useCallback, useEffect, useState } from "react";
 import { adminRfqApi, type Rfq as ApiRfq, type RfqStatus as ApiRfqStatus } from "@/lib/api/rfq";
+import { describeApiError } from "@/lib/api/client";
 import type { Rfq } from "./types";
 
 /** Server status -> the four buckets the admin table tabs on. */
@@ -88,8 +89,9 @@ export function useQuotations(pollMs = 0): QuotationsQuery {
       setApiRfqs(new Map(res.rfqs.map((r) => [r.rfqNumber, r])));
     } catch (e) {
       // Surface the failure instead of falling back to fake rows — an empty
-      // table that looks like "no RFQs" would hide a broken API.
-      setError(e instanceof Error ? e.message : "Could not load quotation requests");
+      // table that looks like "no RFQs" would hide a broken API. 401 reads as
+      // "sign in again", never as an empty queue.
+      setError(describeApiError(e).message);
       setData(null);
     } finally {
       setLoading(false);

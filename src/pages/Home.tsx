@@ -5,7 +5,6 @@ import {
   Truck,
   ShieldCheck,
   Headphones,
-  Star,
   Mail,
   Quote,
 } from "lucide-react";
@@ -39,25 +38,22 @@ const categories: { id: string; name: string; slug: string; icon: string; count:
 
 
 const processSteps = [
-  { n: "01", title: "Choose Packaging", desc: "Browse our catalog of 2,400+ packaging solutions" },
+  { n: "01", title: "Choose Packaging", desc: "Browse our catalog of packaging solutions" },
   { n: "02", title: "Customize Design", desc: "Add your branding, colors, and custom finishes" },
-  { n: "03", title: "Get a Quote", desc: "Receive instant pricing with no hidden fees" },
-  { n: "04", title: "Receive Delivery", desc: "Fast worldwide shipping in 5-10 days" },
+  { n: "03", title: "Get a Quote", desc: "Receive pricing with no hidden fees" },
+  { n: "04", title: "Receive Delivery", desc: "Reliable, tracked shipping" },
 ];
 
-const testimonials = [
-  { name: "Sarah Chen", quote: "Zolo Packing transformed our packaging. The quality is outstanding and delivery is always on time.", rating: 5, avatar: "SC", color: "from-pink-500 to-rose-500" },
-  { name: "Marcus Webb", quote: "Being able to preview packaging in detail before production is a total game-changer for our team.", rating: 5, avatar: "MW", color: "from-brand-500 to-accent-400" },
-  { name: "Priya Raman", quote: "The print quality and finishes render so accurately — what we see is exactly what arrives.", rating: 5, avatar: "PR", color: "from-violet-500 to-fuchsia-500" },
-];
+// Testimonials removed: the previous entries were fictitious people with
+// invented quotes. Real customer testimonials belong here once collected —
+// never fabricated ones.
 
 const faqs = [
-  { q: "What are your minimum order quantities?", a: "MOQs start at just 10 units for prototypes and 50 for short runs. Large orders receive significant volume discounts automatically." },
-  { q: "Do you ship internationally?", a: "Yes — we ship to 180+ countries worldwide with tracked shipping. Average delivery time is 5-10 business days." },
-  { q: "Can I request a sample before bulk ordering?", a: "Yes! Free samples are available on orders over ₹500. For smaller quantities, samples are available at cost." },
+  { q: "What are your minimum order quantities?", a: "MOQs vary by product and are shown on every product page. Large orders receive volume discounts automatically." },
+  { q: "Can I request a sample before bulk ordering?", a: "Yes — ask for a sample when requesting your quote and our team will arrange it." },
   { q: "What printing options are available?", a: "We offer digital, offset litho, and flexo printing with options for foil stamping, embossing, spot UV, and custom die-cutting." },
-  { q: "Are your materials eco-friendly?", a: "Absolutely. Over 500+ of our products use recycled, biodegradable, or compostable materials with FSC certification." },
-  { q: "How do I upload my artwork for printing?", a: "Once you select your packaging, you can upload artwork directly in our 3D studio (PDF, AI, or high-res PNG) or email it to contact@zolopacking.com." },
+  { q: "Are your materials eco-friendly?", a: "Many of our products use recycled, biodegradable, or compostable materials — filter by material on the products page or ask us for eco options." },
+  { q: "How do I share my artwork for printing?", a: "Attach your artwork or requirement sheet when creating a bulk quote, or email it to contact@zolopacking.com." },
 ];
 
 export default function Home() {
@@ -65,7 +61,9 @@ export default function Home() {
   // reachable). No hardcoded demo array fallback: an empty catalog shows an
   // empty state rather than fake products.
   const source = useBuyerProducts();
-  const bestsellers = source.filter((p) => p.bestseller).slice(0, 8);
+  // "Bestseller" used to be invented from the price — there is no sales-rank
+  // data yet, so this rail simply features the catalog.
+  const featured = source.slice(0, 8);
   const newArrivalPool = source.filter((p) => p.newArrival);
   const newArrivals = (newArrivalPool.length > 0 ? newArrivalPool : source).slice(0, 4);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -273,19 +271,19 @@ export default function Home() {
             <div>
               <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600 mb-3">
                 <span className="inline-block h-1 w-6 rounded-full bg-primary-500 mr-2" />
-                Bestsellers
+                Featured
               </div>
               <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-dark-900 leading-[1.05]">
-                Top-selling <span className="grad-text">products</span>
+                Featured <span className="grad-text">products</span>
               </h2>
-              <p className="mt-3 text-lg text-dark-500">Our most-loved packaging, chosen by 50+ brands</p>
+              <p className="mt-3 text-lg text-dark-500">A selection from our packaging catalog</p>
             </div>
-            <Link to="/products?sort=bestseller" className="text-sm font-bold text-dark-900 hover:text-primary-600 inline-flex items-center gap-1">
+            <Link to="/products" className="text-sm font-bold text-dark-900 hover:text-primary-600 inline-flex items-center gap-1">
               View all <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
 
-          {bestsellers.length === 0 ? (
+          {featured.length === 0 ? (
             <div className="rounded-2xl border border-dark-100 bg-white p-12 text-center">
               <div className="text-5xl mb-3">📦</div>
               <p className="font-display text-lg font-bold text-dark-900">No products available yet</p>
@@ -293,7 +291,7 @@ export default function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-              {bestsellers.map((p, i) => (
+              {featured.map((p, i) => (
                 <ProductCard key={p.id} product={p} index={i} />
               ))}
             </div>
@@ -363,47 +361,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CLIENTS */}
-      <section className="py-20 bg-white">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="text-center max-w-3xl mx-auto mb-12">
-            <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600 mb-3">
-              <span className="inline-block h-1 w-6 rounded-full bg-primary-500 mr-2" />
-              Clients
-            </div>
-            <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-dark-900 leading-[1.05]">
-              Loved by <span className="grad-text">50+ brands</span>
-            </h2>
-          </div>
-          <div className="grid gap-5 md:grid-cols-3">
-            {testimonials.map((t, i) => (
-              <motion.div
-                key={t.name}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                className="bg-dark-50 rounded-2xl p-6 border border-dark-100"
-              >
-                <div className="flex gap-1 mb-4">
-                  {[...Array(t.rating)].map((_, i) => (
-                    <Star key={i} className="h-4 w-4 fill-amber-400 text-amber-400" />
-                  ))}
-                </div>
-                <p className="text-dark-700 leading-relaxed">"{t.quote}"</p>
-                <div className="flex items-center gap-3 mt-6 pt-5 border-t border-dark-200">
-                  <div className={`h-10 w-10 rounded-full bg-gradient-to-br ${t.color} text-white font-bold text-sm flex items-center justify-center`}>
-                    {t.avatar}
-                  </div>
-                  <div>
-                    <div className="font-bold text-sm text-dark-900">{t.name}</div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Testimonials section removed — the cards showed fictitious customers
+          with invented quotes. Reinstate it when real testimonials exist. */}
 
       {/* FAQ */}
       <section className="py-20 bg-dark-50">
@@ -458,7 +417,7 @@ export default function Home() {
             <span className="text-white">first box?</span>
           </h2>
           <p className="mt-5 text-lg text-white/90 max-w-2xl mx-auto">
-            Join 50+ brands shipping premium packaging with Zolo Packing.
+            Ship premium packaging for your brand with Zolo Packing.
           </p>
           <div className="mt-9 flex flex-wrap gap-3 justify-center">
             <Link to="/contact">

@@ -30,6 +30,13 @@ async function nextNumber(tx, model, field, prefix, start) {
   return `${prefix}-${(Number.isFinite(n) ? n : start - 1) + 1}`;
 }
 
+// What the buyer needs about each quotation's author: enough to compare
+// sellers (name + verification) without exposing the supplier's internals.
+const quotationInclude = {
+  items: true,
+  supplier: { select: { id: true, displayName: true, legalName: true, verificationStatus: true } },
+};
+
 /** Buyer's own RFQs, newest first. */
 export async function listMyRfqs(userId, { status } = {}) {
   const rfqs = await prisma.rfq.findMany({
@@ -37,10 +44,12 @@ export async function listMyRfqs(userId, { status } = {}) {
     orderBy: { createdAt: "desc" },
     include: {
       items: true,
+      files: true,
+      _count: { select: { matches: true } },
       quotations: {
         where: { status: { not: "DRAFT" } }, // drafts are admin-only
         orderBy: { version: "desc" },
-        include: { items: true },
+        include: quotationInclude,
       },
     },
   });
@@ -133,22 +142,74 @@ export async function createRfq(userId, { items, title, notes, requiredBy, ship 
     return rfq;
   });
 
-  // Fan out to matching suppliers AFTER the RFQ is committed. A matching
-  // failure must not roll back a valid RFQ — the buyer's request still stands
-  // and admin can re-run matching.
-  //
-  // Callers can opt out (autoMatch: false) when they need an RFQ nobody else
-  // quotes — a test asserting on an exact quotation count, for instance.
-  if (submit && autoMatch) {
+  if (submit) await afterRfqSubmitted(created.id, { autoMatch });
+
+  return shapeRfq(created);
+}
+
+/**
+ * Post-commit fan-out for a freshly SUBMITTED RFQ: supplier matching and the
+ * owner's WhatsApp alert. Runs strictly AFTER the transaction — a failure in
+ * either must never roll back (or fail) a valid RFQ; the buyer's request
+ * stands, admin can re-run matching, and the delivery record shows FAILED.
+ *
+ * Callers can opt out of matching (autoMatch: false) when they need an RFQ
+ * nobody else quotes — a test asserting on an exact quotation count.
+ */
+async function afterRfqSubmitted(rfqId, { autoMatch = true } = {}) {
+  if (autoMatch) {
     try {
       const { matchRfqToSuppliers } = await import("./marketplace.mjs");
-      await matchRfqToSuppliers(created.id);
+      await matchRfqToSuppliers(rfqId);
     } catch (e) {
       console.error("[rfq] supplier matching failed:", e.message);
     }
   }
+  try {
+    const { sendNewRfqNotification } = await import("./whatsapp.mjs");
+    await sendNewRfqNotification(rfqId);
+  } catch (e) {
+    console.error("[rfq] owner WhatsApp notification failed:", e.message);
+  }
+}
 
-  return shapeRfq(created);
+/**
+ * Buyer submits a DRAFT RFQ (created with submit:false so attachments could be
+ * uploaded first). Idempotent guard: only DRAFT can transition here.
+ */
+export async function submitMyRfq(userId, id) {
+  const rfq = await prisma.rfq.findFirst({ where: { id, userId }, include: { items: true } });
+  if (!rfq) return null;
+  if (rfq.status !== "DRAFT") throw conflict(`RFQ is already ${rfq.status.toLowerCase()}`, "ALREADY_SUBMITTED");
+  if (rfq.items.length === 0) throw badRequest("An RFQ needs at least one product", "RFQ_EMPTY");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.rfq.update({ where: { id }, data: { status: "SUBMITTED", submittedAt: new Date() } });
+    await recordEvent(
+      {
+        eventType: "rfq.created",
+        actorId: userId,
+        entityType: "Rfq",
+        entityId: id,
+        metadata: { rfqNumber: rfq.rfqNumber, itemCount: rfq.items.length },
+      },
+      tx,
+    );
+    await notifyRoles(
+      ["admin"],
+      {
+        type: "rfq.new",
+        title: "New quotation request",
+        body: `${rfq.rfqNumber} — ${rfq.items.length} product${rfq.items.length === 1 ? "" : "s"}.`,
+        entityType: "Rfq",
+        entityId: id,
+      },
+      tx,
+    );
+  });
+
+  await afterRfqSubmitted(id);
+  return getMyRfq(userId, id);
 }
 
 /** One RFQ the buyer owns. Returns null for someone else's — the route 404s. */
@@ -157,7 +218,9 @@ export async function getMyRfq(userId, id) {
     where: { id, userId },
     include: {
       items: true,
-      quotations: { where: { status: { not: "DRAFT" } }, orderBy: { version: "desc" }, include: { items: true } },
+      files: true,
+      _count: { select: { matches: true } },
+      quotations: { where: { status: { not: "DRAFT" } }, orderBy: { version: "desc" }, include: quotationInclude },
     },
   });
   return rfq ? shapeRfq(rfq) : null;
@@ -211,8 +274,9 @@ export async function adminListRfqs({ status, q, take = 50, skip = 0 } = {}) {
       skip: Number(skip) || 0,
       include: {
         items: true,
-        user: { select: { id: true, email: true, firstName: true, lastName: true } },
-        quotations: { orderBy: { version: "desc" }, include: { items: true } },
+        files: true,
+        user: { select: { id: true, email: true, firstName: true, lastName: true, phone: true } },
+        quotations: { orderBy: { version: "desc" }, include: quotationInclude },
       },
     }),
     prisma.rfq.count({ where }),
@@ -220,16 +284,67 @@ export async function adminListRfqs({ status, q, take = 50, skip = 0 } = {}) {
   return { rfqs: rows.map(shapeRfq), total };
 }
 
-export async function adminGetRfq(id) {
-  const rfq = await prisma.rfq.findUnique({
-    where: { id },
+/**
+ * Admin detail view. Accepts the internal id OR the human rfqNumber — the
+ * admin table links by RFQ-xxxx, and "not found" for a record that exists was
+ * exactly the bug this page shipped with.
+ */
+export async function adminGetRfq(idOrNumber) {
+  const rfq = await prisma.rfq.findFirst({
+    where: { OR: [{ id: idOrNumber }, { rfqNumber: idOrNumber }] },
     include: {
       items: true,
-      user: { select: { id: true, email: true, firstName: true, lastName: true } },
-      quotations: { orderBy: { version: "desc" }, include: { items: true } },
+      files: true,
+      user: { select: { id: true, email: true, firstName: true, lastName: true, phone: true } },
+      matches: {
+        orderBy: { score: "desc" },
+        include: { supplier: { select: { id: true, displayName: true, legalName: true, verificationStatus: true, status: true } } },
+      },
+      quotations: { orderBy: { version: "desc" }, include: quotationInclude },
     },
   });
-  return rfq ? shapeRfq(rfq) : null;
+  if (!rfq) return null;
+
+  // Activity: everything the audit log recorded against this RFQ or its
+  // quotations — created, matched, quoted, responses, file attachments.
+  const activity = await prisma.auditLog.findMany({
+    where: {
+      OR: [
+        { entityType: "Rfq", entityId: rfq.id },
+        { entityType: "Quotation", entityId: { in: rfq.quotations.map((q) => q.id) } },
+      ],
+    },
+    orderBy: { createdAt: "asc" },
+    include: { actor: { select: { email: true, firstName: true, lastName: true } } },
+  });
+
+  return {
+    ...shapeRfq(rfq),
+    matches: rfq.matches.map((m) => ({
+      id: m.id,
+      supplierId: m.supplierId,
+      status: m.status,
+      score: m.score,
+      reasons: m.reasons,
+      viewedAt: m.viewedAt,
+      respondedAt: m.respondedAt,
+      supplier: m.supplier
+        ? {
+            id: m.supplier.id,
+            name: m.supplier.displayName || m.supplier.legalName || "Supplier",
+            verificationStatus: m.supplier.verificationStatus,
+            status: m.supplier.status,
+          }
+        : null,
+    })),
+    activity: activity.map((a) => ({
+      id: a.id,
+      eventType: a.eventType,
+      actor: a.actor ? [a.actor.firstName, a.actor.lastName].filter(Boolean).join(" ") || a.actor.email : "System",
+      metadata: a.metadata,
+      createdAt: a.createdAt,
+    })),
+  };
 }
 
 /**
@@ -503,14 +618,24 @@ function shapeRfq(r) {
     updatedAt: r.updatedAt,
     itemCount: r.items?.length ?? 0,
     totalQuantity: (r.items ?? []).reduce((s, i) => s + i.quantity, 0),
+    // How many sellers were invited — a buyer-facing signal that matching ran.
+    matchCount: r._count?.matches ?? r.matches?.length ?? 0,
     ship: { city: r.shipCity, state: r.shipState, postalCode: r.shipPostalCode, country: r.shipCountry },
     customer: r.user
       ? {
           id: r.user.id,
           email: r.user.email,
+          phone: r.user.phone ?? null,
           name: [r.user.firstName, r.user.lastName].filter(Boolean).join(" ") || r.user.email,
         }
       : undefined,
+    files: (r.files ?? []).map((f) => ({
+      id: f.id,
+      fileName: f.fileName,
+      mimeType: f.mimeType,
+      size: f.size,
+      createdAt: f.createdAt,
+    })),
     items: (r.items ?? []).map((i) => ({
       id: i.id,
       productId: i.productId,
@@ -528,6 +653,14 @@ function shapeRfq(r) {
       quotationNumber: q.quotationNumber,
       version: q.version,
       status: q.status,
+      // Who priced it: a competing seller, or the house (admin) when null.
+      seller: q.supplier
+        ? {
+            id: q.supplier.id,
+            name: q.supplier.displayName || q.supplier.legalName || "Supplier",
+            verificationStatus: q.supplier.verificationStatus,
+          }
+        : null,
       subtotalMinor: q.subtotalMinor,
       discountMinor: q.discountMinor,
       taxMinor: q.taxMinor,

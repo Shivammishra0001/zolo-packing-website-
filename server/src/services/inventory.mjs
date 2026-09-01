@@ -179,24 +179,28 @@ export async function listMovements({ productId = null, type = null, limit = 100
  * Any drift means something wrote `stock` outside recordMovement — this is the
  * check that keeps the ledger honest rather than decorative.
  */
-export async function reconcile({ limit = 500 } = {}) {
-  const products = await prisma.product.findMany({
-    where: { deletedAt: null },
-    select: { id: true, sku: true, name: true, stock: true },
-    take: Math.min(Math.max(Number(limit) || 500, 1), 1000),
-  });
-
+export async function reconcile({ limit = 200 } = {}) {
+  // Candidates come from the LEDGER, not from a capped product scan. The old
+  // version sampled 500 products with no ORDER BY, so once the table outgrew
+  // the cap, drifted products could simply fall outside the arbitrary sample
+  // and reconcile reported clean while stock was wrong — the exact failure this
+  // check exists to catch. A product with no ledger history isn't tracked yet
+  // (the ledger starts at its first movement), so it is correctly out of scope.
   const sums = await prisma.stockMovement.groupBy({ by: ["productId"], _sum: { quantity: true } });
   const byProduct = new Map(sums.map((s) => [s.productId, s._sum.quantity ?? 0]));
 
+  const products = await prisma.product.findMany({
+    where: { id: { in: [...byProduct.keys()] }, deletedAt: null },
+    select: { id: true, sku: true, name: true, stock: true },
+  });
+
   const drift = [];
   for (const p of products) {
-    // A product with no ledger history simply isn't tracked yet — the ledger
-    // starts at its first movement, which back-posts an opening balance.
-    if (!byProduct.has(p.id)) continue;
     const ledger = byProduct.get(p.id);
     if (ledger !== p.stock) drift.push({ id: p.id, sku: p.sku, name: p.name, stock: p.stock, ledger });
   }
 
-  return { checked: products.length, tracked: byProduct.size, drift };
+  // Cap only the REPORTED rows, never the scan — a truncated report says so.
+  const cap = Math.min(Math.max(Number(limit) || 200, 1), 1000);
+  return { checked: products.length, tracked: byProduct.size, drift: drift.slice(0, cap), driftTotal: drift.length };
 }

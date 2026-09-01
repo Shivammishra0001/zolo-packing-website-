@@ -22,8 +22,14 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import { cn } from "@/utils/cn";
 import { relativeTime } from "../format";
-import { customers, jobCards, notifications, orders, rfqs } from "../mock-data";
 import { useTheme, type ThemePref } from "../theme";
+import { useAuthSession } from "@/components/auth/AuthContext";
+import {
+  markAllNotificationsRead,
+  markNotificationRead,
+  notificationHref,
+  useAdminNotifications,
+} from "../dashboard-api";
 
 // Quick-create actions surfaced from the top bar
 const QUICK_ACTIONS = [
@@ -68,25 +74,29 @@ interface SearchHit {
   icon: typeof Package;
 }
 
+// Search DESTINATIONS, not mock rows. The old version looped over mock arrays
+// that were permanently empty, so every query answered "No matches" while real
+// orders and RFQs existed in the database. Until a cross-entity search endpoint
+// exists, searching is honest navigation: an id-shaped query jumps straight to
+// the module's own (real, server-backed) search.
+const SEARCH_TARGETS: { label: string; sub: string; href: string; icon: typeof Package; keys: string[] }[] = [
+  { label: "Orders", sub: "Order list & status", href: "/admin/orders", icon: Package, keys: ["order", "ord"] },
+  { label: "Quotations (RFQ)", sub: "Customer quote requests", href: "/admin/quotes", icon: FileText, keys: ["rfq", "quote", "quotation"] },
+  { label: "Customers", sub: "Buyer accounts", href: "/admin/customers", icon: Landmark, keys: ["customer", "buyer"] },
+  { label: "Production", sub: "Job cards", href: "/admin/production", icon: Wrench, keys: ["production", "job"] },
+];
+
 function searchEverything(q: string): SearchHit[] {
   const needle = q.trim().toLowerCase();
   if (needle.length < 2) return [];
   const hits: SearchHit[] = [];
-  for (const o of orders) {
-    if (o.id.toLowerCase().includes(needle) || o.customerName.toLowerCase().includes(needle))
-      hits.push({ id: o.id, label: o.id, sub: o.customerName, href: `/admin/orders?search=${encodeURIComponent(o.id)}`, icon: Package });
-  }
-  for (const r of rfqs) {
-    if (r.id.toLowerCase().includes(needle) || r.customerName.toLowerCase().includes(needle))
-      hits.push({ id: r.id, label: r.id, sub: `${r.customerName} — ${r.boxType}`, href: "/admin/quotes", icon: FileText });
-  }
-  for (const j of jobCards) {
-    if (j.id.toLowerCase().includes(needle) || j.customerName.toLowerCase().includes(needle))
-      hits.push({ id: j.id, label: j.id, sub: `${j.customerName} — ${j.product}`, href: "/admin/production", icon: Wrench });
-  }
-  for (const c of customers) {
-    if (c.company.toLowerCase().includes(needle) || c.name.toLowerCase().includes(needle))
-      hits.push({ id: c.id, label: c.company, sub: c.name, href: "/admin/customers", icon: Landmark });
+  // Id-shaped queries route to the module whose real search can resolve them.
+  if (/^ord/i.test(needle)) hits.push({ id: "order-jump", label: `Search orders for “${q.trim()}”`, sub: "Orders", href: `/admin/orders?search=${encodeURIComponent(q.trim())}`, icon: Package });
+  if (/^(rfq|qt)/i.test(needle)) hits.push({ id: "rfq-jump", label: `Open ${q.trim().toUpperCase()}`, sub: "Quotations", href: `/admin/quotes/${encodeURIComponent(q.trim().toUpperCase())}`, icon: FileText });
+  for (const t of SEARCH_TARGETS) {
+    if (t.label.toLowerCase().includes(needle) || t.keys.some((k) => k.includes(needle) || needle.includes(k))) {
+      hits.push({ id: t.href, label: t.label, sub: t.sub, href: t.href, icon: t.icon });
+    }
   }
   return hits.slice(0, 8);
 }
@@ -103,6 +113,12 @@ export function Topbar({
   onRangeChange: (r: DateRange) => void;
 }) {
   const nav = useNavigate();
+  // Real session identity + a sign-out that actually revokes the session. The
+  // previous button only navigated home, leaving tokens in localStorage — the
+  // "signed out" admin was restored on the next visit to /admin.
+  const { user: sessionUser, logout } = useAuthSession();
+  const displayName = sessionUser ? [sessionUser.firstName, sessionUser.lastName].filter(Boolean).join(" ") || sessionUser.email : "Admin";
+  const initials = ((sessionUser?.firstName?.[0] ?? sessionUser?.email?.[0] ?? "A") + (sessionUser?.lastName?.[0] ?? "")).toUpperCase();
   const { pref, resolved, setPref } = useTheme();
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -120,7 +136,11 @@ export function Topbar({
   const themeRef = useClickOutside(() => setThemeOpen(false));
 
   const hits = useMemo(() => searchEverything(query), [query]);
-  const unread = notifications.filter((n) => !n.read).length;
+  // Live in-app notifications — DB rows written when RFQs arrive, quotations
+  // are answered, orders land. Replaces the permanently-empty mock array.
+  const notifQuery = useAdminNotifications();
+  const notifications = notifQuery.data?.items ?? [];
+  const unread = notifQuery.data?.unread ?? 0;
 
   const go = (href: string) => {
     setSearchOpen(false);
@@ -312,23 +332,43 @@ export function Topbar({
           </button>
           {bellOpen && (
             <div className="absolute right-0 top-full mt-1.5 w-80 max-w-[90vw] overflow-hidden rounded-lg border erp-border erp-surface shadow-lg">
-              <div className="border-b erp-border-soft px-4 py-2.5 text-sm font-bold erp-text">Notifications</div>
+              <div className="flex items-center justify-between border-b erp-border-soft px-4 py-2.5">
+                <span className="text-sm font-bold erp-text">Notifications</span>
+                {unread > 0 && (
+                  <button
+                    onClick={() => {
+                      void markAllNotificationsRead().then(() => notifQuery.refetch()).catch(() => {});
+                    }}
+                    className="text-[11px] font-bold text-primary-600 hover:underline dark:text-primary-400"
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
               <ul className="max-h-96 overflow-y-auto">
+                {notifications.length === 0 && (
+                  <li className="px-4 py-6 text-center text-xs erp-text-muted">
+                    {notifQuery.status === "loading" ? "Loading…" : "No notifications yet."}
+                  </li>
+                )}
                 {notifications.map((n) => (
                   <li key={n.id} className="border-b erp-border-soft last:border-0">
                     <Link
-                      to={n.href}
-                      onClick={() => setBellOpen(false)}
+                      to={notificationHref(n)}
+                      onClick={() => {
+                        setBellOpen(false);
+                        if (n.status === "UNREAD") void markNotificationRead(n.id).then(() => notifQuery.refetch()).catch(() => {});
+                      }}
                       className="flex gap-3 px-4 py-3 hover:erp-surface-2"
                     >
                       <span
-                        className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", n.read ? "bg-dark-300 dark:bg-dark-600" : "bg-primary-500")}
+                        className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", n.status === "READ" ? "bg-dark-300 dark:bg-dark-600" : "bg-primary-500")}
                         aria-hidden
                       />
                       <span className="min-w-0">
                         <span className="block text-sm font-semibold erp-text">{n.title}</span>
-                        <span className="mt-0.5 block text-xs leading-relaxed erp-text-muted">{n.body}</span>
-                        <span className="mt-1 block text-[11px] font-medium erp-text-faint">{relativeTime(n.at)}</span>
+                        {n.body && <span className="mt-0.5 block text-xs leading-relaxed erp-text-muted">{n.body}</span>}
+                        <span className="mt-1 block text-[11px] font-medium erp-text-faint">{relativeTime(n.createdAt)}</span>
                       </span>
                     </Link>
                   </li>
@@ -354,15 +394,15 @@ export function Topbar({
             aria-expanded={userOpen}
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-amber-400 text-xs font-bold text-white">
-              BM
+              {initials}
             </span>
             <ChevronDown className="hidden h-3.5 w-3.5 erp-text-faint sm:block" aria-hidden />
           </button>
           {userOpen && (
             <div className="absolute right-0 top-full mt-1.5 w-56 overflow-hidden rounded-lg border erp-border erp-surface py-1 shadow-lg">
               <div className="border-b erp-border-soft px-4 py-3">
-                <div className="text-sm font-bold erp-text">Bhupendra Mishra</div>
-                <div className="truncate text-xs erp-text-muted">bhupendra.mishra@gmail.com</div>
+                <div className="text-sm font-bold erp-text">{displayName}</div>
+                <div className="truncate text-xs erp-text-muted">{sessionUser?.email}</div>
               </div>
               <Link
                 to="/admin/settings"
@@ -381,7 +421,9 @@ export function Topbar({
               <button
                 onClick={() => {
                   setUserOpen(false);
-                  nav("/");
+                  // logout() revokes the refresh token server-side, clears every
+                  // portal's storage, notifies other tabs, and navigates home.
+                  void logout();
                 }}
                 className="flex min-h-11 w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
               >

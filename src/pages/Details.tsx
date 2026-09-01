@@ -67,8 +67,10 @@ export default function Details() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, slug]);
 
-  if (!isAuthenticated) return null;
-
+  // NOTE: every hook must be declared BEFORE any conditional return. The guest
+  // early-return used to sit above the hooks below, so the moment a guest
+  // logged in from the modal the hook count changed between renders and React
+  // crashed with "Rendered more hooks than during the previous render".
   const [selectedSize, setSelectedSize] = useState(0);
   const [selectedMaterial, setSelectedMaterial] = useState(0);
   const [quantity, setQuantity] = useState(100);
@@ -95,6 +97,9 @@ export default function Details() {
       setQuantity(product.moq || 100);
     }
   }, [product]);
+
+  // Guest guard — safe to return now that every hook above has run.
+  if (!isAuthenticated) return null;
 
   if (loading) {
     return (
@@ -283,21 +288,31 @@ export default function Details() {
               {product.name}
             </h1>
 
-            {/* Rating */}
+            {/* Rating (only when real review data exists) + honest stock state */}
             <div className="mt-3 flex items-center gap-4">
-              <div className="flex items-center gap-1">
-                <div className="flex items-center gap-0.5 text-amber-400">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <Star key={i} className={`h-4 w-4 ${i <= Math.round(product.rating) ? "fill-current" : "text-dark-200 fill-dark-200"}`} />
-                  ))}
-                </div>
-                <span className="font-semibold text-sm">{product.rating}</span>
-                <span className="text-dark-500 text-sm">({product.reviews.toLocaleString()})</span>
-              </div>
-              <span className="h-4 w-px bg-dark-200" />
-              <span className="text-sm text-emerald-600 font-semibold flex items-center gap-1">
-                <Check className="h-3.5 w-3.5" /> In stock
-              </span>
+              {product.rating != null && (
+                <>
+                  <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-0.5 text-amber-400">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <Star key={i} className={`h-4 w-4 ${i <= Math.round(product.rating!) ? "fill-current" : "text-dark-200 fill-dark-200"}`} />
+                      ))}
+                    </div>
+                    <span className="font-semibold text-sm">{product.rating}</span>
+                    {product.reviews != null && (
+                      <span className="text-dark-500 text-sm">({product.reviews.toLocaleString()})</span>
+                    )}
+                  </div>
+                  <span className="h-4 w-px bg-dark-200" />
+                </>
+              )}
+              {outOfStock ? (
+                <span className="text-sm text-red-600 font-semibold flex items-center gap-1">Out of stock</span>
+              ) : (
+                <span className="text-sm text-emerald-600 font-semibold flex items-center gap-1">
+                  <Check className="h-3.5 w-3.5" /> In stock
+                </span>
+              )}
             </div>
 
             {/* Description */}
@@ -528,8 +543,10 @@ export default function Details() {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between py-2 border-b border-dark-50"><span className="text-dark-500">Material</span><span className="font-semibold text-dark-900">{product.materials.join(", ")}</span></div>
                     <div className="flex justify-between py-2 border-b border-dark-50"><span className="text-dark-500">Available Sizes</span><span className="font-semibold text-dark-900">{product.sizes.join(", ")}</span></div>
-                    <div className="flex justify-between py-2 border-b border-dark-50"><span className="text-dark-500">MOQ</span><span className="font-semibold text-dark-900">{product.moq} {product.unit}s</span></div>
-                    <div className="flex justify-between py-2"><span className="text-dark-500">Rating</span><span className="font-semibold text-dark-900">{product.rating}/5 ({product.reviews} reviews)</span></div>
+                    <div className="flex justify-between py-2"><span className="text-dark-500">MOQ</span><span className="font-semibold text-dark-900">{product.moq} {product.unit}s</span></div>
+                    {product.rating != null && (
+                      <div className="flex justify-between py-2"><span className="text-dark-500">Rating</span><span className="font-semibold text-dark-900">{product.rating}/5 ({product.reviews ?? 0} reviews)</span></div>
+                    )}
                   </div>
                 )}
                 {activeTab === "features" && (

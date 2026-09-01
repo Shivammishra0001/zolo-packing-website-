@@ -17,7 +17,14 @@ import { rfqApi, type CreateRfqInput, type Rfq } from "./api/rfq";
 
 const STORAGE_KEY = "zolo.rfqCart";
 
+// Custom (non-catalogue) products live in the same cart. Their line key is a
+// synthetic "custom:<rand>" id that is STRIPPED before the API call — the
+// backend receives productId only for real catalogue products.
+const CUSTOM_PREFIX = "custom:";
+export const isCustomLine = (l: { productId: string }) => l.productId.startsWith(CUSTOM_PREFIX);
+
 export interface RfqCartLine {
+  /** Catalogue product id, or a synthetic "custom:*" key for typed-in products. */
   productId: string;
   productName: string;
   sku?: string;
@@ -126,6 +133,28 @@ export function clearRfqCart() {
   setLines([]);
 }
 
+/** Add a blank custom (typed-in, non-catalogue) product row. Returns its key. */
+export function addCustomRfqLine(): string {
+  hydrate();
+  const key = `${CUSTOM_PREFIX}${Math.random().toString(36).slice(2, 10)}`;
+  setLines([...lines, { productId: key, productName: "", quantity: 1000, unit: "pcs", specs: {} }]);
+  return key;
+}
+
+/** The cart shaped as API items — custom lines lose their synthetic id. */
+export function toRfqItems(): CreateRfqInput["items"] {
+  hydrate();
+  return lines.map((l) => ({
+    productId: isCustomLine(l) ? undefined : l.productId,
+    productName: l.productName,
+    sku: l.sku,
+    quantity: l.quantity,
+    unit: l.unit,
+    specs: l.specs,
+    notes: l.notes,
+  }));
+}
+
 /**
  * Submit the whole cart as ONE RFQ, then clear it.
  *
@@ -135,18 +164,7 @@ export function clearRfqCart() {
 export async function submitRfq(meta: Omit<CreateRfqInput, "items"> = {}): Promise<Rfq> {
   hydrate();
   if (lines.length === 0) throw new Error("Add at least one product before requesting a quotation");
-  const rfq = await rfqApi.create({
-    ...meta,
-    items: lines.map((l) => ({
-      productId: l.productId,
-      productName: l.productName,
-      sku: l.sku,
-      quantity: l.quantity,
-      unit: l.unit,
-      specs: l.specs,
-      notes: l.notes,
-    })),
-  });
+  const rfq = await rfqApi.create({ ...meta, items: toRfqItems() });
   clearRfqCart();
   return rfq;
 }

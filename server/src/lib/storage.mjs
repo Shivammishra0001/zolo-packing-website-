@@ -38,7 +38,22 @@ const EXT_BY_MIME = {
   "application/pdf": "pdf",
 };
 
+// Document formats accepted ONLY into the private tree (requirement sheets,
+// spreadsheets). Deliberately not in EXT_BY_MIME: the public put() serves files
+// statically to anonymous visitors, and an .xlsx/.docx there would be an open
+// file-hosting endpoint. Private files are only ever streamed by authorized
+// routes, so richer types are safe.
+const PRIVATE_EXT_BY_MIME = {
+  ...EXT_BY_MIME,
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.ms-excel": "xls",
+  "text/csv": "csv",
+  "application/msword": "doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+};
+
 export const supportedMime = (mime) => Boolean(EXT_BY_MIME[mime]);
+export const supportedPrivateMime = (mime) => Boolean(PRIVATE_EXT_BY_MIME[mime]);
 
 const safeName = (name) =>
   name.toLowerCase().replace(/\.[a-z0-9]+$/, "").replace(/[^a-z0-9_-]/g, "-").slice(0, 60) || "file";
@@ -65,7 +80,7 @@ export function put({ name, mime, buffer }) {
  * read the bytes back is through an authorized route calling readPrivate().
  */
 export function putPrivate({ name, mime, buffer }) {
-  const ext = EXT_BY_MIME[mime];
+  const ext = PRIVATE_EXT_BY_MIME[mime];
   if (!ext) throw new Error(`Unsupported file type ${mime}`);
   const key = makeKey(name, ext);
   writeFileSync(join(PRIVATE_DIR, key), buffer);

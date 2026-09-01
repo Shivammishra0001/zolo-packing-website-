@@ -61,10 +61,10 @@ export function toStoreProduct(p: CatalogProduct): Product & {
     shortDesc: p.description?.slice(0, 80) ?? p.name,
     sizes: dims ? [`${dims.length}×${dims.width}×${dims.height} ${dims.unit}`] : ["Standard"],
     materials: [p.color ?? "Kraft", ...(p.gsm ? [`${p.gsm} GSM`] : [])],
-    rating: 4.6,
-    reviews: 24,
+    // No rating/reviews/bestseller: there is no review or sales-rank data yet,
+    // and fabricating "4.6 (24)" for every product misled buyers. The UI hides
+    // these elements when the fields are absent.
     tags: [p.category],
-    bestseller: p.basePrice >= 40,
     newArrival: false,
     inStock,
     features: [

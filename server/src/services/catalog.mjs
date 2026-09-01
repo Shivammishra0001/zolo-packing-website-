@@ -52,6 +52,21 @@ export async function resolveCategory(name, cache = new Map(), tx = prisma) {
     return existing;
   }
 
+  // An ARCHIVED category still owns the unique slug, so a plain create would
+  // throw P2002 — which used to make every import into that category fail
+  // FOREVER once an admin archived it. Importing products into a category is an
+  // explicit statement that it is in use again: restore the archived row
+  // (keeping its id and relations) instead of failing.
+  const archived = await tx.category.findFirst({ where: { slug, deletedAt: { not: null } } });
+  if (archived) {
+    const restored = await tx.category.update({
+      where: { id: archived.id },
+      data: { deletedAt: null, isActive: true },
+    });
+    cache.set(key, restored);
+    return restored;
+  }
+
   try {
     const created = await tx.category.create({
       data: { name: String(name).trim(), slug, isActive: true },
@@ -100,6 +115,19 @@ export async function resolveSubcategory(name, parent, cache = new Map(), tx = p
   if (existing) {
     cache.set(cacheKey, existing);
     return existing;
+  }
+
+  // Same restore-on-import rule as resolveCategory: an archived subcategory
+  // holds the unique slug, and importing into it revives it rather than
+  // permanently failing the row.
+  const archived = await tx.category.findFirst({ where: { slug, deletedAt: { not: null } } });
+  if (archived) {
+    const restored = await tx.category.update({
+      where: { id: archived.id },
+      data: { deletedAt: null, isActive: true, parentId: parent.id },
+    });
+    cache.set(cacheKey, restored);
+    return restored;
   }
 
   try {

@@ -7,7 +7,6 @@ import {
   LayoutGrid,
   LayoutList,
   Search,
-  Star,
 } from "lucide-react";
 import { useBuyerProducts } from "../lib/products";
 import { useCategoryTree, productMatchesCategory, slugifyCategory } from "../lib/categories";
@@ -21,7 +20,8 @@ const SORT_OPTIONS = [
   { value: "price-desc", label: "Price: High to Low" },
   { value: "name-asc", label: "Name: A–Z" },
   { value: "name-desc", label: "Name: Z–A" },
-  { value: "rating", label: "Best Rated" },
+  // "Best Rated" removed: there is no real review data yet, and ranking by a
+  // fabricated constant rating was meaningless.
 ];
 
 export default function Listing() {
@@ -35,7 +35,6 @@ export default function Listing() {
   const [sort, setSort] = useState(sortParam);
   const [search, setSearch] = useState(params.get("search") || "");
   const [material, setMaterial] = useState<string>("");
-  const [rating, setRating] = useState<number>(0);
   const [grid, setGrid] = useState<3 | 4>(3);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -95,7 +94,6 @@ export default function Listing() {
     setCategory("");
     setSubcategory("");
     setMaterial("");
-    setRating(0);
     setSearch("");
     setParams({});
   };
@@ -121,21 +119,20 @@ export default function Listing() {
       );
     }
     if (material) list = list.filter((p) => p.materials.includes(material));
-    if (rating > 0) list = list.filter((p) => p.rating >= rating);
 
     switch (sort) {
       case "latest": list.sort((a, b) => productsList.indexOf(b) - productsList.indexOf(a)); break;
-      case "rating": list.sort((a, b) => b.rating - a.rating); break;
       // Quotation-based products (priceMinor 0) sort last on price-ascending
       // rather than pretending to be the cheapest items in the catalog.
       case "price-asc": list.sort((a, b) => (a.priceMinor || Infinity) - (b.priceMinor || Infinity)); break;
       case "price-desc": list.sort((a, b) => b.priceMinor - a.priceMinor); break;
       case "name-asc": list.sort((a, b) => a.name.localeCompare(b.name)); break;
       case "name-desc": list.sort((a, b) => b.name.localeCompare(a.name)); break;
-      case "popular": default: list.sort((a, b) => b.reviews - a.reviews);
+      // "Featured" keeps catalog order — no fake popularity signal exists.
+      case "popular": default: break;
     }
     return list;
-  }, [productsList, category, subcategory, search, material, rating, sort]);
+  }, [productsList, category, subcategory, search, material, sort]);
 
   const activeCategory = CATEGORIES.find((c) => c.slug === category || c.id === category);
 
@@ -302,28 +299,9 @@ export default function Listing() {
                 </div>
               </div>
 
-              {/* Rating */}
-              <div>
-                <div className="text-xs font-bold uppercase tracking-wider text-dark-500 mb-3">Rating</div>
-                <div className="space-y-1">
-                  {[4, 3, 2].map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => setRating(rating === r ? 0 : r)}
-                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-sm ${
-                        rating === r ? "bg-dark-50 font-semibold text-dark-900" : "text-dark-600 hover:bg-dark-50"
-                      }`}
-                    >
-                      <span className="flex items-center gap-1">
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <Star key={i} className={`h-3 w-3 ${i < r ? "fill-amber-400 text-amber-400" : "text-dark-200"}`} />
-                        ))}
-                      </span>
-                      <span className="text-xs">& up</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* Rating facet removed — no real review data exists yet, so a
+                  star filter over a fabricated constant score filtered nothing
+                  honestly. It returns when reviews are live. */}
             </div>
           </aside>
 
@@ -370,18 +348,11 @@ export default function Listing() {
             </div>
 
             {/* Active filter chips */}
-            {(material || rating > 0) && (
+            {material && (
               <div className="flex flex-wrap gap-2 mb-5">
-                {material && (
-                  <Chip active onClick={() => setMaterial("")}>
-                    {material} <X className="h-3 w-3 inline ml-1" />
-                  </Chip>
-                )}
-                {rating > 0 && (
-                  <Chip active onClick={() => setRating(0)}>
-                    {rating}★ & up <X className="h-3 w-3 inline ml-1" />
-                  </Chip>
-                )}
+                <Chip active onClick={() => setMaterial("")}>
+                  {material} <X className="h-3 w-3 inline ml-1" />
+                </Chip>
               </div>
             )}
 
