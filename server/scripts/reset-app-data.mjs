@@ -116,10 +116,18 @@ async function main() {
   // than half-wiped. Children are deleted before their parents throughout.
   await prisma.$transaction(
     async (tx) => {
+      // --- Returns / recycling / points -------------------------------------
+      // Before refunds (Refund.returnRequestId) and before users.
+      await tx.returnFile.deleteMany({});
+      await tx.returnStatusHistory.deleteMany({});
+      await tx.refund.deleteMany({});
+      await tx.returnRequest.deleteMany({});
+      await tx.pointsLedger.deleteMany({});
+      // RecycleRule rows are business configuration — kept, like the catalog.
+
       // --- Commerce -------------------------------------------------------
       await tx.shipmentEvent.deleteMany({});
       await tx.shipment.deleteMany({});
-      await tx.refund.deleteMany({});
       await tx.payment.deleteMany({});
       await tx.invoice.deleteMany({});
       await tx.orderStatusHistory.deleteMany({});

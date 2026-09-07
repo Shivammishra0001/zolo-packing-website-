@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -16,6 +16,7 @@ import {
 import { useToast } from "@/components/ui/Toast";
 import { rfqApi, fileToUploadPayload } from "@/lib/api/rfq";
 import { describeApiError } from "@/lib/api/client";
+import { addressApi } from "@/lib/api/commerce";
 import {
   useRfqCart,
   updateRfqQuantity,
@@ -142,6 +143,27 @@ export default function RfqPage() {
   const [notes, setNotes] = useState("");
   const [requiredBy, setRequiredBy] = useState("");
   const [ship, setShip] = useState({ city: "", state: "", postalCode: "", country: "India" });
+  const shipPrefilled = useRef(false);
+
+  // Prefill delivery from the buyer's saved DEFAULT address (once, and only
+  // while the fields are still untouched — never overwriting what they typed).
+  // The RFQ stores its own snapshot; the saved address is not modified.
+  useEffect(() => {
+    if (shipPrefilled.current) return;
+    shipPrefilled.current = true;
+    addressApi
+      .list()
+      .then((list) => {
+        const def = list.find((a) => a.isDefault) ?? list[0];
+        if (!def) return;
+        setShip((s) =>
+          s.city || s.state || s.postalCode
+            ? s
+            : { city: def.city, state: def.state, postalCode: def.postalCode, country: def.country || "India" },
+        );
+      })
+      .catch(() => {/* guest or offline — the fields just start empty */});
+  }, []);
   const [submitting, setSubmitting] = useState(false);
   // Set when the draft was created but final submission failed — retry skips recreation.
   const [pendingDraftId, setPendingDraftId] = useState<string | null>(null);

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useBuyerProducts } from "../lib/products";
 import { ProductCard } from "../components/NewProductCard";
+import { PackagingCategorySection } from "../components/packaging/PackagingCategorySection";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import heroVideo from "../../images/banner-video .mp4";
 import heroBg2 from "../../images/herobg-2.png";
@@ -33,8 +34,6 @@ const benefits = [
   { icon: Headphones, title: "24/7 support", desc: "Expert help anytime" },
 ];
 
-// Demo categories removed. Empty until real categories are added.
-const categories: { id: string; name: string; slug: string; icon: string; count: number; image: string }[] = [];
 
 
 const processSteps = [
@@ -214,55 +213,9 @@ export default function Home() {
 
     
 
-      {/* CATEGORIES */}
-      <section className="py-20 bg-white">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="flex items-end justify-between flex-wrap gap-4 mb-10">
-            <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600 mb-3">
-                <span className="inline-block h-1 w-6 rounded-full bg-primary-500 mr-2" />
-                Categories
-              </div>
-              <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-dark-900 leading-[1.05]">
-                Shop by <span className="grad-text">packaging type</span>
-              </h2>
-              <p className="mt-3 text-lg text-dark-500">Explore our full catalog of premium packaging solutions</p>
-            </div>
-            <Link to="/categories" className="text-sm font-bold text-dark-900 hover:text-primary-600 inline-flex items-center gap-1">
-              View all <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {categories.map((c, i) => (
-              <motion.div
-                key={c.id}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.05 }}
-              >
-                <Link
-                  to={`/products?category=${c.slug}`}
-                  className="group block relative rounded-2xl overflow-hidden card-shadow card-shadow-hover bg-white border border-dark-100 aspect-[4/5] flex flex-col"
-                >
-                  <div className="flex-1 bg-white p-4 flex items-center justify-center overflow-hidden">
-                    <img
-                      src={c.image}
-                      alt={c.name}
-                      className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
-                    />
-                  </div>
-                  <div className="p-4 bg-dark-50 border-t border-dark-100 z-10 text-center">
-                    <div className="text-dark-900 font-display font-bold text-sm leading-tight group-hover:text-primary-600 transition-colors">{c.name}</div>
-                    <div className="text-dark-500 text-[10px] mt-1">{c.count} products</div>
-                  </div>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* CATEGORIES — premium circular showcase, API-driven (see
+          components/packaging/PackagingCategorySection). */}
+      <PackagingCategorySection />
 
       {/* BESTSELLERS */}
       <section className="py-20 bg-dark-50">

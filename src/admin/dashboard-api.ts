@@ -82,6 +82,27 @@ export function useAdminQuery<T>(path: string, pollMs = 20_000): QueryState<T> &
 
 export const useAdminDashboard = (pollMs = 20_000) => useAdminQuery<AdminDashboard>("/admin/dashboard", pollMs);
 
+// ---- Bulk catalog import history -----------------------------------------
+
+export interface CatalogImportRow {
+  id: string; fileName: string | null; fileSizeBytes: number | null; mode: string; status: string; actor: string;
+  totalRows: number; created: number; updated: number; skipped: number; failed: number;
+  imagesMatched: number; errorCount: number; warningCount: number;
+  startedAt: string; completedAt: string | null;
+}
+export interface CatalogImportError {
+  id: string; rowNumber: number | null; sku: string | null; level: string; field: string | null; message: string;
+}
+export interface CatalogImportDetail extends CatalogImportRow {
+  errors: CatalogImportError[];
+}
+
+export const useCatalogImports = () =>
+  useAdminQuery<{ imports: CatalogImportRow[]; total: number }>("/admin/catalog/imports?take=100", 0);
+
+export const useCatalogImport = (id: string | null) =>
+  useAdminQuery<CatalogImportDetail>(id ? `/admin/catalog/imports/${id}` : "", 0);
+
 // ---- In-app notifications (the bell) --------------------------------------
 
 export interface AppNotificationRow {
@@ -168,6 +189,13 @@ export interface AdminCustomerDetail extends AdminCustomer {
   firstName: string; lastName: string | null;
   cancelledOrders: number; addressCount: number;
   averageOrderMinor: number;
+  /** Last profile change — proves admin reads the live row, not a copy. */
+  updatedAt: string;
+}
+
+export interface AdminCustomerRfq {
+  id: string; rfqNumber: string; status: string;
+  itemCount: number; quotationCount: number; createdAt: string;
 }
 
 export const useAdminCustomers = (search = "", limit = 100) =>
@@ -182,6 +210,7 @@ export const useAdminCustomer = (id: string | null) =>
     orders: AdminCustomerOrder[];
     payments: AdminCustomerPayment[];
     addresses: AdminCustomerAddress[];
+    rfqs: { total: number; recent: AdminCustomerRfq[] };
   }>(id ? `/admin/customers/${id}` : "", id ? 30_000 : 0);
 
 export const useAdminFinance = () =>

@@ -463,12 +463,12 @@ export async function customerDetail(userId) {
     where: { id: userId },
     select: {
       id: true, email: true, firstName: true, lastName: true, phone: true,
-      isActive: true, createdAt: true, lastLoginAt: true, role: true,
+      isActive: true, createdAt: true, updatedAt: true, lastLoginAt: true, role: true,
     },
   });
   if (!user) return null;
 
-  const [orders, addresses, agg, payments, membership, cancelledAgg] = await Promise.all([
+  const [orders, addresses, agg, payments, membership, cancelledAgg, rfqs, rfqCount] = await Promise.all([
     prisma.order.findMany({
       where: { userId }, orderBy: { placedAt: "desc" }, take: 50,
       select: {
@@ -498,6 +498,17 @@ export async function customerDetail(userId) {
       where: { userId }, select: { organization: { select: { id: true, name: true } } },
     }),
     prisma.order.aggregate({ where: { userId, status: "CANCELLED" }, _count: true }),
+    // RFQs + quotations, so the customer page shows their B2B activity too.
+    prisma.rfq.findMany({
+      where: { userId, status: { not: "DRAFT" } },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        id: true, rfqNumber: true, status: true, createdAt: true,
+        _count: { select: { items: true, quotations: true } },
+      },
+    }),
+    prisma.rfq.count({ where: { userId, status: { not: "DRAFT" } } }),
   ]);
 
   const paidMinor = payments
@@ -519,7 +530,7 @@ export async function customerDetail(userId) {
       name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email,
       firstName: user.firstName, lastName: user.lastName,
       email: user.email, phone: user.phone, isActive: user.isActive,
-      createdAt: user.createdAt, lastLoginAt: user.lastLoginAt,
+      createdAt: user.createdAt, updatedAt: user.updatedAt, lastLoginAt: user.lastLoginAt,
       company: membership?.organization?.name ?? null,
       city: defaultAddress?.city ?? latestShip?.shipCity ?? null,
       state: defaultAddress?.state ?? latestShip?.shipState ?? null,
@@ -549,6 +560,17 @@ export async function customerDetail(userId) {
         .reduce((s, r) => s + r.amountMinor, 0),
     })),
     addresses,
+    rfqs: {
+      total: rfqCount,
+      recent: rfqs.map((r) => ({
+        id: r.id,
+        rfqNumber: r.rfqNumber,
+        status: r.status,
+        itemCount: r._count.items,
+        quotationCount: r._count.quotations,
+        createdAt: r.createdAt,
+      })),
+    },
   };
 }
 

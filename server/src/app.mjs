@@ -15,6 +15,7 @@ import { adminRouter } from "./routes/admin.mjs";
 import { notificationsRouter } from "./routes/notifications.mjs";
 import { cartRouter } from "./routes/cart.mjs";
 import { rfqRouter, quotationRouter, adminRfqRouter, sellerRfqRouter } from "./routes/rfq.mjs";
+import { returnsRouter, adminReturnsRouter } from "./routes/returns.mjs";
 import { addressRouter } from "./routes/addresses.mjs";
 import { orderRouter } from "./routes/orders.mjs";
 
@@ -99,7 +100,13 @@ export function createApp() {
       }),
     ),
   );
-  app.use(express.json({ limit: "15mb" })); // base64 image/document payloads
+  // Body cap for base64 image/document payloads and chunked catalog-import
+  // batches. The bulk importer parses the ZIP in the BROWSER and sends the
+  // server small chunks (one image per /uploads call; product rows in batches),
+  // so this never has to hold a whole 500 MB catalog — 60 MB is generous
+  // headroom for one image (~13 MB base64) or a batch of product rows.
+  // Overflow surfaces as HTTP 413 (see errorHandler).
+  app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "60mb" }));
   app.use("/uploads", express.static(UPLOADS_PATH, { maxAge: "7d", immutable: true }));
 
   const API = "/api/v1";
@@ -154,6 +161,9 @@ export function createApp() {
   app.use(`${API}/rfqs`, rfqRouter);
   app.use(`${API}/quotations`, quotationRouter);
   app.use(`${API}/admin/rfqs`, adminRfqRouter);
+  // Returns & recycling: customer-created, admin-processed.
+  app.use(`${API}/returns`, authenticate, requireBuyer, returnsRouter);
+  app.use(`${API}/admin/returns`, authenticate, requireAdmin, adminReturnsRouter);
 
   app.use(`${API}/admin`, authenticate, requireAdmin, adminRouter);
 

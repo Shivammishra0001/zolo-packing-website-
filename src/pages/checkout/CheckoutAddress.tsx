@@ -5,6 +5,8 @@ import { useToast } from "../../components/ui/Toast";
 import { CheckoutSteps } from "../CartPage";
 import { addressApi, type Address, type AddressInput } from "../../lib/api/commerce";
 import { useCheckout } from "./checkout-context";
+import { useAuthSession } from "../../components/auth/AuthContext";
+import { INDIAN_STATES } from "../../lib/auth/constants";
 
 const EMPTY: AddressInput = {
   kind: "shipping", name: "", phone: "", line1: "", line2: "", city: "", state: "",
@@ -14,10 +16,17 @@ const EMPTY: AddressInput = {
 export default function CheckoutAddress() {
   const nav = useNavigate();
   const toast = useToast();
+  const { user } = useAuthSession();
   const { shippingAddressId, setShippingAddressId } = useCheckout();
   const [addresses, setAddresses] = useState<Address[] | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<AddressInput>(EMPTY);
+  // Prefill the contact fields from the signed-in profile — a saved profile
+  // means not retyping your own name and phone at checkout.
+  const [form, setForm] = useState<AddressInput>({
+    ...EMPTY,
+    name: [user?.firstName, user?.lastName].filter(Boolean).join(" "),
+    phone: user?.phone ?? "",
+  });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -51,8 +60,8 @@ export default function CheckoutAddress() {
     setSaving(true);
     try {
       const created = await addressApi.create({ ...form, phone: form.phone.replace(/\D/g, "").slice(-10) });
-      toast.success("Address saved", "");
-      setForm(EMPTY);
+      toast.success("Address saved successfully.");
+      setForm({ ...EMPTY, name: [user?.firstName, user?.lastName].filter(Boolean).join(" "), phone: user?.phone ?? "" });
       setShowForm(false);
       setShippingAddressId(created.id);
       await load();
@@ -129,7 +138,18 @@ export default function CheckoutAddress() {
               <Field label="Address line 1" error={errors.line1} full><input value={form.line1} onChange={set("line1")} className="inp" /></Field>
               <Field label="Address line 2 (optional)" full><input value={form.line2 ?? ""} onChange={set("line2")} className="inp" /></Field>
               <Field label="City" error={errors.city}><input value={form.city} onChange={set("city")} className="inp" /></Field>
-              <Field label="State" error={errors.state}><input value={form.state} onChange={set("state")} className="inp" /></Field>
+              <Field label="State" error={errors.state}>
+                <select
+                  value={form.state}
+                  onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
+                  className="inp bg-white"
+                >
+                  <option value="">Select state…</option>
+                  {INDIAN_STATES.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
               <Field label="Pincode" error={errors.postalCode}><input value={form.postalCode} onChange={set("postalCode")} className="inp" placeholder="6-digit" /></Field>
               <label className="col-span-full mt-1 flex items-center gap-2 text-sm text-dark-600">
                 <input type="checkbox" checked={!!form.isDefault} onChange={(e) => setForm((f) => ({ ...f, isDefault: e.target.checked }))} className="accent-primary-600" />

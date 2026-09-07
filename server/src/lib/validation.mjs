@@ -179,6 +179,25 @@ export const suspendSchema = z.object({ reason: z.string().min(1).max(1000) });
 const PINCODE_RE = /^[1-9][0-9]{5}$/; // Indian 6-digit pincode
 const MOBILE_RE = /^[6-9]\d{9}$/; // Indian mobile (normalized digits)
 
+// Self-service profile update (PATCH /auth/me). Every field optional — the
+// service only touches what is present. Phone accepts common Indian formats;
+// the service normalizes to the last 10 digits before the uniqueness check.
+export const profileUpdateSchema = z
+  .object({
+    firstName: z.string().trim().min(1, "First name is required").max(80).optional(),
+    lastName: z.string().trim().max(80).nullable().optional(),
+    email: z.string().trim().email("Enter a valid email").max(200).optional(),
+    phone: z
+      .union([z.string().trim().regex(/^(\+?91[\s-]?)?[6-9]\d{9}$/, "Enter a valid Indian mobile number"), z.null()])
+      .optional(),
+  })
+  .refine((o) => Object.values(o).some((v) => v !== undefined), { message: "Nothing to update" });
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: z.string().min(8, "New password must be at least 8 characters").max(100),
+});
+
 export const addToCartSchema = z.object({
   productId: z.string().min(1),
   variant: z.string().max(200).optional().nullable(),

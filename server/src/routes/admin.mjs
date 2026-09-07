@@ -11,9 +11,21 @@ import * as inventory from "../services/inventory.mjs";
 import * as pricing from "../services/pricing.mjs";
 import * as payouts from "../services/payouts.mjs";
 import * as cms from "../services/cms.mjs";
+import * as catalogImports from "../services/catalog-imports.mjs";
 import { z } from "zod";
 
 export const adminRouter = Router();
+
+// ---- Bulk catalog import history (admin-only; Phase 14) ------------------
+adminRouter.get("/catalog/imports", wrap(async (req, res) => {
+  ok(res, await catalogImports.listImports({ take: req.query.take, skip: req.query.skip }));
+}));
+
+adminRouter.get("/catalog/imports/:id", wrap(async (req, res) => {
+  const found = await catalogImports.getImport(req.params.id);
+  if (!found) throw notFound("Import not found");
+  ok(res, found);
+}));
 
 // ---- AI product generation from existing images (admin only) ----
 adminRouter.get("/ai/images", wrap(async (_req, res) => ok(res, { images: aiGen.scanImages() })));

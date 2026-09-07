@@ -55,8 +55,10 @@ export const ORDER_NEXT: Record<string, string[]> = {
   PACKED: ["SHIPPED", "CANCELLED"],
   SHIPPED: ["OUT_FOR_DELIVERY"],
   OUT_FOR_DELIVERY: ["DELIVERED"],
-  DELIVERED: ["RETURN_REQUESTED"],
-  RETURN_REQUESTED: ["RETURNED"],
+  // Return statuses are NOT offered here: returns are customer-initiated and
+  // the order status follows the Returns & Recycling workflow automatically.
+  DELIVERED: [],
+  RETURN_REQUESTED: [],
   RETURNED: [],
   CANCELLED: [],
 };

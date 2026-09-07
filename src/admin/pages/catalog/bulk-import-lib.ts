@@ -9,13 +9,16 @@ import type { CatalogProduct, ProductStatus } from "../../types";
 // ============================================================
 
 // ---------- Limits ----------
+// The ZIP is parsed IN THE BROWSER (fflate), so these are the real gates — the
+// backend never receives the archive, only base64 image chunks + JSON product
+// rows, which is why a 500 MB catalog never sits in server memory.
 export const LIMITS = {
-  SPREADSHEET_MAX_BYTES: 10 * 1024 * 1024, // 10 MB
-  ZIP_MAX_BYTES: 50 * 1024 * 1024, // 50 MB
-  ZIP_UNCOMPRESSED_MAX_BYTES: 200 * 1024 * 1024, // zip-bomb guard
-  IMAGE_MAX_BYTES: 5 * 1024 * 1024, // per image
-  MAX_PRODUCTS: 2000,
-  MAX_IMAGES: 500,
+  SPREADSHEET_MAX_BYTES: 25 * 1024 * 1024, // 25 MB (a plain xlsx/csv)
+  ZIP_MAX_BYTES: 500 * 1024 * 1024, // 500 MB catalog ZIP (xlsx + images)
+  ZIP_UNCOMPRESSED_MAX_BYTES: 5 * 1024 * 1024 * 1024, // 5 GB zip-bomb guard
+  IMAGE_MAX_BYTES: 10 * 1024 * 1024, // per image
+  MAX_PRODUCTS: 25_000,
+  MAX_IMAGES: 25_000,
 } as const;
 
 export const IMAGE_EXTS = ["jpg", "jpeg", "png", "webp"] as const;

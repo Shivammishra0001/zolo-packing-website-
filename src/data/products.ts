@@ -37,6 +37,8 @@ export type Category = {
   slug: string;
   icon: string; // emoji
   count: number;
+  /** Representative product image (transparent PNG/WebP) or null. */
+  image?: string | null;
   subcategories: SubCategory[];
 };
 

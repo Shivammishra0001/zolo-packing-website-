@@ -4,6 +4,7 @@ import {
   Megaphone,
   Package,
   ReceiptText,
+  Recycle,
   ScrollText,
   Settings,
   ShoppingCart,
@@ -45,6 +46,7 @@ const NAV_GROUPS: NavGroup[] = [
       // The Quotations page itself shows live pending counts.
       { to: "/admin/quotes", label: "Quotations (RFQ)", icon: FileText },
       { to: "/admin/orders", label: "Orders", icon: ShoppingCart },
+      { to: "/admin/returns", label: "Returns & Recycling", icon: Recycle },
       { to: "/admin/catalog", label: "Product Catalog", icon: Package },
       { to: "/admin/shipping", label: "Shipping", icon: Truck },
       { to: "/admin/finance", label: "Finance", icon: Wallet },

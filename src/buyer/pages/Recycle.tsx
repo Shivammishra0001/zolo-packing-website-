@@ -1,128 +1,227 @@
-import { useState } from "react";
-import { Download, Eye, Leaf, Recycle as RecycleIcon, Ticket } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { CheckCircle2, Circle, Coins, Download, Leaf, Paperclip, RotateCcw, XCircle } from "lucide-react";
+import { Badge, Button, PageHeader, Tabs } from "@/admin/components/ui";
+import { EmptyState, ErrorState, ListSkeleton, Panel } from "@/admin/components/Panel";
+import { formatDateTime, inrMinor } from "@/admin/format";
 import { useToast } from "@/components/ui/Toast";
-import { EmptyState, Panel } from "@/admin/components/Panel";
-import { Badge, Button, Dialog, KeyValue, PageHeader } from "@/admin/components/ui";
-import { formatDate, inr } from "@/admin/format";
-import { useBuyerRecycle, type RecycleEntry } from "../data";
+import { describeApiError, saveBlob } from "@/lib/api/client";
+import {
+  returnsApi,
+  prettyReturnStatus,
+  RETURN_REASON_LABELS,
+  RETURN_CONDITION_LABELS,
+  type ReturnRequest,
+  type ReturnStatus,
+} from "@/lib/api/returns";
 
-const STATUS: Record<RecycleEntry["status"], { label: string; tone: "info" | "success" | "warning" }> = {
-  pickup: { label: "Pickup Scheduled", tone: "info" },
-  coupon: { label: "Coupon Issued", tone: "success" },
-  processing: { label: "Processing", tone: "warning" },
+// ============================================================
+// My Returns & Recycling — every request the customer has raised, with a
+// live status timeline, plus the reward-points balance from the immutable
+// ledger. Requests are created from Order Details → item → Return / Recycle.
+// ============================================================
+
+const TONE: Partial<Record<ReturnStatus, "success" | "warning" | "danger" | "info" | "neutral">> = {
+  SUBMITTED: "warning",
+  UNDER_REVIEW: "info",
+  APPROVED: "info",
+  REJECTED: "danger",
+  CANCELLED: "neutral",
+  REFUNDED: "success",
+  REPLACEMENT_DELIVERED: "success",
+  POINTS_CREDITED: "success",
+  CLOSED: "success",
 };
 
-export default function Recycle() {
-  const toast = useToast();
-  const rows = useBuyerRecycle();
-  const [view, setView] = useState<RecycleEntry | null>(null);
+// The expected milestones per branch — used to render the ○/✓ timeline.
+function expectedFlow(r: ReturnRequest): ReturnStatus[] {
+  const head: ReturnStatus[] = ["SUBMITTED", "UNDER_REVIEW", "APPROVED"];
+  if (r.status === "REJECTED") return ["SUBMITTED", "UNDER_REVIEW", "REJECTED"];
+  if (r.status === "CANCELLED") return ["SUBMITTED", "CANCELLED"];
+  if (r.resolution === "REFUND") return [...head, "REFUND_PROCESSING", "REFUNDED"];
+  if (r.resolution === "REPLACEMENT") return [...head, "REPLACEMENT_PROCESSING", "REPLACEMENT_SHIPPED", "REPLACEMENT_DELIVERED"];
+  if (r.resolution === "RECYCLE" || r.type === "RECYCLE")
+    return [...head, "PICKUP_SCHEDULED", "RECEIVED", "INSPECTED", "RECYCLE_PROCESSING", "RECYCLED", "POINTS_CREDITED"];
+  return head;
+}
 
-  const totalWeight = rows.reduce((s, r) => s + r.weightKg, 0);
-  const coupons = rows.filter((r) => r.status === "coupon").length;
+function Timeline({ r }: { r: ReturnRequest }) {
+  const reached = new Map(r.timeline.map((t) => [t.status, t.at]));
+  return (
+    <ol className="mt-3 space-y-1.5">
+      {expectedFlow(r).map((s) => {
+        const at = reached.get(s);
+        const failed = s === "REJECTED" || s === "CANCELLED";
+        return (
+          <li key={s} className="flex items-center gap-2 text-sm">
+            {at ? (
+              failed ? <XCircle className="h-4 w-4 shrink-0 text-red-500" aria-hidden /> : <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" aria-hidden />
+            ) : (
+              <Circle className="h-4 w-4 shrink-0 erp-text-faint" aria-hidden />
+            )}
+            <span className={at ? "font-semibold erp-text" : "erp-text-faint"}>{prettyReturnStatus(s)}</span>
+            <span className="ml-auto text-xs erp-text-faint">{at ? formatDateTime(at) : "Pending"}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function RequestCard({ r, onCancelled }: { r: ReturnRequest; onCancelled: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const cancellable = r.status === "SUBMITTED" || r.status === "UNDER_REVIEW";
+
+  const cancel = async () => {
+    if (!window.confirm(`Cancel ${r.requestNumber}?`)) return;
+    setBusy(true);
+    try {
+      await returnsApi.cancel(r.id);
+      toast.success("Request cancelled");
+      onCancelled();
+    } catch (e) {
+      toast.error("Couldn't cancel", describeApiError(e).message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <div className="mx-auto max-w-[1200px] space-y-5">
-      <PageHeader
-        breadcrumb={[{ label: "Account", to: "/account/dashboard" }, { label: "Recycle" }]}
-        title="Recycle"
-        subtitle="Return your packaging for pickup and earn coupons."
-      />
-
-      {/* Eco summary */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {[
-          { label: "Total Recycled", value: `${totalWeight} kg`, icon: Leaf, tone: "text-emerald-600 dark:text-emerald-400" },
-          { label: "Pickups", value: String(rows.length), icon: RecycleIcon, tone: "erp-text" },
-          { label: "Coupons Earned", value: String(coupons), icon: Ticket, tone: "text-primary-600 dark:text-primary-400" },
-        ].map((c) => (
-          <div key={c.label} className="rounded-xl border erp-border erp-surface card-shadow p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wide erp-text-muted">{c.label}</span>
-              <c.icon className="h-4 w-4 erp-text-faint" aria-hidden />
-            </div>
-            <p className={`mt-2 font-display text-xl font-extrabold ${c.tone}`}>{c.value}</p>
-          </div>
-        ))}
+    <div className="rounded-xl border erp-border erp-surface p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          {r.type === "RECYCLE" ? <Leaf className="h-4 w-4 text-emerald-500" aria-hidden /> : <RotateCcw className="h-4 w-4 text-primary-500" aria-hidden />}
+          <span className="font-mono text-sm font-bold erp-text">{r.requestNumber}</span>
+          <Badge tone={TONE[r.status] ?? "info"}>{prettyReturnStatus(r.status)}</Badge>
+        </div>
+        <span className="text-xs erp-text-faint">{formatDateTime(r.createdAt)}</span>
       </div>
 
-      <Panel bodyClassName="p-0">
-        {rows.length === 0 ? (
-          <EmptyState
-            icon={RecycleIcon}
-            title="No recycle pickups yet"
-            message="Once your orders are delivered, you can schedule a packaging pickup and earn coupons."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <caption className="sr-only">Recycle pickups</caption>
-              <thead>
-                <tr className="border-b erp-border text-left">
-                  {["Recycle ID", "Order", "Date", "Weight", "Order Amount", "Status", "Invoice", "Actions"].map((h, i) => (
-                    <th key={h} scope="col" className={`whitespace-nowrap px-3 py-2.5 text-xs font-bold uppercase tracking-wide erp-text-faint ${i === 7 ? "text-right" : ""}`}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const m = STATUS[r.status];
-                  return (
-                    <tr key={r.id} className="border-b erp-border-soft last:border-0 erp-hover">
-                      <td className="px-3 py-2.5 font-mono text-xs font-semibold erp-text">{r.id}</td>
-                      <td className="px-3 py-2.5 font-mono text-xs text-primary-600 dark:text-primary-400">{r.orderId}</td>
-                      <td className="whitespace-nowrap px-3 py-2.5 erp-text-muted">{formatDate(r.date)}</td>
-                      <td className="px-3 py-2.5 tabular-nums erp-text">{r.weightKg} kg</td>
-                      <td className="whitespace-nowrap px-3 py-2.5 tabular-nums erp-text">{inr(r.orderAmount)}</td>
-                      <td className="px-3 py-2.5"><Badge tone={m.tone} dot>{m.label}</Badge></td>
-                      <td className="px-3 py-2.5"><span className="font-mono text-xs erp-text-muted">REC-INV-{r.id.slice(-4)}</span></td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center justify-end gap-0.5">
-                          <button onClick={() => setView(r)} aria-label={`View ${r.id}`} className="flex h-9 w-9 items-center justify-center rounded-lg erp-text-muted hover:erp-surface-2">
-                            <Eye className="h-4 w-4" aria-hidden />
-                          </button>
-                          <button onClick={() => toast.success("Receipt", `Receipt for ${r.id} downloading…`)} aria-label="Download receipt" className="flex h-9 w-9 items-center justify-center rounded-lg erp-text-muted hover:erp-surface-2">
-                            <Download className="h-4 w-4" aria-hidden />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Panel>
+      <p className="mt-2 text-sm erp-text">
+        <span className="font-semibold">{r.item?.productName}</span>
+        <span className="erp-text-muted"> · {r.quantity.toLocaleString("en-IN")} unit(s) · order </span>
+        <Link to={`/account/orders/${r.order?.id}`} className="font-semibold text-primary-600 hover:underline dark:text-primary-400">
+          {r.order?.orderNumber}
+        </Link>
+      </p>
+      <p className="mt-0.5 text-xs erp-text-muted">
+        {RETURN_REASON_LABELS[r.reason] ?? r.reason} · {RETURN_CONDITION_LABELS[r.condition] ?? r.condition}
+      </p>
 
-      <Dialog
-        open={view !== null}
-        onClose={() => setView(null)}
-        title="Recycle pickup"
-        description={view ? `${view.id} · Order ${view.orderId}` : ""}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setView(null)}>Close</Button>
-            <Button variant="secondary" icon={Download} onClick={() => { toast.success("Receipt", "Receipt downloading…"); setView(null); }}>
-              Download Receipt
-            </Button>
-          </>
-        }
-      >
-        {view && (
-          <KeyValue
-            items={[
-              { label: "Recycle ID", value: view.id },
-              { label: "Order", value: view.orderId },
-              { label: "Date", value: formatDate(view.date) },
-              { label: "Weight", value: `${view.weightKg} kg` },
-              { label: "Order Amount", value: inr(view.orderAmount) },
-              { label: "Status", value: <Badge tone={STATUS[view.status].tone}>{STATUS[view.status].label}</Badge> },
-            ]}
-          />
+      {r.status === "REJECTED" && r.rejectionReason && (
+        <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-300">
+          Rejected: {r.rejectionReason}
+        </p>
+      )}
+      {r.refund && (
+        <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+          Refund {r.refund.refundNumber}: {inrMinor(r.refund.amountMinor)}{r.refund.processedAt ? ` · ${formatDateTime(r.refund.processedAt)}` : ""}
+        </p>
+      )}
+      {r.pointsAwarded != null && (
+        <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+          <Coins className="h-3.5 w-3.5" aria-hidden /> {r.pointsAwarded.toLocaleString("en-IN")} ZP points credited
+          {r.recycle?.acceptedQuantity != null && ` on ${r.recycle.acceptedQuantity.toLocaleString("en-IN")} accepted unit(s)`}
+        </p>
+      )}
+
+      {open && <Timeline r={r} />}
+      {open && r.files.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {r.files.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() =>
+                returnsApi.downloadFile(r.id, f.id).then((b) => saveBlob(b, f.fileName)).catch((e) => toast.error("Download failed", describeApiError(e).message))
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg border erp-border px-2.5 py-1.5 text-xs font-semibold erp-text-muted hover:erp-surface-2"
+            >
+              <Paperclip className="h-3.5 w-3.5" aria-hidden /> {f.fileName}
+              <Download className="h-3 w-3" aria-hidden />
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-3 flex gap-2">
+        <Button size="sm" variant="secondary" onClick={() => setOpen(!open)}>
+          {open ? "Hide timeline" : "View timeline"}
+        </Button>
+        {cancellable && (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void cancel()}>
+            Cancel request
+          </Button>
         )}
-      </Dialog>
+      </div>
+    </div>
+  );
+}
+
+export default function Recycle() {
+  const [tab, setTab] = useState<"all" | "RETURN" | "RECYCLE">("all");
+  const [requests, setRequests] = useState<ReturnRequest[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [points, setPoints] = useState<{ balance: number } | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setError(null);
+      const [res, pts] = await Promise.all([returnsApi.list(), returnsApi.points()]);
+      setRequests(res.requests);
+      setPoints(pts);
+    } catch (e) {
+      setRequests(null);
+      setError(describeApiError(e).message);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const visible = (requests ?? []).filter((r) => tab === "all" || r.type === tab);
+
+  return (
+    <div className="mx-auto max-w-[1000px] space-y-5">
+      <PageHeader
+        breadcrumb={[{ label: "Account", to: "/account/dashboard" }, { label: "Returns & Recycling" }]}
+        title="My Returns & Recycling"
+        subtitle="Track your return and recycling requests. New requests start from Orders → order → Return / Recycle."
+        actions={
+          points && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 py-1.5 text-sm font-bold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+              <Coins className="h-4 w-4" aria-hidden /> {points.balance.toLocaleString("en-IN")} ZP points
+            </span>
+          )
+        }
+      />
+
+      <Tabs
+        tabs={[
+          { key: "all", label: "All" },
+          { key: "RETURN", label: "Returns" },
+          { key: "RECYCLE", label: "Recycling" },
+        ]}
+        active={tab}
+        onChange={(k) => setTab(k as typeof tab)}
+      />
+
+      {requests === null && !error && <Panel><ListSkeleton rows={3} /></Panel>}
+      {error && <Panel><ErrorState message={error} onRetry={() => void load()} /></Panel>}
+      {requests !== null && visible.length === 0 && (
+        <Panel>
+          <EmptyState
+            icon={Leaf}
+            title={tab === "RECYCLE" ? "No recycling requests yet" : tab === "RETURN" ? "No return requests yet" : "No requests yet"}
+            message="Open a delivered order and choose Return / Recycle on an item to raise a request."
+            action={<Link to="/account/orders" className="rounded-lg bg-primary-500 px-4 py-2 text-sm font-bold text-white hover:bg-primary-600">Go to my orders</Link>}
+          />
+        </Panel>
+      )}
+      {visible.map((r) => (
+        <RequestCard key={r.id} r={r} onCancelled={() => void load()} />
+      ))}
     </div>
   );
 }

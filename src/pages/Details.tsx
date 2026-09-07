@@ -30,6 +30,7 @@ import { useToast } from "../components/ui/Toast";
 import { Button, SectionHeader } from "../components/UI";
 import { ProductCard } from "../components/NewProductCard";
 import PackagingMockup from "../components/PackagingMockup";
+import { ProductGallery } from "../components/product/ProductGallery";
 
 const typeToMockup: Record<string, "mailer" | "shipping" | "pizza" | "cosmetic" | "pouch" | "jar" | "tube" | "rigid" | "tuck" | "bag"> = {
   print: "mailer", food: "pizza", pouches: "pouch", jars: "jar", tubes: "tube",
@@ -128,7 +129,21 @@ export default function Details() {
   const wishlisted = has(product._id || product.id);
   const related = allProducts.filter((p) => p.category === product.category && p.slug !== product.slug).slice(0, 4);
   const mockupType = typeToMockup[product.category] || "mailer";
-  const hasRealImage = /^(blob:|\/|https?:|data:)/.test(product.image) || /\.(png|jpg|jpeg|webp|svg)$/i.test(product.image);
+
+  // Share via the native share sheet where available; otherwise copy the link.
+  const shareProduct = async () => {
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: product.name, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast.success("Link copied", "Product link copied to your clipboard.");
+      }
+    } catch {
+      /* user dismissed the share sheet — nothing to do */
+    }
+  };
 
   const handleArtwork = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -229,49 +244,50 @@ export default function Details() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <div className="relative aspect-square rounded-3xl bg-gradient-to-br from-dark-50 to-dark-100 overflow-hidden flex items-center justify-center card-shadow-lg p-12">
-              <motion.div
-                key={product.id || product._id}
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.4 }}
-                className="w-full h-full"
+            <ProductGallery
+              images={product.images ?? []}
+              name={product.name}
+              fallback={<PackagingMockup type={mockupType} color={product.accent} className="w-full h-full drop-shadow-xl" />}
+              overlay={
+                <>
+                  {artwork && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <img src={artwork} alt="artwork" className="max-h-32 max-w-32 rounded-xl object-contain opacity-80 shadow-lg" />
+                    </div>
+                  )}
+                  <div className="absolute top-4 left-4 flex gap-2">
+                    {product.bestseller && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary-500 text-white text-[10px] font-bold uppercase tracking-wider shadow-sm">
+                        <Zap className="h-2.5 w-2.5" /> Bestseller
+                      </span>
+                    )}
+                    {product.newArrival && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-wider shadow-sm">
+                        New
+                      </span>
+                    )}
+                  </div>
+                </>
+              }
+            />
+
+            {/* Save / Share row (below the gallery) */}
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                onClick={() => guard(() => toggle(product.id), { label: "save to wishlist" })}
+                aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
+                className="inline-flex items-center gap-2 rounded-full border border-dark-200 px-4 py-2 text-sm font-bold text-dark-700 transition hover:border-primary-400 hover:text-primary-600"
               >
-                {hasRealImage ? (
-                  <img src={product.image} alt={product.name} className="h-full w-full object-contain p-4" />
-                ) : (
-                  <PackagingMockup type={mockupType} color={product.accent} className="w-full h-full drop-shadow-xl" />
-                )}
-              </motion.div>
-
-              {artwork && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <img src={artwork} alt="artwork" className="max-h-32 max-w-32 rounded-xl object-contain opacity-80 shadow-lg" />
-                </div>
-              )}
-
-              <div className="absolute top-4 left-4 flex gap-2">
-                {product.bestseller && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary-500 text-white text-[10px] font-bold uppercase tracking-wider shadow-sm">
-                    <Zap className="h-2.5 w-2.5" /> Bestseller
-                  </span>
-                )}
-                {product.newArrival && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-wider shadow-sm">
-                    New
-                  </span>
-                )}
-              </div>
-
-              <div className="absolute top-4 right-4 flex gap-2">
-                <button onClick={() => guard(() => toggle(product.id), { label: "save to wishlist" })} aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"} className="h-10 w-10 rounded-full bg-white flex items-center justify-center hover:scale-110 transition-all shadow-md">
-                  <Heart className={`h-5 w-5 ${wishlisted ? "fill-primary-500 text-primary-500" : "text-dark-500"}`} />
-                </button>
-                <button className="h-10 w-10 rounded-full bg-white flex items-center justify-center hover:scale-110 transition-all shadow-md">
-                  <Share2 className="h-5 w-5 text-dark-500" />
-                </button>
-              </div>
-
+                <Heart className={`h-4 w-4 ${wishlisted ? "fill-primary-500 text-primary-500" : ""}`} />
+                {wishlisted ? "Saved" : "Save"}
+              </button>
+              <button
+                onClick={shareProduct}
+                aria-label="Share this product"
+                className="inline-flex items-center gap-2 rounded-full border border-dark-200 px-4 py-2 text-sm font-bold text-dark-700 transition hover:border-primary-400 hover:text-primary-600"
+              >
+                <Share2 className="h-4 w-4" /> Share
+              </button>
             </div>
           </motion.div>
 

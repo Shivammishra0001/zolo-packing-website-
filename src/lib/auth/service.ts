@@ -252,6 +252,33 @@ export async function logout(): Promise<void> {
 }
 
 /**
+ * Update the signed-in user's profile. Returns the UPDATED user from the
+ * server response (never an optimistic local copy) and refreshes the cached
+ * user object so every consumer of the session sees the change immediately —
+ * no logout/login required.
+ */
+export async function updateProfile(input: {
+  firstName?: string;
+  lastName?: string | null;
+  email?: string;
+  phone?: string | null;
+}): Promise<AuthUser> {
+  const { request } = await import("../api/client");
+  const data = await request<{ user: BackendUser }>("/auth/me", { method: "PATCH", body: input });
+  const user = toAuthUser(data.user);
+  // Keep the cached copy in sync with the server's answer.
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  return user;
+}
+
+/** Change password. The server verifies the current password and revokes every
+ *  OTHER session; this one stays signed in. */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const { request } = await import("../api/client");
+  await request("/auth/change-password", { method: "POST", body: { currentPassword, newPassword } });
+}
+
+/**
  * Restore the session on page load, following the canonical flow:
  *   1. GET /auth/me with the stored access token.
  *   2. On 401 (access token expired) → POST /auth/refresh, then retry /me.

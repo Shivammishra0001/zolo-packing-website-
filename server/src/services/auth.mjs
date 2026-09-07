@@ -223,6 +223,90 @@ export async function logoutAll(userId) {
   return { revoked: count };
 }
 
+/**
+ * Update the caller's OWN profile (name / phone / email).
+ *
+ * The identity comes from the authenticated session — a user can only ever
+ * update themselves; there is no path to another user's row. Email and phone
+ * stay login identifiers, so uniqueness conflicts answer 409 with the same
+ * codes registration uses (EMAIL_TAKEN / PHONE_TAKEN).
+ */
+export async function updateProfile(userId, { firstName, lastName, email, phone }) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw unauthorized();
+
+  const data = {};
+  if (firstName !== undefined) data.firstName = firstName.trim();
+  if (lastName !== undefined) data.lastName = lastName === null ? null : lastName.trim() || null;
+
+  if (email !== undefined) {
+    const nextEmail = email.trim().toLowerCase();
+    if (nextEmail !== user.email) {
+      const taken = await prisma.user.findUnique({ where: { email: nextEmail }, select: { id: true } });
+      if (taken) throw conflict("An account with this email already exists", "EMAIL_TAKEN");
+      data.email = nextEmail;
+    }
+  }
+
+  if (phone !== undefined) {
+    const nextPhone = phone === null || phone === "" ? null : normalizePhone(phone);
+    if (nextPhone !== user.phone) {
+      if (nextPhone) {
+        const taken = await prisma.user.findUnique({ where: { phone: nextPhone }, select: { id: true } });
+        if (taken) throw conflict("An account with this phone already exists", "PHONE_TAKEN");
+      }
+      data.phone = nextPhone;
+    }
+  }
+
+  const updated = Object.keys(data).length
+    ? await prisma.user.update({ where: { id: userId }, data })
+    : user;
+
+  await recordEvent({
+    eventType: "user.profile.updated",
+    actorId: userId,
+    entityType: "User",
+    entityId: userId,
+    metadata: { fields: Object.keys(data) },
+  });
+
+  return { user: publicUser(updated) };
+}
+
+/**
+ * Change the caller's password. Requires the CURRENT password (a stolen access
+ * token must not be enough to lock the owner out), and revokes every OTHER
+ * session so a compromised device loses access immediately. The caller's own
+ * session stays alive — no forced re-login after changing your own password.
+ */
+export async function changePassword(userId, { currentPassword, newPassword }, currentSessionId) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw unauthorized();
+  if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+    throw unauthorized("Current password is incorrect");
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  const [, revoked] = await prisma.$transaction([
+    prisma.user.update({ where: { id: userId }, data: { passwordHash } }),
+    prisma.session.updateMany({
+      where: { userId, revokedAt: null, ...(currentSessionId ? { id: { not: currentSessionId } } : {}) },
+      data: { revokedAt: new Date() },
+    }),
+  ]);
+
+  await recordEvent({
+    eventType: "user.password.changed",
+    actorId: userId,
+    entityType: "User",
+    entityId: userId,
+    metadata: { otherSessionsRevoked: revoked.count },
+  });
+
+  return { changed: true, otherSessionsRevoked: revoked.count };
+}
+
 export async function me(userId) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw unauthorized();

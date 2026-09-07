@@ -10,7 +10,7 @@ import { put, getUrl, supportedMime } from "../lib/storage.mjs";
 import { badRequest } from "../lib/http.mjs";
 import { normalizeRow, categoryKey as normKey, slugify as normSlug } from "./catalog-normalize.mjs";
 
-export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+export const IMAGE_MAX_BYTES = 10 * 1024 * 1024; // matches the bulk-import per-image cap
 
 /** Canonical form for category comparison: "  BOXES " and "boxes" collapse to one. */
 export const categoryKey = normKey;
@@ -370,7 +370,7 @@ export function storeImage({ name = "image", mime, dataBase64 }) {
     throw badRequest("Image data is not valid base64", "BAD_IMAGE_DATA");
   }
   if (buffer.length === 0) throw badRequest("Image is empty", "EMPTY_IMAGE");
-  if (buffer.length > IMAGE_MAX_BYTES) throw badRequest("Image is larger than 5 MB", "IMAGE_TOO_LARGE");
+  if (buffer.length > IMAGE_MAX_BYTES) throw badRequest(`Image is larger than ${IMAGE_MAX_BYTES / 1024 / 1024} MB`, "IMAGE_TOO_LARGE");
   if (!hasImageMagic(buffer, mime)) {
     throw badRequest("File is not a valid image (content does not match its type)", "CORRUPT_IMAGE");
   }

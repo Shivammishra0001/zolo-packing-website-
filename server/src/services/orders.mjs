@@ -485,6 +485,15 @@ export async function adminOrderStats() {
 }
 
 export async function adminUpdateStatus(adminUser, orderId, { status, note, courier, trackingNumber }) {
+  // Return statuses are driven EXCLUSIVELY by the customer-initiated returns
+  // workflow (services/returns.mjs). The old flow let admins "create" a return
+  // by picking RETURN_REQUESTED here — that inverted the business process.
+  if (status === "RETURN_REQUESTED" || status === "RETURNED") {
+    throw badRequest(
+      "Returns are initiated by the customer and processed in Returns & Recycling — the order status updates automatically",
+      "USE_RETURNS_WORKFLOW",
+    );
+  }
   return prisma.$transaction(async (tx) => {
     const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true, invoice: true } });
     if (!order) throw notFound("Order not found");

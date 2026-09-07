@@ -44,6 +44,7 @@ const TABS: TabItem[] = [
   { key: "orders", label: "Order History" },
   { key: "payments", label: "Payment History" },
   { key: "addresses", label: "Addresses" },
+  { key: "rfqs", label: "RFQs" },
 ];
 
 const dash = <span className="erp-text-faint">—</span>;
@@ -91,7 +92,7 @@ export default function CustomerDetail() {
     );
   }
 
-  const { customer, totals, orders, payments, addresses } = q.data;
+  const { customer, totals, orders, payments, addresses, rfqs } = q.data;
   const title = customer.company || customer.name;
 
   const orderColumns: Column<AdminCustomerOrder>[] = [
@@ -185,7 +186,9 @@ export default function CustomerDetail() {
                 { label: "Average order", value: inrMinor(customer.averageOrderMinor) },
                 { label: "Last order", value: customer.lastOrderAt ? formatDate(customer.lastOrderAt) : dash },
                 { label: "Customer since", value: formatDate(customer.createdAt) },
+                { label: "Last updated", value: customer.updatedAt ? formatDate(customer.updatedAt) : dash },
                 { label: "Last login", value: customer.lastLoginAt ? formatDate(customer.lastLoginAt) : "Never" },
+                { label: "RFQs", value: rfqs?.total ?? 0 },
                 { label: "Status", value: customer.isActive ? "Active" : "Inactive" },
                 { label: "Customer ID", value: customer.id },
               ]}
@@ -243,6 +246,31 @@ export default function CustomerDetail() {
               </div>
             ) : (
               <EmptyState icon={MapPin} title="No saved addresses" message="This customer hasn't saved a delivery address." />
+            ))}
+
+          {tab === "rfqs" &&
+            ((rfqs?.recent.length ?? 0) > 0 ? (
+              <ul className="divide-y erp-border-soft">
+                {rfqs.recent.map((r) => (
+                  <li key={r.id}>
+                    <Link
+                      to={`/admin/quotes/${encodeURIComponent(r.rfqNumber)}`}
+                      className="flex flex-wrap items-center justify-between gap-2 py-3 hover:erp-surface-2 first:pt-0 last:pb-0"
+                    >
+                      <span className="font-mono text-sm font-semibold erp-text">{r.rfqNumber}</span>
+                      <span className="text-xs erp-text-muted">
+                        {r.itemCount} item{r.itemCount === 1 ? "" : "s"} · {r.quotationCount} quotation{r.quotationCount === 1 ? "" : "s"}
+                      </span>
+                      <span className="text-xs erp-text-faint">{formatDate(r.createdAt)}</span>
+                      <Badge tone={r.status === "ACCEPTED" ? "success" : r.status === "QUOTED" ? "info" : "neutral"}>
+                        {r.status.replace(/_/g, " ")}
+                      </Badge>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState icon={Package} title="No RFQs yet" message="This customer hasn't requested a quotation." />
             ))}
         </div>
       </Panel>

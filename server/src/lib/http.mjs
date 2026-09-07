@@ -37,6 +37,11 @@ export function errorHandler(err, _req, res, _next) {
   if (err instanceof HttpError) {
     return res.status(err.status).json({ success: false, error: err.message, code: err.code });
   }
+  // Body larger than the configured limit → 413, not a generic 500. express.json
+  // raises this with type "entity.too.large" / status 413.
+  if (err?.type === "entity.too.large" || err?.status === 413 || err?.statusCode === 413) {
+    return res.status(413).json({ success: false, error: "Upload is too large for a single request", code: "PAYLOAD_TOO_LARGE" });
+  }
   // Prisma known errors
   if (err.code === "P2025") return res.status(404).json({ success: false, error: "Not found", code: "P2025" });
   if (err.code === "P2002") {

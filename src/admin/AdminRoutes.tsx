@@ -10,11 +10,14 @@ import QuotationDetail from "./pages/QuotationDetail";
 import Orders from "./pages/OrdersReal";
 import OrderDetail from "./pages/OrderDetailReal";
 import OrderInvoice from "./pages/OrderInvoice";
+import Returns from "./pages/Returns";
+import ReturnDetail from "./pages/ReturnDetail";
 
 // Catalog
 import Catalog from "./pages/Catalog";
 import ProductDetail from "./pages/ProductDetail";
 import PackagingTemplates from "./pages/PackagingTemplates";
+import ImportHistory from "./pages/ImportHistory";
 
 // Operations
 import Artwork from "./pages/Artwork";
@@ -58,6 +61,8 @@ export default function AdminRoutes() {
         <Route path="orders" element={<Orders />} />
         <Route path="orders/:id" element={<OrderDetail />} />
         <Route path="orders/:id/invoice" element={<OrderInvoice />} />
+        <Route path="returns" element={<Returns />} />
+        <Route path="returns/:id" element={<ReturnDetail />} />
 
         {/* Sellers / Suppliers (real DB-backed onboarding review) */}
         <Route path="sellers" element={<AdminSellers />} />
@@ -65,6 +70,7 @@ export default function AdminRoutes() {
 
         {/* Catalog */}
         <Route path="catalog" element={<Catalog />} />
+        <Route path="catalog/imports" element={<ImportHistory />} />
         <Route path="catalog/:id" element={<ProductDetail />} />
         <Route path="templates" element={<PackagingTemplates />} />
 

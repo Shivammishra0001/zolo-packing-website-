@@ -52,7 +52,7 @@ const iconFor = (name: string): string => CATEGORY_ICON[name.trim().toLowerCase(
 // ---- Canonical tree (server) ----------------------------------------------
 
 interface ApiSub { id: string; name: string; slug: string; productCount: number }
-interface ApiCategory { id: string; name: string; slug: string; productCount: number; subcategories: ApiSub[] }
+interface ApiCategory { id: string; name: string; slug: string; productCount: number; image?: string | null; subcategories: ApiSub[] }
 
 let canonicalTree: Category[] = [];
 let canonicalLoaded = false;
@@ -78,6 +78,7 @@ export async function hydrateCategoryTree(force = false): Promise<void> {
             slug: c.slug,
             icon: iconFor(c.name),
             count: c.productCount,
+            image: c.image ?? null,
             subcategories: c.subcategories
               .filter((s) => s.productCount > 0)
               .map((s) => ({ name: s.name, slug: slugifyCategory(s.name), count: s.productCount })),

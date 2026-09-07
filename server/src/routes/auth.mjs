@@ -1,7 +1,7 @@
 // Auth routes: /api/v1/auth/*
 import { Router } from "express";
 import { ok, wrap } from "../lib/http.mjs";
-import { registerSchema, loginSchema } from "../lib/validation.mjs";
+import { registerSchema, loginSchema, profileUpdateSchema, changePasswordSchema } from "../lib/validation.mjs";
 import * as authService from "../services/auth.mjs";
 import { authenticate } from "../middleware/auth.mjs";
 
@@ -42,4 +42,19 @@ authRouter.post("/logout-all", authenticate, wrap(async (req, res) => {
 
 authRouter.get("/me", authenticate, wrap(async (req, res) => {
   ok(res, await authService.me(req.user.id));
+}));
+
+// Update the caller's OWN profile. Identity comes from the verified session —
+// there is no way to name another user. Returns the updated user so the
+// frontend can refresh its state from the response.
+authRouter.patch("/me", authenticate, wrap(async (req, res) => {
+  const input = profileUpdateSchema.parse(req.body ?? {});
+  ok(res, await authService.updateProfile(req.user.id, input));
+}));
+
+// Change the caller's password. Verifies the CURRENT password and revokes all
+// other sessions; the calling session stays signed in.
+authRouter.post("/change-password", authenticate, wrap(async (req, res) => {
+  const input = changePasswordSchema.parse(req.body ?? {});
+  ok(res, await authService.changePassword(req.user.id, input, req.sessionId));
 }));

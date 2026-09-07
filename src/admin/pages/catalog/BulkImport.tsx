@@ -6,11 +6,13 @@ import {
   Download,
   FileArchive,
   FileSpreadsheet,
+  History,
   ImageOff,
   Upload,
   X,
   XCircle,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { cn } from "@/utils/cn";
 import { useToast } from "@/components/ui/Toast";
 import { Badge, Button, Dialog } from "../../components/ui";
@@ -140,6 +142,9 @@ export function BulkImportButton() {
   const [dragOver, setDragOver] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [importing, setImporting] = useState(false);
+  // Live progress for large imports (thousands of images take minutes).
+  const [progress, setProgress] = useState<{ productsDone: number; productsTotal: number; imagesDone: number; imagesTotal: number } | null>(null);
+  const cancelRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   // One object URL per zip image, shared by preview + import. URLs consumed by
   // imported products stay alive; the rest are revoked on close/reset.
@@ -297,13 +302,26 @@ export function BulkImportButton() {
   const runImport = async () => {
     if (!rows) return;
     setImporting(true);
+    cancelRef.current = false;
+    // Rows that will actually import (errors are skipped) and their total image
+    // count, so the progress bars have real denominators.
+    const importRows = rows.filter((r) => r.status !== "error");
+    const imagesTotal = zip
+      ? importRows.reduce((n, r) => n + (r.imageMatch.primary ? 1 : 0) + r.imageMatch.gallery.length, 0)
+      : 0;
+    setProgress({ productsDone: 0, productsTotal: importRows.length, imagesDone: 0, imagesTotal });
     try {
       let uploaded = 0;
       let localFailed = 0;
+      let cancelled = false;
       const payload: CatalogProduct[] = [];
 
       for (const r of rows) {
         if (r.status === "error") { localFailed++; continue; }
+        // Cancel stops between products — already-uploaded images stay on disk
+        // (harmless orphans) but nothing is written to the catalog.
+        if (cancelRef.current) { cancelled = true; break; }
+        setProgress((p) => (p ? { ...p, productsDone: p.productsDone + 1 } : p));
 
         // ZIP images → uploaded to the server (files on disk, real URLs) so
         // they survive refresh. Never blob:/base64 in the database.
@@ -324,6 +342,7 @@ export function BulkImportButton() {
                 u8ToBase64(img.data),
               );
               uploaded++;
+              setProgress((p) => (p ? { ...p, imagesDone: p.imagesDone + 1 } : p));
               return url;
             } catch {
               return undefined; // image upload failed → product still imports
@@ -347,9 +366,19 @@ export function BulkImportButton() {
         });
       }
 
+      // Cancelled before any DB write — nothing saved, report and stop.
+      if (cancelled) {
+        toast.info("Import cancelled", `No products were saved. ${uploaded} image(s) had already uploaded.`);
+        return;
+      }
+
       // Upsert by SKU in PostgreSQL, then re-hydrate the store from the DB so
       // the UI shows exactly what was saved (survives refresh + restart).
-      const server = await catalogApi.importBatch(payload, dupeMode);
+      const server = await catalogApi.importBatch(payload, dupeMode, {
+        fileName: file?.name,
+        fileSizeBytes: file?.size,
+        imagesMatched: payload.filter((p) => Array.isArray(p.images) && p.images.some((u) => /^https?:|^\//.test(u))).length,
+      });
       // Re-read BOTH products and the category tree from the database: an
       // import creates categories/subcategories, and Admin + storefront must
       // reflect them without a page reload.
@@ -383,6 +412,8 @@ export function BulkImportButton() {
       );
     } finally {
       setImporting(false);
+      setProgress(null);
+      cancelRef.current = false;
     }
   };
 
@@ -392,6 +423,9 @@ export function BulkImportButton() {
   return (
     <>
       <Button variant="secondary" icon={Upload} onClick={() => setOpen(true)}>Bulk Import</Button>
+      <Link to="/admin/catalog/imports" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold erp-text-muted hover:erp-text">
+        <History className="h-4 w-4" aria-hidden /> Import History
+      </Link>
       <Dialog
         open={open}
         onClose={close}
@@ -426,7 +460,11 @@ export function BulkImportButton() {
                   <option value="create">Create new SKU</option>
                 </select>
               </div>
-              <Button variant="ghost" onClick={reset}>Cancel</Button>
+              {importing ? (
+                <Button variant="ghost" onClick={() => { cancelRef.current = true; }}>Cancel import</Button>
+              ) : (
+                <Button variant="ghost" onClick={reset}>Cancel</Button>
+              )}
               <Button variant="primary" disabled={importable === 0} loading={importing} onClick={runImport}>
                 Import {importable} Product{importable === 1 ? "" : "s"}
               </Button>
@@ -440,6 +478,34 @@ export function BulkImportButton() {
           )
         }
       >
+        {importing && progress && (
+          // ---------- Live progress (large imports) ----------
+          <div className="mb-4 space-y-3 rounded-xl border erp-border-soft erp-surface-2 p-4">
+            <div className="flex items-center gap-2 text-sm font-bold erp-text">
+              <Upload className="h-4 w-4 animate-pulse text-primary-500" aria-hidden /> Importing…
+            </div>
+            {file && (
+              <p className="text-xs erp-text-muted">{file.name} · {formatBytes(file.size)}</p>
+            )}
+            {[
+              { label: "Products", done: progress.productsDone, total: progress.productsTotal },
+              ...(progress.imagesTotal > 0 ? [{ label: "Images", done: progress.imagesDone, total: progress.imagesTotal }] : []),
+            ].map((bar) => (
+              <div key={bar.label}>
+                <div className="mb-1 flex justify-between text-xs erp-text-muted">
+                  <span>{bar.label}</span>
+                  <span className="tabular-nums">{bar.done.toLocaleString("en-IN")} / {bar.total.toLocaleString("en-IN")}</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full erp-surface">
+                  <div
+                    className="h-full rounded-full bg-primary-500 transition-all"
+                    style={{ width: `${bar.total ? Math.round((bar.done / bar.total) * 100) : 0}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {result ? (
           // ---------- Result ----------
           <div className="space-y-4">

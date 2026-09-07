@@ -31,22 +31,5 @@ export function useBuyerProfile() {
   );
 }
 
-// ---------- Recycle / eco pickups ----------
-
-export interface RecycleEntry {
-  id: string;
-  orderId: string;
-  date: string;
-  weightKg: number;
-  orderAmount: number;
-  status: "pickup" | "coupon" | "processing";
-}
-
-/**
- * Recycle pickups. The programme has no backend yet, so this is honestly
- * empty — the page shows its empty state instead of entries synthesised from
- * invented weights.
- */
-export function useBuyerRecycle(): RecycleEntry[] {
-  return useMemo(() => [], []);
-}
+// Returns & recycling now live on the real API — see src/lib/api/returns.ts
+// and the /account/recycle page.

@@ -14,6 +14,7 @@ import {
   resolveSubcategory,
   slugify,
 } from "../services/catalog.mjs";
+import { recordImport } from "../services/catalog-imports.mjs";
 
 export const productsRouter = Router();
 
@@ -119,14 +120,23 @@ productsRouter.post("/products/bulk-delete", wrap(async (req, res) => {
  * other row still commits.
  */
 productsRouter.post("/products/import", wrap(async (req, res) => {
-  const { products = [], mode = "update" } = req.body ?? {};
+  const { products = [], mode = "update", fileName = null, fileSizeBytes = null, imagesMatched = 0 } = req.body ?? {};
   if (!Array.isArray(products)) throw badRequest("`products` must be an array", "BAD_PAYLOAD");
   if (!["update", "skip", "create"].includes(mode)) {
     throw badRequest(`Unknown duplicate mode "${mode}" (use update/skip/create)`, "BAD_MODE");
   }
   const result = await importProducts(products, mode);
   console.log(`[catalog:import] mode=${mode} processed=${result.processed} created=${result.created} updated=${result.updated} skipped=${result.skipped} failed=${result.failed}`);
-  ok(res, result);
+  // Persist the run for Import History + audit (Phases 14/16/19). Never blocks
+  // or fails the import — history bookkeeping is best-effort. actorId is set
+  // once the catalog write endpoints are authenticated (see known issues).
+  const record = await recordImport({
+    result, mode, fileName,
+    fileSizeBytes: Number(fileSizeBytes) || null,
+    actorId: req.user?.id ?? null,
+    imagesMatched: Number(imagesMatched) || 0,
+  });
+  ok(res, { ...result, importId: record?.id ?? null });
 }));
 
 /** Attach an image to one product (admin "Upload Image" action). */
@@ -200,6 +210,30 @@ productsRouter.get("/categories", wrap(async (req, res) => {
   });
 
   const byId = new Map(rows.map((c) => [c.id, c]));
+
+  // A representative image per category for the homepage showcase: the first
+  // active product image found in the category or any of its subcategories.
+  // Real catalog data only — no invented images, no emoji. One grouped query
+  // rather than N per-category lookups.
+  const withImages = await prisma.product.findMany({
+    where: { deletedAt: null, status: "active", images: { isEmpty: false } },
+    select: { categoryId: true, subcategoryId: true, images: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const imageByCategoryId = new Map();
+  for (const p of withImages) {
+    const url = p.images[0];
+    if (!url) continue;
+    for (const key of [p.categoryId, p.subcategoryId]) {
+      if (key && !imageByCategoryId.has(key)) imageByCategoryId.set(key, url);
+    }
+  }
+  // A parent inherits the first image among itself and its subcategories.
+  const imageForParent = (parent) =>
+    imageByCategoryId.get(parent.id) ??
+    rows.filter((c) => c.parentId === parent.id).map((s) => imageByCategoryId.get(s.id)).find(Boolean) ??
+    null;
+
   const tree = rows
     .filter((c) => !c.parentId)
     .map((parent) => ({
@@ -207,9 +241,11 @@ productsRouter.get("/categories", wrap(async (req, res) => {
       name: parent.name,
       slug: parent.slug,
       isActive: parent.isActive,
+      icon: parent.icon ?? null,
+      image: imageForParent(parent),
       productCount: parent._count.products,
       subcategories: rows
-        .filter((c) => c.parentId === parent.id)
+        .filter((c) => c.parentId === parent.id && c.isActive)
         .map((sub) => ({
           id: sub.id,
           name: sub.name,
@@ -220,7 +256,8 @@ productsRouter.get("/categories", wrap(async (req, res) => {
         }))
         .sort((a, b) => b.productCount - a.productCount || a.name.localeCompare(b.name)),
     }))
-    .filter((c) => includeEmpty || c.productCount > 0 || c.subcategories.length > 0)
+    // Only ACTIVE categories reach the storefront; admin-disabled ones vanish.
+    .filter((c) => c.isActive && (includeEmpty || c.productCount > 0 || c.subcategories.length > 0))
     .sort((a, b) => b.productCount - a.productCount || a.name.localeCompare(b.name));
 
   // Flat list retained for existing callers; `tree` is the richer shape.

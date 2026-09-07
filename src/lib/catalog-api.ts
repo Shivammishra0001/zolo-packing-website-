@@ -156,10 +156,10 @@ export const catalogApi = {
    *   skip   — leave the existing product untouched
    *   create — import under a suffixed SKU, never overwriting
    */
-  importBatch: (products: CatalogProduct[], mode: "update" | "skip" | "create") =>
-    request<{ processed: number; created: number; updated: number; skipped: number; failed: number; errors: { sku: string; level?: string; error: string }[] }>(
+  importBatch: (products: CatalogProduct[], mode: "update" | "skip" | "create", meta: { fileName?: string; fileSizeBytes?: number; imagesMatched?: number } = {}) =>
+    request<{ processed: number; created: number; updated: number; skipped: number; failed: number; importId: string | null; errors: { sku: string; level?: string; error: string }[] }>(
       "/products/import",
-      { method: "POST", body: JSON.stringify({ products: products.map(toDb), mode }) },
+      { method: "POST", body: JSON.stringify({ products: products.map(toDb), mode, fileName: meta.fileName, fileSizeBytes: meta.fileSizeBytes, imagesMatched: meta.imagesMatched }) },
     ),
 
   uploadImage: (name: string, mime: string, dataBase64: string) =>

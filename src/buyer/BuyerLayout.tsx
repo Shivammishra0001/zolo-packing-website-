@@ -11,6 +11,7 @@ import {
   Menu,
   Monitor,
   Moon,
+  Recycle,
   ReceiptText,
   Settings,
   ShoppingCart,
@@ -41,6 +42,7 @@ const NAV: NavItem[] = [
   { to: "/account/orders", label: "Orders", icon: ShoppingCart },
   { to: "/account/tracking", label: "Tracking", icon: MapPin },
   { to: "/account/payments", label: "Payment History", icon: Wallet },
+  { to: "/account/recycle", label: "Returns & Recycling", icon: Recycle },
   { to: "/account/reports", label: "Reports", icon: ReceiptText },
   { to: "/account/settings", label: "Settings", icon: Settings },
 ];

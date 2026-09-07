@@ -29,6 +29,16 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
+/**
+ * A real, renderable image URL — a stored file (http/blob/data) or a path with
+ * an image extension. `imageEmoji` (a literal emoji like "📦") is NOT one, so it
+ * is filtered out of the gallery and the mockup fallback shows instead.
+ */
+export function isRealImageUrl(s: string | undefined | null): boolean {
+  if (!s) return false;
+  return /^(blob:|\/|https?:|data:)/.test(s) || /\.(png|jpe?g|webp|svg|avif|gif)(\?.*)?$/i.test(s);
+}
+
 /** True when a product should appear on the buyer website. */
 export function isBuyerVisible(p: CatalogProduct): boolean {
   // Only ACTIVE products are visible. Out-of-stock ACTIVE products stay visible
@@ -42,8 +52,14 @@ export function toStoreProduct(p: CatalogProduct): Product & {
   sku: string;
   stockStatus: CatalogProduct["stockStatus"];
   priceMinor: number;
+  /** ALL real gallery images (deduped), not just the first. */
+  images: string[];
 } {
-  const images = p.images && p.images.length ? p.images : [p.imageEmoji];
+  // Every real image, deduped, order preserved — this is what the gallery needs.
+  // The old adapter kept only images[0], so the detail page could NEVER show
+  // more than one image no matter how many the product had.
+  const realImages = [...new Set((p.images ?? []).filter(isRealImageUrl))];
+  const images = realImages.length ? realImages : [p.imageEmoji];
   const dims = p.dimensions;
   const inStock = (p.stock ?? 0) > 0 && p.stockStatus !== "out_of_stock";
   return {
@@ -77,6 +93,7 @@ export function toStoreProduct(p: CatalogProduct): Product & {
     sku: p.sku,
     stockStatus: p.stockStatus,
     priceMinor: Math.round(p.basePrice * 100),
+    images: realImages, // empty when the product has no real image → mockup fallback
   };
 }
 

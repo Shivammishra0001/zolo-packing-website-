@@ -1,22 +1,28 @@
 // Buyer order detail — real API (GET /orders/:id, POST /orders/:id/cancel).
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { CheckCircle2, Circle, Download, XCircle } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { CheckCircle2, Circle, Download, RotateCcw, XCircle } from "lucide-react";
 import { Badge, Button, KeyValue, PageHeader } from "@/admin/components/ui";
 import { EmptyState, Panel } from "@/admin/components/Panel";
 import { inrMinor, formatDateTime } from "@/admin/format";
 import { useToast } from "@/components/ui/Toast";
 import { orderApi, type Order } from "@/lib/api/commerce";
 import { statusTone, paymentTone, prettyStatus, ORDER_FLOW } from "@/lib/order-status";
+import { ReturnRequestDialog, type ReturnableItem } from "../components/ReturnRequestDialog";
 
 const CANCELLABLE = new Set(["PENDING", "CONFIRMED", "PROCESSING", "PACKED"]);
+// Return/recycle is offered on delivered orders (and ones with a return already
+// open). The BACKEND enforces eligibility — this only controls visibility.
+const RETURNABLE = new Set(["DELIVERED", "RETURN_REQUESTED"]);
 
 export default function OrderDetailReal() {
   const { id } = useParams();
   const toast = useToast();
+  const nav = useNavigate();
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [returning, setReturning] = useState<ReturnableItem | null>(null);
 
   const load = () => id && orderApi.get(id).then(setOrder).catch(() => setError(true));
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
@@ -93,16 +99,39 @@ export default function OrderDetailReal() {
           <Panel title="Items">
             <div className="divide-y divide-slate-100">
               {order.items.map((it) => (
-                <div key={it.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                  <div>
+                <div key={it.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                  <div className="min-w-0">
                     <p className="font-semibold text-slate-900">{it.productName}</p>
                     <p className="text-xs text-slate-400">{it.sku ? `${it.sku} · ` : ""}{it.variant ? `${it.variant} · ` : ""}Qty {it.quantity} × {inrMinor(it.unitPriceMinor)}</p>
                   </div>
-                  <span className="font-semibold text-slate-900">{inrMinor(it.lineTotalMinor)}</span>
+                  <div className="flex shrink-0 items-center gap-3">
+                    {RETURNABLE.has(order.status) && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        icon={RotateCcw}
+                        onClick={() => setReturning({ id: it.id, productName: it.productName, quantity: it.quantity })}
+                      >
+                        Return / Recycle
+                      </Button>
+                    )}
+                    <span className="font-semibold text-slate-900">{inrMinor(it.lineTotalMinor)}</span>
+                  </div>
                 </div>
               ))}
             </div>
           </Panel>
+
+          {returning && (
+            <ReturnRequestDialog
+              item={returning}
+              onClose={() => setReturning(null)}
+              onCreated={() => {
+                setReturning(null);
+                nav("/account/recycle");
+              }}
+            />
+          )}
         </div>
 
         {/* Sidebar: price, address, payment */}
