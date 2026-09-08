@@ -12,16 +12,16 @@ import { useBuyerProducts } from "../lib/products";
 import { ProductCard } from "../components/NewProductCard";
 import { PackagingCategorySection } from "../components/packaging/PackagingCategorySection";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import heroBg2 from "../../images/banner-1.1.png";
 import heroVideo from "../../images/banner-video .mp4";
-import heroBg2 from "../../images/herobg-2.png";
-import heroBg3 from "../../images/brown kraft tape.png";
+import heroBg3 from "../../images/banner1-2.png";
 
 // Hero slideshow: slide 1 is a video (headline/CTAs + overlay) that plays fully
 // before advancing; slides 2–3 are clean full-bleed images (no text, no overlay)
 // that auto-advance every 5s. Left/right arrows + dots for manual control. Loops.
 const heroSlides = [
-  { type: "video" as const, src: heroVideo, showContent: true },
   { type: "image" as const, src: heroBg2, showContent: false },
+  { type: "video" as const, src: heroVideo, showContent: true },
   { type: "image" as const, src: heroBg3, showContent: false },
 ];
 import { useEffect, useRef, useState } from "react";
@@ -80,7 +80,7 @@ export default function Home() {
   // so the whole video plays before moving to the next image.
   useEffect(() => {
     if (heroSlides[currentSlide].type === "video") return;
-    const timer = setTimeout(nextSlide, 5000);
+    const timer = setTimeout(nextSlide, 4000);
     return () => clearTimeout(timer);
   }, [currentSlide]);
 

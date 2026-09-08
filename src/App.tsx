@@ -26,8 +26,6 @@ import { AuthProvider, useAuthSession } from "./components/auth/AuthContext";
 import * as authService from "./lib/auth/service";
 import { homeRouteForRole } from "./lib/auth/types";
 import { useCart as useServerCart } from "./lib/cart-store";
-import { useBuyerProducts } from "./lib/products";
-import { useCategoryTree } from "./lib/categories";
 
 // ---------- Types ----------
 export type CartLine = {
@@ -110,9 +108,6 @@ function Navbar() {
   // Summing quantities means the badge shows total units, matching the cart page.
   const cartLines = useServerCart();
   const cartCount = cartLines.reduce((n, l) => n + (l.quantity ?? 0), 0);
-  // Category menu — built from the live catalog, never a hardcoded list.
-  const shopCategories = useCategoryTree(useBuyerProducts());
-  const [shopMenu, setShopMenu] = useState(false);
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [searchVal, setSearchVal] = useState("");
@@ -205,49 +200,6 @@ function Navbar() {
             </Link>
 
             <nav className="hidden lg:flex items-center gap-0.5 ml-6">
-              {/* Shop — category dropdown sourced from the live catalog. */}
-              <div className="relative">
-                <button
-                  onClick={() => setShopMenu((v) => !v)}
-                  onBlur={() => setTimeout(() => setShopMenu(false), 160)}
-                  aria-haspopup="true"
-                  aria-expanded={shopMenu}
-                  className={`relative inline-flex items-center gap-1 px-3.5 py-2 text-sm font-medium rounded-lg transition-colors ${
-                    overHero ? "text-white/70 hover:text-white" : "text-dark-500 hover:text-dark-900"
-                  }`}
-                >
-                  Shop
-                  <ChevronDown className={`h-3 w-3 transition-transform ${shopMenu ? "rotate-180" : ""}`} aria-hidden />
-                </button>
-                <AnimatePresence>
-                  {shopMenu && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      className="absolute left-0 top-full mt-2 w-64 rounded-xl border border-dark-100 bg-white p-2 shadow-xl z-50 max-h-96 overflow-y-auto"
-                    >
-                      <Link to="/products" className="block rounded-lg px-3 py-2 text-sm font-semibold text-dark-900 hover:bg-dark-50">
-                        Shop All
-                      </Link>
-                      <div className="my-1 border-t border-dark-100" />
-                      {shopCategories.map((c) => (
-                        <Link
-                          key={c.slug}
-                          to={`/products?category=${c.slug}`}
-                          className="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-dark-600 hover:bg-dark-50 hover:text-dark-900"
-                        >
-                          <span>{c.icon} {c.name}</span>
-                          <span className="text-xs text-dark-400 tabular-nums">{c.count}</span>
-                        </Link>
-                      ))}
-                      {shopCategories.length === 0 && (
-                        <p className="px-3 py-2 text-xs text-dark-400">No categories yet.</p>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
               {links.map((l) => (
                 <NavLink
                   key={l.to}
