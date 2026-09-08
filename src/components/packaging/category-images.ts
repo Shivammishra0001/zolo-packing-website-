@@ -9,30 +9,30 @@
 //   4. the brand emoji                               ← last-resort fallback
 //
 // Vite hashes and optimizes each import; unused ones are tree-shaken.
-import corrugatedBox from "../../../images/corrugated box.png";
-import containers from "../../../images/category_containers.png";
-import food from "../../../images/category_food.png";
-import tapes from "../../../images/category_tapes.png";
-import packingTape from "../../../images/clear packing tape.png";
-import tubes from "../../../images/category_tubes.png";
-import pouches from "../../../images/category_pouches.png";
+import corrugatedBox from "../../../images/box-1.png";
+import containers from "../../../images/bottle-1.png";
+import food from "../../../images/food.png";
+import tapes from "../../../images/tape.png";
+import packingTape from "../../../images/tape-1.png";
+import tubes from "../../../images/plastic tube.png";
+import pouches from "../../../images/flex-1-1.png";
 import pouch from "../../../images/pouch.png";
-import mailer from "../../../images/kraft mailer box.png";
+import mailer from "../../../images/mailer.png";
 import polyMailer from "../../../images/poly mailer.png";
 import compostableMailer from "../../../images/compostable mailer.png";
-import sticker from "../../../images/sticker.png";
+import sticker from "../../../images/packing-tape.png";
 import hangTag from "../../../images/hang tag.png";
-import shoppingBag from "../../../images/shopping bag.png";
+import shoppingBag from "../../../images/bag-1-1.png";
 import print from "../../../images/category_print.png";
 import device from "../../../images/category_device.png";
-import coffeeCup from "../../../images/coffee cup.png";
+import coffeeCup from "../../../images/cup-1-1.png";
 import glassJar from "../../../images/glass jar.png";
 import jars from "../../../images/category_jars.png";
 import plasticJar from "../../../images/plastic jar.png";
 import tinCan from "../../../images/tin can.png";
-import cans from "../../../images/category_cans.png";
-import medicineBox from "../../../images/medicine box.png";
-import apparel from "../../../images/category_apparel.png";
+import cans from "../../../images/can-1.png";
+import medicineBox from "../../../images/box-1.png";
+import apparel from "../../../images/box-1.png";
 
 // Exact match on the canonical category slug (the 12 live categories).
 const BY_SLUG: Record<string, string> = {
