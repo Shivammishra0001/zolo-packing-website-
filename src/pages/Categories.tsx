@@ -12,10 +12,9 @@ import catPouches from "../../images/category_pouches.png";
 import catCans from "../../images/category_cans.png";
 import catJars from "../../images/category_jars.png";
 import catTubes from "../../images/category_tubes.png";
-import catContainers from "../../images/category_containers.png";
+import catContainers from "../../images/pizza.png";
 import catApparel from "../../images/category_apparel.png";
 import catDevice from "../../images/category_device.png";
-import catPrint from "../../images/category_print.png";
 import catOthers from "../../images/category_others.svg";
 import catTapes from "../../images/category_tapes.png";
 import catPharma from "../../images/category_pharma.png";
@@ -73,11 +72,8 @@ const catImages: Record<string, string> = {
   containers: catContainers,
   tubes: catTubes,
   drinkware: catContainers,
-  boxes: catPrint,
-  mailers: catPrint,
   bags: catApparel,
   "packaging-accessories": catOthers,
-  "digital-files": catOthers,
   packaging: catOthers,
   // legacy demo slugs (kept so nothing that still references them breaks)
   food: catFood,
@@ -87,7 +83,6 @@ const catImages: Record<string, string> = {
   cups: catContainers,
   apparel: catApparel,
   device: catDevice,
-  print: catPrint,
   others: catOthers,
   tapes: catTapes,
   pharma: catPharma,

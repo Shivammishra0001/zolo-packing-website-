@@ -97,7 +97,10 @@ export function AuthModal({ open, initialTab, onClose }: AuthModalProps) {
             exit={{ opacity: 0, y: 24, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 320, damping: 30 }}
             className={cn(
-              "relative w-full max-w-md overflow-hidden rounded-t-3xl outline-none sm:rounded-3xl",
+              // Cap to the viewport and scroll internally so a tall register
+              // form is never clipped on small/landscape phones. overflow-y-auto
+              // still clips to the rounded corners and the decorative glow.
+              "relative max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-3xl outline-none sm:rounded-3xl",
               // Glassmorphism
               "border border-white/40 bg-white/80 shadow-2xl backdrop-blur-2xl",
               "dark:border-white/10 dark:bg-dark-900/80",

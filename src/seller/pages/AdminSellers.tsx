@@ -53,7 +53,8 @@ function AdminSellersInner() {
         : items.length === 0 ? <EmptyState title="No sellers match this filter." />
         : (
           <Card className="overflow-hidden p-0">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Company</th><th className="px-4 py-3">Type</th>
@@ -75,6 +76,7 @@ function AdminSellersInner() {
                 ))}
               </tbody>
             </table>
+            </div>
           </Card>
         )}
     </div>

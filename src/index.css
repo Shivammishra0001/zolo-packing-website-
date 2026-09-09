@@ -61,6 +61,14 @@ body {
   font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   scroll-behavior: smooth;
+  /* Global guard against accidental horizontal page scroll. `clip` (not
+     `hidden`) contains overflowing children WITHOUT creating a scroll
+     container, so it never breaks `position: sticky` (the navbar) or hides
+     content — it only prevents the page from scrolling sideways. Individual
+     wide elements (tables, marquees) still scroll inside their own
+     overflow-x-auto wrappers. */
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 ::selection {

@@ -370,22 +370,24 @@ export function Dialog({
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-dark-950/50 backdrop-blur-sm" onClick={onClose} aria-hidden />
-      <div className="relative w-full max-w-md rounded-xl erp-surface p-5 shadow-2xl animate-[fade-up_.18s_ease-out]">
-        <div className="flex items-start justify-between gap-3">
+      {/* Flex column capped to the viewport so tall content scrolls INSIDE the
+          dialog instead of overflowing the screen (short/landscape viewports). */}
+      <div className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col rounded-xl erp-surface p-5 shadow-2xl animate-[fade-up_.18s_ease-out]">
+        <div className="flex shrink-0 items-start justify-between gap-3">
           <div>
             <h2 className="text-base font-bold erp-text">{title}</h2>
             {description && <p className="mt-1 text-sm erp-text-muted">{description}</p>}
           </div>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg erp-text-muted hover:erp-surface-2"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg erp-text-muted hover:erp-surface-2"
             aria-label="Close"
           >
             <X className="h-4 w-4" aria-hidden />
           </button>
         </div>
-        {children && <div className="mt-4">{children}</div>}
-        {footer && <div className="mt-5 flex justify-end gap-2">{footer}</div>}
+        {children && <div className="mt-4 flex-1 overflow-y-auto">{children}</div>}
+        {footer && <div className="mt-5 flex shrink-0 flex-wrap justify-end gap-2">{footer}</div>}
       </div>
     </div>,
     document.body,

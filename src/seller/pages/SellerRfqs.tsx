@@ -78,7 +78,8 @@ function QuoteForm({ lead, onDone, onCancel }: { lead: SellerLead; onDone: () =>
         </button>
       </div>
 
-      <table className="mt-3 w-full text-left text-sm">
+      <div className="mt-3 overflow-x-auto">
+      <table className="w-full min-w-[420px] text-left text-sm">
         <thead>
           <tr className="border-b border-orange-200/60 text-xs text-slate-500">
             <th className="py-1.5 pr-2 font-bold">Product</th>
@@ -111,6 +112,7 @@ function QuoteForm({ lead, onDone, onCancel }: { lead: SellerLead; onDone: () =>
           ))}
         </tbody>
       </table>
+      </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <label className="block text-xs font-semibold text-slate-600">
