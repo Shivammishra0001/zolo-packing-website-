@@ -1,0 +1,45 @@
+# Direct dependencies for the backend foundation.
+# Fully pinned transitive set: requirements.lock.txt
+#
+# NOTE ON psycopg
+#   Plain `psycopg` is the pure-Python driver and needs libpq available at
+#   runtime (any PostgreSQL client install provides it; on Windows the
+#   PostgreSQL `bin` directory must be on PATH).
+#   On Python <= 3.13 you can instead install the self-contained build:
+#       pip install "psycopg[binary]==3.3.4"
+#   `psycopg-binary` currently has no wheel for Python 3.14, which is why the
+#   plain driver is pinned here.
+
+# --- Web framework ---------------------------------------------------------
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+
+# --- Database --------------------------------------------------------------
+SQLAlchemy==2.0.52
+psycopg==3.3.4
+alembic==1.19.1
+
+# --- Configuration ---------------------------------------------------------
+pydantic==2.13.4
+pydantic-settings==2.15.0
+python-dotenv==1.2.3
+
+# --- Authentication --------------------------------------------------------
+PyJWT==2.13.0
+argon2-cffi==25.1.0
+email-validator==2.3.0
+
+# --- AI layer --------------------------------------------------------------
+# Multipart form parsing, required by FastAPI for the document upload endpoint.
+# httpx (below) is the HTTP client every AI/OCR/messaging provider goes through;
+# no vendor SDK is a dependency, which is what keeps providers swappable.
+python-multipart==0.0.20
+
+# --- Testing ---------------------------------------------------------------
+pytest==9.1.1
+httpx==0.28.1
+
+# Server-side PDF generation for invoices and report exports. Chosen over a
+# browser-side generator so one canonical document exists rather than one per
+# browser, and because an invoice is a financial record.
+reportlab==5.0.1

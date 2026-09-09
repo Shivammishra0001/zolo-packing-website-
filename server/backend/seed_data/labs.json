@@ -1,0 +1,141 @@
+[
+  {
+    "id": "LAB-3301",
+    "patientId": "PT-10248",
+    "patientName": "Raj Kumar",
+    "test": "Complete Blood Count",
+    "reportedOn": "2026-08-20",
+    "flag": "Normal",
+    "summary": "All parameters within reference range. No evidence of post-operative infection.",
+    "values": [
+      {
+        "analyte": "Haemoglobin",
+        "value": "14.1 g/dL",
+        "reference": "13.0 – 17.0"
+      },
+      {
+        "analyte": "White cell count",
+        "value": "7,200 /µL",
+        "reference": "4,000 – 11,000"
+      },
+      {
+        "analyte": "Platelets",
+        "value": "2.4 lakh/µL",
+        "reference": "1.5 – 4.5 lakh"
+      },
+      {
+        "analyte": "ESR",
+        "value": "14 mm/hr",
+        "reference": "0 – 20"
+      }
+    ],
+    "reviewed": false
+  },
+  {
+    "id": "LAB-3302",
+    "patientId": "PT-10263",
+    "patientName": "Amit Singh",
+    "test": "HbA1c & Fasting Glucose",
+    "reportedOn": "2026-08-19",
+    "flag": "Abnormal",
+    "summary": "HbA1c improved from 7.4% to 7.1% but remains above the 7.0% target for this patient.",
+    "values": [
+      {
+        "analyte": "HbA1c",
+        "value": "7.1 %",
+        "reference": "< 7.0",
+        "abnormal": true
+      },
+      {
+        "analyte": "Fasting glucose",
+        "value": "128 mg/dL",
+        "reference": "70 – 100",
+        "abnormal": true
+      },
+      {
+        "analyte": "Serum creatinine",
+        "value": "0.9 mg/dL",
+        "reference": "0.7 – 1.3"
+      }
+    ],
+    "reviewed": false
+  },
+  {
+    "id": "LAB-3303",
+    "patientId": "PT-10284",
+    "patientName": "Mohammed Farhan",
+    "test": "Lipid Profile",
+    "reportedOn": "2026-08-18",
+    "flag": "Normal",
+    "summary": "Target LDL achieved on Atorvastatin 40 mg. Continue current dose.",
+    "values": [
+      {
+        "analyte": "Total cholesterol",
+        "value": "148 mg/dL",
+        "reference": "< 200"
+      },
+      {
+        "analyte": "LDL",
+        "value": "78 mg/dL",
+        "reference": "< 100"
+      },
+      {
+        "analyte": "HDL",
+        "value": "42 mg/dL",
+        "reference": "> 40"
+      },
+      {
+        "analyte": "Triglycerides",
+        "value": "148 mg/dL",
+        "reference": "< 150"
+      }
+    ],
+    "reviewed": false
+  },
+  {
+    "id": "LAB-3304",
+    "patientId": "PT-10251",
+    "patientName": "Simran Kaur",
+    "test": "Vitamin D (25-OH)",
+    "reportedOn": "2026-08-05",
+    "flag": "Critical",
+    "summary": "Severe deficiency at 14 ng/mL. Supplementation started; may explain the slow rehabilitation response.",
+    "values": [
+      {
+        "analyte": "25-OH Vitamin D",
+        "value": "14 ng/mL",
+        "reference": "30 – 100",
+        "abnormal": true
+      },
+      {
+        "analyte": "Serum calcium",
+        "value": "9.1 mg/dL",
+        "reference": "8.5 – 10.5"
+      }
+    ],
+    "reviewed": false
+  },
+  {
+    "id": "LAB-3305",
+    "patientId": "PT-10356",
+    "patientName": "Suresh Pillai",
+    "test": "Bone Mineral Density (DEXA)",
+    "reportedOn": "2026-08-16",
+    "flag": "Abnormal",
+    "summary": "T-score -2.9 at the femoral neck, consistent with osteoporosis. Denosumab commenced.",
+    "values": [
+      {
+        "analyte": "T-score (femoral neck)",
+        "value": "-2.9",
+        "reference": "> -2.5",
+        "abnormal": true
+      },
+      {
+        "analyte": "T-score (lumbar spine)",
+        "value": "-2.4",
+        "reference": "> -2.5"
+      }
+    ],
+    "reviewed": true
+  }
+]

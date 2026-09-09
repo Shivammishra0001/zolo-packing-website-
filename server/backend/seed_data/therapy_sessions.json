@@ -1,0 +1,270 @@
+[
+  {
+    "id": "TS-5501",
+    "patientId": "PT-10248",
+    "patientName": "Raj Kumar",
+    "date": "2026-08-24",
+    "time": "09:00",
+    "durationMinutes": 45,
+    "type": "Physiotherapy",
+    "therapist": "Meera Iyer",
+    "therapistId": "USR-1004",
+    "status": "Completed",
+    "exercises": [
+      "Terminal knee extension",
+      "Closed-chain leg press",
+      "Step-up progression"
+    ],
+    "painBefore": 4,
+    "painAfter": 3,
+    "mobilityScore": 82,
+    "strengthScore": 76,
+    "notes": "Excellent quadriceps activation today. Progressed leg press to 40 kg without extensor lag.",
+    "room": "Gym 1"
+  },
+  {
+    "id": "TS-5502",
+    "patientId": "PT-10251",
+    "patientName": "Simran Kaur",
+    "date": "2026-08-24",
+    "time": "10:00",
+    "durationMinutes": 40,
+    "type": "Occupational Therapy",
+    "therapist": "Meera Iyer",
+    "therapistId": "USR-1004",
+    "status": "In Progress",
+    "exercises": [
+      "Deep neck flexor hold",
+      "Scapular setting",
+      "Ergonomic simulation"
+    ],
+    "painBefore": 5,
+    "mobilityScore": 68,
+    "strengthScore": 58,
+    "room": "Therapy Room 2"
+  },
+  {
+    "id": "TS-5503",
+    "patientId": "PT-10302",
+    "patientName": "Gurpreet Sethi",
+    "date": "2026-08-24",
+    "time": "11:00",
+    "durationMinutes": 30,
+    "type": "Physical Rehabilitation",
+    "therapist": "Meera Iyer",
+    "therapistId": "USR-1004",
+    "status": "Scheduled",
+    "exercises": [
+      "Continuous passive motion",
+      "Quadriceps activation",
+      "Bed mobility"
+    ],
+    "room": "Ward A — Bedside"
+  },
+  {
+    "id": "TS-5504",
+    "patientId": "PT-10328",
+    "patientName": "Aditya Rane",
+    "date": "2026-08-24",
+    "time": "12:00",
+    "durationMinutes": 45,
+    "type": "Physiotherapy",
+    "therapist": "Meera Iyer",
+    "therapistId": "USR-1004",
+    "status": "Scheduled",
+    "exercises": [
+      "Plyometric hop series",
+      "Agility ladder",
+      "Single-leg balance drill"
+    ],
+    "room": "Gym 1"
+  },
+  {
+    "id": "TS-5505",
+    "patientId": "PT-10290",
+    "patientName": "Anjali Deshpande",
+    "date": "2026-08-24",
+    "time": "14:30",
+    "durationMinutes": 40,
+    "type": "Occupational Therapy",
+    "therapist": "Meera Iyer",
+    "therapistId": "USR-1004",
+    "status": "Scheduled",
+    "exercises": [
+      "Capsular stretching",
+      "Pendulum mobilisation",
+      "Functional reach training"
+    ],
+    "room": "Therapy Room 1"
+  },
+  {
+    "id": "TS-5506",
+    "patientId": "PT-10248",
+    "patientName": "Raj Kumar",
+    "date": "2026-08-24",
+    "time": "16:00",
+    "durationMinutes": 30,
+    "type": "Hydrotherapy",
+    "therapist": "Meera Iyer",
+    "therapistId": "USR-1004",
+    "status": "Scheduled",
+    "exercises": [
+      "Aquatic gait training",
+      "Buoyancy-assisted range of motion"
+    ],
+    "room": "Hydrotherapy Pool"
+  },
+  {
+    "id": "TS-5507",
+    "patientId": "PT-10277",
+    "patientName": "Priya Sharma",
+    "date": "2026-08-24",
+    "time": "17:00",
+    "durationMinutes": 45,
+    "type": "Physical Rehabilitation",
+    "therapist": "Meera Iyer",
+    "therapistId": "USR-1004",
+    "status": "Scheduled",
+    "exercises": [
+      "Core stabilisation series",
+      "Dead bug variations",
+      "Resisted band rowing"
+    ],
+    "room": "Gym 2"
+  },
+  {
+    "id": "TS-5508",
+    "patientId": "PT-10263",
+    "patientName": "Amit Singh",
+    "date": "2026-08-24",
+    "time": "09:30",
+    "durationMinutes": 60,
+    "type": "Neuro Rehabilitation",
+    "therapist": "Tanmay Joshi",
+    "therapistId": "USR-1012",
+    "status": "Completed",
+    "exercises": [
+      "Constraint-induced movement task",
+      "Sit-to-stand repetitions",
+      "Weight-shift training"
+    ],
+    "painBefore": 2,
+    "painAfter": 2,
+    "mobilityScore": 58,
+    "strengthScore": 52,
+    "notes": "Managed 12 unassisted sit-to-stands. Right-hand grasp improving with mirror therapy.",
+    "room": "Neuro Gym"
+  },
+  {
+    "id": "TS-5509",
+    "patientId": "PT-10315",
+    "patientName": "Lakshmi Venkatesh",
+    "date": "2026-08-24",
+    "time": "11:00",
+    "durationMinutes": 45,
+    "type": "Neuro Rehabilitation",
+    "therapist": "Tanmay Joshi",
+    "therapistId": "USR-1012",
+    "status": "Scheduled",
+    "exercises": [
+      "LSVT BIG sequence",
+      "Dual-task walking drill",
+      "Turning strategy practice"
+    ],
+    "room": "Neuro Gym"
+  },
+  {
+    "id": "TS-5510",
+    "patientId": "PT-10367",
+    "patientName": "Ishaan Mehta",
+    "date": "2026-08-24",
+    "time": "16:30",
+    "durationMinutes": 40,
+    "type": "Speech Therapy",
+    "therapist": "Farah Sheikh",
+    "therapistId": "USR-1013",
+    "status": "Scheduled",
+    "exercises": [
+      "Sentence expansion practice",
+      "Naming and categorisation task"
+    ],
+    "room": "Paediatric Suite"
+  },
+  {
+    "id": "TS-5511",
+    "patientId": "PT-10284",
+    "patientName": "Mohammed Farhan",
+    "date": "2026-08-24",
+    "time": "10:30",
+    "durationMinutes": 45,
+    "type": "Cardiac Rehabilitation",
+    "therapist": "Ritika Shah",
+    "therapistId": "USR-1018",
+    "status": "Completed",
+    "exercises": [
+      "Monitored treadmill walking",
+      "Light resistance circuit",
+      "Cool-down and stretch"
+    ],
+    "painBefore": 1,
+    "painAfter": 1,
+    "mobilityScore": 74,
+    "strengthScore": 66,
+    "notes": "Peak heart rate 118 bpm, no arrhythmia. Achieved 4.6 METs — approaching discharge target.",
+    "room": "Cardiac Rehab Unit"
+  },
+  {
+    "id": "TS-5512",
+    "patientId": "PT-10356",
+    "patientName": "Suresh Pillai",
+    "date": "2026-08-24",
+    "time": "13:00",
+    "durationMinutes": 30,
+    "type": "Physiotherapy",
+    "therapist": "Ritika Shah",
+    "therapistId": "USR-1018",
+    "status": "Scheduled",
+    "exercises": [
+      "Walker ambulation",
+      "Hip precaution education",
+      "Chest physiotherapy"
+    ],
+    "room": "Ward B — Bedside"
+  },
+  {
+    "id": "TS-5513",
+    "patientId": "PT-10341",
+    "patientName": "Fatima Ansari",
+    "date": "2026-08-24",
+    "time": "15:00",
+    "durationMinutes": 40,
+    "type": "Occupational Therapy",
+    "therapist": "Kavya Reddy",
+    "therapistId": "USR-1011",
+    "status": "Scheduled",
+    "exercises": [
+      "Nerve gliding sequence",
+      "Grip strengthening (putty)",
+      "Workstation simulation"
+    ],
+    "room": "Hand Therapy Room"
+  },
+  {
+    "id": "TS-5514",
+    "patientId": "PT-10372",
+    "patientName": "Kavita Joshi",
+    "date": "2026-08-24",
+    "time": "09:00",
+    "durationMinutes": 30,
+    "type": "Occupational Therapy",
+    "therapist": "Kavya Reddy",
+    "therapistId": "USR-1011",
+    "status": "Missed",
+    "exercises": [
+      "Joint protection practice",
+      "Adaptive equipment review"
+    ],
+    "room": "Hand Therapy Room",
+    "notes": "Patient did not attend — front desk contacted for reschedule."
+  }
+]

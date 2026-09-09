@@ -11,6 +11,7 @@ import {
 import { useBuyerProducts } from "../lib/products";
 import { ProductCard } from "../components/NewProductCard";
 import { PackagingCategorySection } from "../components/packaging/PackagingCategorySection";
+import TrustedCustomers from "../components/TrustedCustomers";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import heroBg2 from "../../images/banner-1.1.png";
 import heroVideo from "../../images/banner-video .mp4";
@@ -47,14 +48,6 @@ const processSteps = [
 // invented quotes. Real customer testimonials belong here once collected —
 // never fabricated ones.
 
-const faqs = [
-  { q: "What are your minimum order quantities?", a: "MOQs vary by product and are shown on every product page. Large orders receive volume discounts automatically." },
-  { q: "Can I request a sample before bulk ordering?", a: "Yes — ask for a sample when requesting your quote and our team will arrange it." },
-  { q: "What printing options are available?", a: "We offer digital, offset litho, and flexo printing with options for foil stamping, embossing, spot UV, and custom die-cutting." },
-  { q: "Are your materials eco-friendly?", a: "Many of our products use recycled, biodegradable, or compostable materials — filter by material on the products page or ask us for eco options." },
-  { q: "How do I share my artwork for printing?", a: "Attach your artwork or requirement sheet when creating a bulk quote, or email it to contact@zolopacking.com." },
-];
-
 export default function Home() {
   // Real product source only — the unified catalog store (API-backed when
   // reachable). No hardcoded demo array fallback: an empty catalog shows an
@@ -65,7 +58,6 @@ export default function Home() {
   const featured = source.slice(0, 8);
   const newArrivalPool = source.filter((p) => p.newArrival);
   const newArrivals = (newArrivalPool.length > 0 ? newArrivalPool : source).slice(0, 4);
-  const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   const [currentSlide, setCurrentSlide] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -279,6 +271,9 @@ export default function Home() {
       </section>
       )}
 
+      {/* TRUSTED CUSTOMERS — logo marquee */}
+      <TrustedCustomers />
+
       {/* WHY CHOOSE US / PROCESS */}
       <section className="py-20 bg-dark-950 text-white relative overflow-hidden">
         <div className="absolute inset-0 grid-bg-light opacity-20" />
@@ -317,44 +312,6 @@ export default function Home() {
       {/* Testimonials section removed — the cards showed fictitious customers
           with invented quotes. Reinstate it when real testimonials exist. */}
 
-      {/* FAQ */}
-      <section className="py-20 bg-dark-50">
-        <div className="mx-auto max-w-4xl px-4 sm:px-6">
-          <div className="text-center mb-12">
-            <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600 mb-3">
-              <span className="inline-block h-1 w-6 rounded-full bg-primary-500 mr-2" />
-              FAQ
-            </div>
-            <h2 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-dark-900">
-              Frequently asked <span className="grad-text">questions</span>
-            </h2>
-          </div>
-          <div className="space-y-3">
-            {faqs.map((f, i) => (
-              <div key={i} className="bg-white rounded-2xl border border-dark-100 overflow-hidden">
-                <button
-                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                  className="w-full flex items-center justify-between p-5 text-left"
-                >
-                  <span className="font-bold text-dark-900">{f.q}</span>
-                  <motion.span animate={{ rotate: openFaq === i ? 45 : 0 }} className="text-dark-400 text-2xl">
-                    +
-                  </motion.span>
-                </button>
-                {openFaq === i && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    className="px-5 pb-5 text-sm text-dark-600 leading-relaxed"
-                  >
-                    {f.a}
-                  </motion.div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* CTA */}
       <section className="py-20 bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 text-white relative overflow-hidden">

@@ -1,0 +1,9 @@
+Alembic migrations for the Rehabilitation Centre HMS.
+
+The database URL is read from DATABASE_URL via app.core.config, not alembic.ini.
+
+  alembic upgrade head                      apply everything
+  alembic revision --autogenerate -m "..."  generate from model changes
+  alembic downgrade -1                      step back one revision
+  alembic current                           show the applied revision
+  alembic history --verbose                 list revisions

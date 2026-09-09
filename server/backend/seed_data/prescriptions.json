@@ -1,0 +1,252 @@
+[
+  {
+    "id": "RX-7712",
+    "patientId": "PT-10248",
+    "patientName": "Raj Kumar",
+    "doctor": "Dr. Arjun Sharma",
+    "date": "2026-08-24",
+    "status": "Pending",
+    "priority": "Routine",
+    "items": [
+      {
+        "medicine": "Etoricoxib 90 mg",
+        "strength": "90 mg",
+        "dosage": "1 tablet",
+        "frequency": "Once daily after breakfast",
+        "duration": "10 days",
+        "quantity": 10,
+        "instructions": "Take with food. Stop if gastric discomfort occurs."
+      },
+      {
+        "medicine": "Pantoprazole 40 mg",
+        "strength": "40 mg",
+        "dosage": "1 tablet",
+        "frequency": "Once daily before breakfast",
+        "duration": "10 days",
+        "quantity": 10,
+        "instructions": "Take 30 minutes before food."
+      },
+      {
+        "medicine": "Diclofenac Gel 30 g",
+        "strength": "1.16% w/w",
+        "dosage": "Apply locally",
+        "frequency": "Twice daily",
+        "duration": "2 weeks",
+        "quantity": 1,
+        "instructions": "Massage gently over the knee. Do not apply on broken skin."
+      }
+    ]
+  },
+  {
+    "id": "RX-7713",
+    "patientId": "PT-10263",
+    "patientName": "Amit Singh",
+    "doctor": "Dr. Priya Nair",
+    "date": "2026-08-24",
+    "status": "Pending",
+    "priority": "Urgent",
+    "items": [
+      {
+        "medicine": "Metformin 1000 mg",
+        "strength": "1000 mg",
+        "dosage": "1 tablet",
+        "frequency": "Twice daily with meals",
+        "duration": "30 days",
+        "quantity": 60,
+        "instructions": "Monitor blood sugar twice weekly."
+      },
+      {
+        "medicine": "Clopidogrel 75 mg",
+        "strength": "75 mg",
+        "dosage": "1 tablet",
+        "frequency": "Once daily",
+        "duration": "30 days",
+        "quantity": 30,
+        "instructions": "Do not stop without consulting the treating physician."
+      },
+      {
+        "medicine": "Atorvastatin 40 mg",
+        "strength": "40 mg",
+        "dosage": "1 tablet",
+        "frequency": "Once daily at bedtime",
+        "duration": "30 days",
+        "quantity": 30,
+        "instructions": "Report any unexplained muscle pain."
+      }
+    ]
+  },
+  {
+    "id": "RX-7714",
+    "patientId": "PT-10302",
+    "patientName": "Gurpreet Sethi",
+    "doctor": "Dr. Sanjay Bhatt",
+    "date": "2026-08-24",
+    "status": "Partially Dispensed",
+    "priority": "Urgent",
+    "items": [
+      {
+        "medicine": "Tramadol 50 mg",
+        "strength": "50 mg",
+        "dosage": "1 capsule",
+        "frequency": "Every 8 hours as needed",
+        "duration": "5 days",
+        "quantity": 15,
+        "instructions": "Maximum 3 doses in 24 hours. May cause drowsiness."
+      },
+      {
+        "medicine": "Pantoprazole 40 mg",
+        "strength": "40 mg",
+        "dosage": "1 tablet",
+        "frequency": "Once daily",
+        "duration": "7 days",
+        "quantity": 7,
+        "instructions": "Before breakfast."
+      },
+      {
+        "medicine": "Calcium + Vitamin D3",
+        "strength": "500 mg + 250 IU",
+        "dosage": "1 tablet",
+        "frequency": "Twice daily",
+        "duration": "30 days",
+        "quantity": 60,
+        "instructions": "Take after meals."
+      }
+    ]
+  },
+  {
+    "id": "RX-7715",
+    "patientId": "PT-10356",
+    "patientName": "Suresh Pillai",
+    "doctor": "Dr. Sanjay Bhatt",
+    "date": "2026-08-23",
+    "status": "Pending",
+    "priority": "Routine",
+    "items": [
+      {
+        "medicine": "Denosumab 60 mg Injection",
+        "strength": "60 mg/mL",
+        "dosage": "1 pre-filled syringe",
+        "frequency": "Once every 6 months",
+        "duration": "Single dose",
+        "quantity": 1,
+        "instructions": "Subcutaneous. Refrigerate until administration."
+      },
+      {
+        "medicine": "Calcium + Vitamin D3",
+        "strength": "500 mg + 250 IU",
+        "dosage": "1 tablet",
+        "frequency": "Twice daily",
+        "duration": "30 days",
+        "quantity": 60,
+        "instructions": "Take after meals."
+      }
+    ]
+  },
+  {
+    "id": "RX-7716",
+    "patientId": "PT-10315",
+    "patientName": "Lakshmi Venkatesh",
+    "doctor": "Dr. Priya Nair",
+    "date": "2026-08-23",
+    "status": "Pending",
+    "priority": "Routine",
+    "items": [
+      {
+        "medicine": "Levodopa-Carbidopa 100/25",
+        "strength": "100/25 mg",
+        "dosage": "1 tablet",
+        "frequency": "Three times daily",
+        "duration": "30 days",
+        "quantity": 90,
+        "instructions": "Take 30 minutes before meals for best absorption."
+      }
+    ]
+  },
+  {
+    "id": "RX-7717",
+    "patientId": "PT-10251",
+    "patientName": "Simran Kaur",
+    "doctor": "Dr. Priya Nair",
+    "date": "2026-08-22",
+    "status": "Dispensed",
+    "priority": "Routine",
+    "items": [
+      {
+        "medicine": "Pregabalin 75 mg",
+        "strength": "75 mg",
+        "dosage": "1 capsule",
+        "frequency": "Twice daily",
+        "duration": "21 days",
+        "quantity": 42,
+        "instructions": "May cause dizziness — avoid driving initially."
+      },
+      {
+        "medicine": "Cholecalciferol 60000 IU",
+        "strength": "60000 IU",
+        "dosage": "1 sachet",
+        "frequency": "Once weekly",
+        "duration": "8 weeks",
+        "quantity": 8,
+        "instructions": "Dissolve in milk after a meal."
+      }
+    ]
+  },
+  {
+    "id": "RX-7718",
+    "patientId": "PT-10284",
+    "patientName": "Mohammed Farhan",
+    "doctor": "Dr. Arjun Sharma",
+    "date": "2026-08-22",
+    "status": "Dispensed",
+    "priority": "Routine",
+    "items": [
+      {
+        "medicine": "Atorvastatin 40 mg",
+        "strength": "40 mg",
+        "dosage": "1 tablet",
+        "frequency": "Once daily at bedtime",
+        "duration": "30 days",
+        "quantity": 30,
+        "instructions": "Continue long term."
+      },
+      {
+        "medicine": "Clopidogrel 75 mg",
+        "strength": "75 mg",
+        "dosage": "1 tablet",
+        "frequency": "Once daily",
+        "duration": "30 days",
+        "quantity": 30,
+        "instructions": "Do not discontinue abruptly."
+      }
+    ]
+  },
+  {
+    "id": "RX-7719",
+    "patientId": "PT-10372",
+    "patientName": "Kavita Joshi",
+    "doctor": "Dr. Arjun Sharma",
+    "date": "2026-08-20",
+    "status": "Dispensed",
+    "priority": "Routine",
+    "items": [
+      {
+        "medicine": "Methotrexate 15 mg",
+        "strength": "15 mg",
+        "dosage": "1 tablet",
+        "frequency": "Once weekly (Sunday)",
+        "duration": "12 weeks",
+        "quantity": 12,
+        "instructions": "Never take daily. Blood counts every 8 weeks."
+      },
+      {
+        "medicine": "Folic Acid 5 mg",
+        "strength": "5 mg",
+        "dosage": "1 tablet",
+        "frequency": "Once weekly (Wednesday)",
+        "duration": "12 weeks",
+        "quantity": 12,
+        "instructions": "Take on a different day from methotrexate."
+      }
+    ]
+  }
+]

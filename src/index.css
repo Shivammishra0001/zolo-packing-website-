@@ -136,6 +136,13 @@ body {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* Seamless logo marquee (LogoLoop): the track holds two copies, so shifting
+   by -50% moves exactly one copy — a continuous loop with no restart jump. */
+@keyframes logoloop {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
 @media (prefers-reduced-motion: reduce) {
   .product-gallery-main { animation: none !important; }
 }

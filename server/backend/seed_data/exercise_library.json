@@ -1,0 +1,54 @@
+{
+  "Physiotherapy": [
+    "Terminal knee extension",
+    "Closed-chain leg press",
+    "Single-leg balance drill",
+    "Hamstring curl (resisted)",
+    "Step-up progression",
+    "Gait re-training on treadmill",
+    "Calf raise (double to single)"
+  ],
+  "Occupational Therapy": [
+    "Fine motor pinch tasks",
+    "Functional reach training",
+    "Activity of daily living simulation",
+    "Nerve gliding sequence",
+    "Grip strengthening (putty)",
+    "Joint protection practice"
+  ],
+  "Speech Therapy": [
+    "Phonological awareness drill",
+    "Sentence expansion practice",
+    "Naming and categorisation task",
+    "Oral motor exercises",
+    "Conversational turn-taking"
+  ],
+  "Neuro Rehabilitation": [
+    "Constraint-induced movement task",
+    "Sit-to-stand repetitions",
+    "Dual-task walking drill",
+    "Weight-shift training",
+    "Mirror therapy",
+    "Functional reach and grasp"
+  ],
+  "Physical Rehabilitation": [
+    "Core stabilisation series",
+    "Bridging progression",
+    "Dead bug variations",
+    "Resisted band rowing",
+    "Postural endurance hold"
+  ],
+  "Hydrotherapy": [
+    "Aquatic gait training",
+    "Buoyancy-assisted range of motion",
+    "Deep-water running",
+    "Aquatic squats"
+  ],
+  "Cardiac Rehabilitation": [
+    "Monitored treadmill walking",
+    "Cycle ergometer interval",
+    "Light resistance circuit",
+    "Diaphragmatic breathing",
+    "Cool-down and stretch"
+  ]
+}
