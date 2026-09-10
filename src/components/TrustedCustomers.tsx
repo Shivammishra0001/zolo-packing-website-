@@ -28,19 +28,19 @@ const CUSTOMERS: Customer[] = [
   { name: "ACI gold", src: "/logos/aci-gold.png" },
 ];
 
-/** One white logo card. If the image is missing it renders nothing. */
-function LogoCard({ customer }: { customer: Customer }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return null;
+/** A single logo image. On load failure it calls `onFail` so the parent can
+ *  remove it from the marquee entirely — otherwise a missing file would leave
+ *  an empty slot that still reserves a gap and breaks even spacing. */
+function LogoImg({ customer, onFail }: { customer: Customer; onFail: () => void }) {
   return (
     <img
-    src={customer.src}
-    alt={customer.name}
-    loading="lazy"
-    decoding="async"
-    onError={() => setFailed(true)}
-    className="max-h-full max-w-full object-contain"
-  />
+      src={customer.src}
+      alt={customer.name}
+      loading="lazy"
+      decoding="async"
+      onError={onFail}
+      className="h-full w-auto max-w-none rounded-lg object-contain"
+    />
   );
 }
 
@@ -51,18 +51,36 @@ const TRUST_POINTS = [
 ];
 
 export default function TrustedCustomers() {
-  const logos: LogoItem[] = CUSTOMERS.map((c) => ({
+  // Track which logo files fail to load and drop them from the marquee, so a
+  // missing file never leaves an empty gap.
+  const [broken, setBroken] = useState<Set<string>>(new Set());
+  const logos: LogoItem[] = CUSTOMERS.filter((c) => !broken.has(c.src)).map((c) => ({
     alt: c.name,
-    node: <LogoCard customer={c} />,
+    node: (
+      <LogoImg
+        customer={c}
+        onFail={() => setBroken((prev) => (prev.has(c.src) ? prev : new Set(prev).add(c.src)))}
+      />
+    ),
   }));
 
   return (
     <section
-      className="relative overflow-hidden bg-cover bg-center bg-no-repeat py-20"
-      style={{ backgroundImage: `url(${customerBg})` }}
+      className="relative overflow-hidden py-14 sm:py-20"
+      // The artwork is a wide 3:1 banner. `100% auto` shows it at full width and
+      // its true proportions (no zoom/crop) anchored to the top; the cream
+      // fallback fills any area the banner doesn't reach so the section reads as
+      // one surface on every screen size.
+      style={{
+        backgroundImage: `url(${customerBg})`,
+        backgroundColor: "#f6efe2",
+        backgroundSize: "100% auto",
+        backgroundPosition: "center top",
+        backgroundRepeat: "no-repeat",
+      }}
     >
+      {/* Heading — constrained to the readable column */}
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
-        {/* Heading */}
         <div className="mx-auto max-w-2xl text-center">
           <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600">
             <span className="mr-2 inline-block h-1 w-6 rounded-full bg-primary-500" />
@@ -75,25 +93,27 @@ export default function TrustedCustomers() {
             Proud to deliver packaging solutions for businesses across industries
           </p>
         </div>
+      </div>
 
-        {/* Logo marquee */}
-        <div className="mt-3">
-          <LogoLoop
-            logos={logos}
-            speed={70}
-            direction="left"
-            logoHeight={100}
-            gap={28}
-            hoverSpeed={0}
-            scaleOnHover
-            fadeOut
-            fadeOutColor="#f7f1e6"
-            ariaLabel="Zolo Packaging customers"
-          />
-        </div>
+      {/* Logo marquee — full-bleed: spans edge-to-edge of the viewport */}
+      <div className="relative mt-8 w-full sm:mt-10">
+        <LogoLoop
+          logos={logos}
+          speed={70}
+          direction="left"
+          logoHeight={92}
+          gap={28}
+          hoverSpeed={0}
+          scaleOnHover
+          fadeOut
+          fadeOutColor="#f6efe2"
+          ariaLabel="Zolo Packaging customers"
+        />
+      </div>
 
-        {/* Trust indicators */}
-        <div className="mx-auto mt-12 grid max-w-2xl grid-cols-3 gap-4 sm:gap-8">
+      {/* Trust indicators — back inside the readable column */}
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
+        <div className="mx-auto mt-10 grid max-w-2xl grid-cols-3 gap-4 sm:mt-12 sm:gap-8">
           {TRUST_POINTS.map(({ icon: Icon, label }) => (
             <div key={label} className="flex flex-col items-center gap-2 text-center sm:flex-row sm:justify-center sm:gap-2.5">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-primary-600 shadow-sm ring-1 ring-dark-100">

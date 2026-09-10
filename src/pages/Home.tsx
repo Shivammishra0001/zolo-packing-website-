@@ -67,16 +67,18 @@ export default function Home() {
   const prevSlide = () =>
     setCurrentSlide((prev) => (prev === 0 ? heroSlides.length - 1 : prev - 1));
 
-  // Image slides auto-advance after 5s. The video slide is skipped here — it
-  // advances only once the clip finishes (see the video's onEnded handler),
-  // so the whole video plays before moving to the next image.
+  // All slides auto-advance. The video loops continuously (no play button), so
+  // it gets a longer dwell (9s) before the carousel moves on; images advance
+  // every 4.5s.
   useEffect(() => {
-    if (heroSlides[currentSlide].type === "video") return;
-    const timer = setTimeout(nextSlide, 4000);
+    const isVideo = heroSlides[currentSlide].type === "video";
+    const timer = setTimeout(nextSlide, isVideo ? 9000 : 4500);
     return () => clearTimeout(timer);
   }, [currentSlide]);
 
-  // Restart the clip from the beginning each time we land on the video slide.
+  // Kick the muted, looping clip into playback whenever we land on it — this
+  // guarantees autoplay (and hides any browser play-button overlay) even if the
+  // initial autoplay attempt was deferred while the slide was hidden.
   useEffect(() => {
     if (heroSlides[currentSlide].type !== "video") return;
     const v = videoRef.current;
@@ -94,7 +96,7 @@ export default function Home() {
           {heroSlides.map((slide, index) => (
             <div
               key={index}
-              className={`absolute inset-0 ${currentSlide === index ? "opacity-100" : "opacity-0"}`}
+              className={`absolute inset-0 transition-opacity duration-700 ${currentSlide === index ? "opacity-100" : "opacity-0"}`}
             >
               {slide.type === "video" ? (
                 <video
@@ -103,16 +105,29 @@ export default function Home() {
                   className="h-full w-full object-cover"
                   autoPlay
                   muted
+                  loop
                   playsInline
                   preload="auto"
-                  onEnded={nextSlide}
+                  controls={false}
+                  disablePictureInPicture
                 />
               ) : (
-                <img
-                  src={slide.src}
-                  alt={`Zolo Packaging hero ${index + 1}`}
-                  className="h-full w-full object-cover"
-                />
+                <>
+                  {/* Blurred fill of the same banner so its full artwork is shown
+                      (object-contain) without black letterbox bars — the banners
+                      have differing aspect ratios, so cover would crop them. */}
+                  <img
+                    src={slide.src}
+                    alt=""
+                    aria-hidden
+                    className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl"
+                  />
+                  <img
+                    src={slide.src}
+                    alt={`Zolo Packaging hero ${index + 1}`}
+                    className="absolute inset-0 h-full w-full object-contain"
+                  />
+                </>
               )}
             </div>
           ))}
