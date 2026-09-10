@@ -81,9 +81,10 @@ function TopBar() {
   return (
     <div className="bg-dark-950 text-white text-xs">
       <div className="mx-auto max-w-7xl px-4 py-2 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1.5">
-            <Truck className="h-3.5 w-3.5 text-primary-400" /> Free shipping on orders over ₹10000
+        {/* Promo hidden on small phones so the right-side links never clip. */}
+        <div className="hidden min-w-0 sm:flex items-center gap-4">
+          <span className="flex items-center gap-1.5 truncate">
+            <Truck className="h-3.5 w-3.5 shrink-0 text-primary-400" /> Free shipping on orders over ₹10000
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -159,7 +160,7 @@ function Navbar() {
           : "bg-white/80 backdrop-blur-xl backdrop-saturate-150 border-b border-dark-100"
       } ${scrolled ? "shadow-md" : ""}`}
     >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex items-center gap-4">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex items-center gap-2 sm:gap-4">
         {showMobileSearch ? (
           <form onSubmit={handleSearchSubmit} className="flex-1 flex items-center gap-2">
             <div className="relative flex-1">
@@ -190,7 +191,7 @@ function Navbar() {
                 </div>
               </div>
               <div className="leading-none">
-                <div className={`font-display font-extrabold text-lg tracking-tight ${overHero ? "text-white" : "text-dark-900"}`}>
+                <div className={`font-display font-extrabold text-base sm:text-lg tracking-tight ${overHero ? "text-white" : "text-dark-900"}`}>
                   Zolo<span className={overHero ? "text-primary-400" : "grad-text"}> Packing</span>
                 </div>
                 <div className={`text-[9px] uppercase tracking-[0.18em] mt-0.5 ${overHero ? "text-white/70" : "text-dark-500"}`}>

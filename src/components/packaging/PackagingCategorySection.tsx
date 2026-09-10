@@ -99,12 +99,12 @@ export function PackagingCategorySection() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         {/* Header — unchanged layout: eyebrow, title, subtitle, View all */}
         <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
-          <div>
+          <div className="w-full min-w-0 sm:w-auto">
             <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600">
               <span className="mr-2 inline-block h-1 w-6 rounded-full bg-primary-500" />
               Categories
             </div>
-            <h2 className="font-display text-3xl font-extrabold leading-[1.05] tracking-tight text-dark-900 sm:text-4xl lg:text-5xl">
+            <h2 className="font-display text-[1.6rem] font-extrabold leading-[1.1] tracking-tight text-balance text-dark-900 sm:text-4xl lg:text-5xl">
               Shop by <span className="grad-text">packaging type</span>
             </h2>
             <p className="mt-3 text-lg text-dark-500">Explore our full catalog of premium packaging solutions</p>

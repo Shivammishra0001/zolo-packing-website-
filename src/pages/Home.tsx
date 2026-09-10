@@ -180,7 +180,7 @@ export default function Home() {
       {/* TRUST BAR */}
       <section className="bg-white border-y border-dark-100 py-8">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {benefits.map((b, i) => (
               <motion.div
                 key={b.title}
@@ -193,7 +193,7 @@ export default function Home() {
                 <div className="h-12 w-12 rounded-2xl bg-primary-50 flex items-center justify-center shrink-0">
                   <b.icon className="h-5 w-5 text-primary-600" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="font-display font-bold text-sm text-dark-900">{b.title}</div>
                   <div className="text-xs text-dark-500 mt-0.5">{b.desc}</div>
                 </div>
