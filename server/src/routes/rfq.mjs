@@ -10,6 +10,7 @@ import { Router } from "express";
 import { ok, wrap } from "../lib/http.mjs";
 import { authenticate, requireAdmin } from "../middleware/auth.mjs";
 import * as rfq from "../services/rfq.mjs";
+import { assist as rfqAssist } from "../services/rfq-assist.mjs";
 
 const notFound = (res) => res.status(404).json({ success: false, error: "Not found", code: "NOT_FOUND" });
 
@@ -22,6 +23,12 @@ rfqRouter.get("/", wrap(async (req, res) => ok(res, { rfqs: await rfq.listMyRfqs
 rfqRouter.post("/", wrap(async (req, res) => {
   const { items, title, notes, requiredBy, ship, submit, autoMatch } = req.body ?? {};
   ok(res, await rfq.createRfq(req.user.id, { items, title, notes, requiredBy, ship, submit: submit !== false, autoMatch: autoMatch !== false }), 201);
+}));
+
+// Rule-based packaging assistant — returns EDITABLE suggestions, never submits.
+// Declared before "/:id" so the literal path is matched first.
+rfqRouter.post("/assist", wrap(async (req, res) => {
+  ok(res, await rfqAssist(req.body?.prompt ?? ""));
 }));
 
 rfqRouter.get("/:id", wrap(async (req, res) => {

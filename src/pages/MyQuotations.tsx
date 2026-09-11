@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { BadgeCheck, Download, FileText, Loader2, MapPin, Paperclip, Plus, RefreshCw, Users } from "lucide-react";
+import { BadgeCheck, Download, FileText, Loader2, MapPin, MessageSquare, Paperclip, Plus, RefreshCw, Send, Users } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
-import { rfqApi, type Rfq, type Quotation } from "@/lib/api/rfq";
+import { rfqApi, type Rfq, type Quotation, type RfqMessage } from "@/lib/api/rfq";
 import { describeApiError, saveBlob } from "@/lib/api/client";
+import { useAuthSession } from "@/components/auth/AuthContext";
 import { inrMinor } from "@/admin/format";
 
 // The buyer's quotation history: every RFQ they sent, the quotations received
@@ -205,7 +206,7 @@ export default function MyQuotations() {
               )}
 
               {r.quotations.map((q) => (
-                <QuotationCard key={q.id} q={q} busy={busy} act={act} toast={toast} />
+                <QuotationCard key={q.id} q={q} rfqId={r.id} busy={busy} act={act} toast={toast} />
               ))}
             </section>
           );
@@ -217,15 +218,18 @@ export default function MyQuotations() {
 
 function QuotationCard({
   q,
+  rfqId,
   busy,
   act,
   toast,
 }: {
   q: Quotation;
+  rfqId: string;
   busy: string | null;
   act: (fn: () => Promise<unknown>, id: string, done: string) => Promise<void>;
   toast: ReturnType<typeof useToast>;
 }) {
+  const [chatOpen, setChatOpen] = useState(false);
   return (
     <div className="mt-4 rounded-lg border erp-border bg-dark-50/50 p-3 dark:bg-white/5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -305,6 +309,111 @@ function QuotationCard({
       {q.status !== "SENT" && (
         <p className="mt-2 text-xs font-semibold erp-text-muted">{q.status.replace(/_/g, " ").toLowerCase()}</p>
       )}
+
+      {/* Negotiate / message the seller (buyer↔seller thread). House quotes
+          (no seller) have no messaging thread. */}
+      {q.seller && (
+        <div className="mt-3 border-t erp-border-soft pt-3">
+          <button
+            type="button"
+            onClick={() => setChatOpen((v) => !v)}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-primary-600 hover:text-primary-700"
+          >
+            <MessageSquare className="h-3.5 w-3.5" aria-hidden /> {chatOpen ? "Hide messages" : `Message ${q.seller.name}`}
+          </button>
+          {chatOpen && <MessageThread rfqId={rfqId} supplierId={q.seller.id} toast={toast} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Buyer↔seller negotiation thread for one supplier on one RFQ. */
+function MessageThread({
+  rfqId,
+  supplierId,
+  toast,
+}: {
+  rfqId: string;
+  supplierId: string;
+  toast: ReturnType<typeof useToast>;
+}) {
+  const { user } = useAuthSession();
+  const [messages, setMessages] = useState<RfqMessage[] | null>(null);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const endRef = useRef<HTMLDivElement>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await rfqApi.listMessages(rfqId, supplierId);
+      setMessages(res.messages);
+    } catch (e) {
+      toast.error("Couldn't load messages", describeApiError(e).message);
+      setMessages([]);
+    }
+  }, [rfqId, supplierId, toast]);
+
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { endRef.current?.scrollIntoView({ block: "nearest" }); }, [messages]);
+
+  const send = async () => {
+    const body = draft.trim();
+    if (!body) return;
+    setSending(true);
+    try {
+      await rfqApi.postMessage(rfqId, supplierId, body);
+      setDraft("");
+      await load();
+    } catch (e) {
+      toast.error("Message not sent", describeApiError(e).message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="mt-2">
+      <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border erp-border-soft bg-white p-3 dark:bg-white/5">
+        {messages === null ? (
+          <p className="text-center text-xs erp-text-faint">Loading…</p>
+        ) : messages.length === 0 ? (
+          <p className="text-center text-xs erp-text-faint">No messages yet — start the conversation.</p>
+        ) : (
+          messages.map((m) => {
+            const mine = m.senderId === user?.id;
+            return (
+              <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[80%] rounded-lg px-3 py-1.5 text-xs ${mine ? "bg-primary-500 text-white" : "bg-dark-50 erp-text dark:bg-white/10"}`}>
+                  <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                  <p className={`mt-0.5 text-[10px] ${mine ? "text-white/70" : "erp-text-faint"}`}>
+                    {new Date(m.createdAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </div>
+              </div>
+            );
+          })
+        )}
+        <div ref={endRef} />
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
+          placeholder="Type a message or negotiate…"
+          className="flex-1 rounded-lg border border-dark-200 px-3 py-2 text-xs focus:border-primary-500 focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => void send()}
+          disabled={sending || !draft.trim()}
+          className="inline-flex items-center gap-1 rounded-lg bg-primary-500 px-3 py-2 text-xs font-bold text-white hover:bg-primary-600 disabled:opacity-50"
+        >
+          {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send
+        </button>
+      </div>
     </div>
   );
 }

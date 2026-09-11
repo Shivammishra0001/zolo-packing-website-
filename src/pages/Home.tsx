@@ -147,7 +147,7 @@ export default function Home() {
               transition={{ duration: 0.7, delay: 0.2 }}
               className="flex flex-wrap items-center gap-3"
             >
-              <Link to="/contact">
+              <Link to="/rfq">
                 <button className="rounded-full bg-primary-500 px-7 py-3 text-sm font-bold text-white shadow-lg shadow-primary-500/30 transition-all hover:bg-primary-600 hover:shadow-primary-500/40">
                   Get Custom Quote
                 </button>
@@ -345,7 +345,7 @@ export default function Home() {
             Ship premium packaging for your brand with Zolo Packing.
           </p>
           <div className="mt-9 flex flex-wrap gap-3 justify-center">
-            <Link to="/contact">
+            <Link to="/rfq">
               <button className="inline-flex items-center gap-2 px-7 py-4 rounded-full bg-white text-primary-600 text-sm font-bold hover:bg-dark-50 transition-all shadow-lg">
                 <Mail className="h-4 w-4" /> Get Free Quote <ArrowRight className="h-4 w-4" />
               </button>

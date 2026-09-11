@@ -171,6 +171,12 @@ async function afterRfqSubmitted(rfqId, { autoMatch = true } = {}) {
   } catch (e) {
     console.error("[rfq] owner WhatsApp notification failed:", e.message);
   }
+  try {
+    const { sendRfqSubmitted } = await import("./email.mjs");
+    await sendRfqSubmitted(rfqId);
+  } catch (e) {
+    console.error("[rfq] RFQ submitted email failed:", e.message);
+  }
 }
 
 /**
@@ -450,6 +456,16 @@ export async function adminCreateQuotation(adminId, rfqId, { items, leadTimeDays
     }
     return quotation;
   });
+
+  // Post-commit: email the buyer when a house quotation was actually sent.
+  if (send) {
+    try {
+      const { sendQuoteReceived } = await import("./email.mjs");
+      await sendQuoteReceived(created.id);
+    } catch (e) {
+      console.error("[rfq] quote received email failed:", e.message);
+    }
+  }
 
   return created;
 }

@@ -97,6 +97,15 @@ export async function matchRfqToSuppliers(rfqId, { fanout = MATCH_FANOUT } = {})
     return created;
   });
 
+  // Post-commit: email the freshly-invited sellers (best-effort, never throws).
+  try {
+    const invitedIds = matches.map((m) => m.supplierId);
+    const { sendSellerInvites } = await import("./email.mjs");
+    await sendSellerInvites(rfqId, invitedIds);
+  } catch (e) {
+    console.error("[marketplace] seller invite email failed:", e.message);
+  }
+
   return { matches, invited: matches.length };
 }
 
@@ -178,7 +187,7 @@ export async function sellerSubmitQuote(supplierId, userId, rfqId, input) {
   const lines = buildQuoteLines(rfq, input.items);
   const totals = quoteTotals(lines, input);
 
-  return prisma.$transaction(async (tx) => {
+  const created = await prisma.$transaction(async (tx) => {
     const existing = await tx.quotation.findFirst({
       where: { rfqId, supplierId },
       orderBy: { version: "desc" },
@@ -274,6 +283,15 @@ export async function sellerSubmitQuote(supplierId, userId, rfqId, input) {
     );
     return quotation;
   });
+
+  // Post-commit: email the buyer that a quotation arrived (best-effort).
+  try {
+    const { sendQuoteReceived } = await import("./email.mjs");
+    await sendQuoteReceived(created.id);
+  } catch (e) {
+    console.error("[marketplace] quote received email failed:", e.message);
+  }
+  return created;
 }
 
 /** Full negotiation ladder for one quotation. */

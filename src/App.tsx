@@ -90,7 +90,7 @@ function TopBar() {
         <div className="flex items-center gap-4">
           <Link to="/order-tracking" className="hover:text-primary-400 transition-colors">Track Order</Link>
           <span className="hidden md:inline text-dark-600">|</span>
-          <Link to="/contact" className="hidden md:inline hover:text-primary-400 transition-colors">Get Quote</Link>
+          <Link to="/rfq" className="hidden md:inline hover:text-primary-400 transition-colors">Get Quote</Link>
           <span className="hidden md:inline text-dark-600">|</span>
           <button className="flex items-center gap-1 hover:text-primary-400 transition-colors">
             <Globe2 className="h-3.5 w-3.5" /> EN
@@ -301,7 +301,7 @@ function Navbar() {
                   )}
                 </AnimatePresence>
               </div>
-              <Link to="/contact" className="hidden lg:inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary-500 text-white text-xs font-bold hover:bg-primary-600 transition-colors shadow-sm shadow-primary-500/30 btn-glow">
+              <Link to="/rfq" className="hidden lg:inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary-500 text-white text-xs font-bold hover:bg-primary-600 transition-colors shadow-sm shadow-primary-500/30 btn-glow">
                 <Quote className="h-3.5 w-3.5" /> Get Quote
               </Link>
               <button
@@ -377,7 +377,7 @@ function Navbar() {
                 </NavLink>
               ))}
               <Link
-                to="/contact"
+                to="/rfq"
                 onClick={() => setOpen(false)}
                 className="block px-3 py-2.5 rounded-lg text-sm font-bold text-primary-600"
               >
@@ -431,7 +431,7 @@ function Footer() {
         { label: "Track order", to: "/order-tracking" },
         { label: "Shipping info", to: "/contact" },
         { label: "Returns", to: "/contact" },
-        { label: "Request Quote", to: "/contact" },
+        { label: "Request Quote", to: "/rfq" },
         { label: "Eco Rewards", to: "/eco-rewards" },
       ],
     },
@@ -468,7 +468,7 @@ function Footer() {
               </div>
             </div>
           </div>
-          <Link to="/contact" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary-500 text-white text-sm font-bold hover:bg-primary-600 transition-colors shadow-lg shadow-primary-500/30">
+          <Link to="/rfq" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary-500 text-white text-sm font-bold hover:bg-primary-600 transition-colors shadow-lg shadow-primary-500/30">
             <Quote className="h-4 w-4" /> Request Free Quote
           </Link>
           <Link to="/eco-rewards" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/10 text-white text-sm font-bold hover:bg-white/15 transition-colors border border-white/10">

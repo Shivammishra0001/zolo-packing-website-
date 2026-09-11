@@ -201,7 +201,55 @@ export const rfqApi = {
       method: "POST",
       body: { action, message },
     }),
+
+  /** Read the buyer↔seller message thread for a given supplier on an RFQ. */
+  listMessages: (rfqId: string, supplierId: string) =>
+    request<{ messages: RfqMessage[] }>(`/rfqs/${rfqId}/messages?supplierId=${encodeURIComponent(supplierId)}`),
+
+  /** Post a message into the buyer↔seller thread. */
+  postMessage: (rfqId: string, supplierId: string, body: string) =>
+    request<RfqMessage>(`/rfqs/${rfqId}/messages`, { method: "POST", body: { supplierId, body } }),
+
+  /**
+   * Rule-based packaging assistant. Given a free-text brief it returns EDITABLE
+   * suggestions (never auto-submitted) plus matching store products.
+   */
+  assist: (prompt: string) =>
+    request<RfqAssistResult>("/rfqs/assist", { method: "POST", body: { prompt } }),
 };
+
+export interface RfqMessage {
+  id: string;
+  rfqId: string;
+  supplierId: string | null;
+  senderId: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
+/** A store product the assistant suggests the buyer consider. */
+export interface RfqAssistProduct {
+  id: string;
+  name: string;
+  sku: string | null;
+  slug: string | null;
+  category: string | null;
+}
+
+/** Editable suggestions from the rule-based packaging assistant. */
+export interface RfqAssistResult {
+  productType: string | null;
+  category: string | null;
+  material: string | null;
+  color: string | null;
+  dimensions: string | null;
+  quantity: number | null;
+  unit: string | null;
+  printing: string | null;
+  note: string;
+  products: RfqAssistProduct[];
+}
 
 export interface AdminRfqFilters {
   status?: RfqStatus;

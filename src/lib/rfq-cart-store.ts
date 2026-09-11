@@ -31,9 +31,26 @@ export interface RfqCartLine {
   image?: string;
   quantity: number;
   unit?: string;
-  /** Free-form per-line requirements (dimensions, gsm, material, printing). */
+  /**
+   * Per-line requirements written to RfqItem.specs. Canonical keys the backend
+   * reads: `category` (seller matching), `dimensions` / `material` / `color` /
+   * `printing` (WhatsApp + admin display). Richer keys the UI uses to rebuild
+   * its controls: `productType`, `colors` (string[]), `pantone`,
+   * `printingRequired`, `dimension` (structured), `description`.
+   */
   specs?: Record<string, unknown>;
   notes?: string;
+}
+
+/** Minimal shape the product picker passes in (a subset of StoreProduct). */
+export interface RfqStoreProductInput {
+  id: string;
+  name: string;
+  sku?: string;
+  image?: string;
+  moq?: number;
+  /** Human category name (product.tags[0]) — used for seller matching. */
+  category?: string;
 }
 
 let lines: RfqCartLine[] = [];
@@ -139,6 +156,24 @@ export function addCustomRfqLine(): string {
   const key = `${CUSTOM_PREFIX}${Math.random().toString(36).slice(2, 10)}`;
   setLines([...lines, { productId: key, productName: "", quantity: 1000, unit: "pcs", specs: {} }]);
   return key;
+}
+
+/**
+ * Add a catalogue product picked from the store selector. Carries its category
+ * into specs so the backend's seller-matching can score it, and defaults the
+ * quantity to the product's MOQ. Merges into an existing line for the same
+ * product rather than duplicating it.
+ */
+export function addStoreProductLine(p: RfqStoreProductInput): void {
+  addToRfq({
+    productId: p.id,
+    productName: p.name,
+    sku: p.sku,
+    image: p.image,
+    quantity: Math.max(1, Math.floor(p.moq || 1000)),
+    unit: "pcs",
+    specs: p.category ? { category: p.category } : {},
+  });
 }
 
 /** The cart shaped as API items — custom lines lose their synthetic id. */
