@@ -13,7 +13,6 @@ import { ProductCard } from "../components/NewProductCard";
 import { PackagingCategorySection } from "../components/packaging/PackagingCategorySection";
 import TrustedCustomers from "../components/TrustedCustomers";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import heroBg2 from "../../images/banner-1.1.png";
 import heroVideo from "../../images/banner-video .mp4";
 import heroBg3 from "../../images/banner1-2.png";
 
@@ -21,7 +20,6 @@ import heroBg3 from "../../images/banner1-2.png";
 // before advancing; slides 2–3 are clean full-bleed images (no text, no overlay)
 // that auto-advance every 5s. Left/right arrows + dots for manual control. Loops.
 const heroSlides = [
-  { type: "image" as const, src: heroBg2, showContent: false },
   { type: "video" as const, src: heroVideo, showContent: true },
   { type: "image" as const, src: heroBg3, showContent: false },
 ];
