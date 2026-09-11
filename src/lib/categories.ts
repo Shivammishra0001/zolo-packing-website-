@@ -22,6 +22,14 @@ export const slugifyCategory = (s: string): string =>
   s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
 /**
+ * Categories intentionally hidden from every storefront category surface
+ * (homepage "Shop by packaging type", the /categories page and the nav).
+ * "Digital files" is not a physical packaging type, so it never appears.
+ */
+export const isHiddenCategory = (nameOrSlug: string): boolean =>
+  /digital/.test(slugifyCategory(nameOrSlug));
+
+/**
  * Emoji per category. Presentation only — it never affects grouping, and an
  * unlisted category simply falls back to the generic package icon.
  */
@@ -70,8 +78,9 @@ export async function hydrateCategoryTree(force = false): Promise<void> {
       const tree: ApiCategory[] | undefined = body?.data?.tree;
       if (body?.success && Array.isArray(tree)) {
         canonicalTree = tree
-          // Only surface categories that actually have shoppable products.
-          .filter((c) => c.productCount > 0)
+          // Only surface categories that actually have shoppable products,
+          // and never the hidden (non-physical) ones like "Digital files".
+          .filter((c) => c.productCount > 0 && !isHiddenCategory(c.slug) && !isHiddenCategory(c.name))
           .map((c) => ({
             id: c.slug,
             name: c.name,
@@ -132,6 +141,8 @@ export function buildCategoryTree(products: StoreProduct[]): Category[] {
   }
 
   return [...byCategory.values()]
+    // Hidden (non-physical) categories such as "Digital files" never surface.
+    .filter((node) => !isHiddenCategory(node.name))
     .map((node): Category => ({
       id: slugifyCategory(node.name),
       name: node.name,

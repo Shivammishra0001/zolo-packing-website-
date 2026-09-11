@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, ChevronLeft, ChevronRight, PackageX, RefreshCw } from "lucide-react";
 import { API_BASE } from "@/lib/api-config";
+import { isHiddenCategory } from "@/lib/categories";
 import type { Category } from "@/data/products";
 import { PackagingCategoryCard } from "./PackagingCategoryCard";
 import { PackagingCategorySkeleton } from "./PackagingCategorySkeleton";
@@ -46,7 +47,8 @@ export function PackagingCategorySection() {
       if (!body?.success || !Array.isArray(tree)) throw new Error("bad response");
       const categories: Category[] = tree
         // Active + shoppable only; admin-disabled/empty categories never appear.
-        .filter((c) => (c.isActive ?? true) && c.productCount > 0)
+        // "Digital files" and other non-physical types are always hidden.
+        .filter((c) => (c.isActive ?? true) && c.productCount > 0 && !isHiddenCategory(c.slug) && !isHiddenCategory(c.name))
         .map((c) => ({
           id: c.slug,
           name: c.name,
