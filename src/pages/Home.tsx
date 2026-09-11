@@ -248,7 +248,7 @@ export default function Home() {
               <p className="mt-1 text-sm text-dark-500">Products added in the catalog will appear here.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5">
               {featured.map((p, i) => (
                 <ProductCard key={p.id} product={p} index={i} />
               ))}
@@ -275,7 +275,7 @@ export default function Home() {
               View all <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-5">
             {newArrivals.map((p, i) => (
               <ProductCard key={p.id} product={p} index={i} />
             ))}
@@ -303,7 +303,7 @@ export default function Home() {
             <p className="mt-4 text-lg text-dark-300">From idea to doorstep in days, not months</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
             {processSteps.map((step, i) => (
               <motion.div
                 key={step.n}

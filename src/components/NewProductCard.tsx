@@ -80,7 +80,7 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       whileHover={{ y: -6 }}
-      className="group bg-white rounded-2xl overflow-hidden card-shadow card-shadow-hover transition-all border border-dark-100 flex flex-col"
+      className="group @container bg-white rounded-2xl overflow-hidden card-shadow card-shadow-hover transition-all border border-dark-100 flex flex-col"
     >
       <Link to={`/product/${product.slug}`} className="block relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-dark-50 to-dark-100">
         <motion.div
@@ -170,7 +170,7 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
         )}
 
         <div className="mt-3 pt-3 border-t border-dark-100 space-y-2">
-          <div className="flex items-end justify-between gap-2">
+          <div className="flex flex-wrap items-end justify-between gap-2">
             <div>
               <div className="text-[10px] uppercase tracking-wider text-dark-500">
                 {quoteOnly ? "Min. Order (MOQ)" : "Price"}
@@ -220,7 +220,7 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
               Out of stock
             </button>
           ) : (
-            <div className="flex gap-1.5">
+            <div className="flex flex-col @[12rem]:flex-row gap-1.5">
               <button
                 onClick={(e) => handleAddToCart(e)}
                 disabled={adding}
