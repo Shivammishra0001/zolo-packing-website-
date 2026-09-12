@@ -204,6 +204,18 @@ app.get(/.*/, (req, res, next) => {
 // ---------------------------------------------------------------------------
 const server = app.listen(PORT, HOST);
 
+// Attach the RFQ negotiation chat gateway (Socket.IO) to the SAME HTTP server.
+// This is the production entrypoint, so the gateway must be initialised here —
+// server/index.mjs (used in local dev) does the same. Non-fatal on failure so
+// a chat problem can never take down the whole API.
+try {
+  const { initChatGateway } = await import("./server/src/realtime/chat-gateway.mjs");
+  initChatGateway(server);
+  console.log("  Realtime:    socket.io on /socket.io");
+} catch (err) {
+  console.warn("  ! Chat gateway init failed — continuing without realtime chat:", err.message.split("\n")[0]);
+}
+
 server.on("listening", () => {
   const size = statSync(indexHtml).size;
   console.log("\n  Zolo Packing — production");
