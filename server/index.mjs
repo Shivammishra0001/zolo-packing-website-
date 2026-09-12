@@ -4,6 +4,7 @@ import { createApp } from "./src/app.mjs";
 import { env } from "./src/lib/env.mjs";
 import { prisma } from "./src/lib/prisma.mjs";
 import { initChatGateway } from "./src/realtime/chat-gateway.mjs";
+import { ensureAdmin } from "./src/lib/ensure-admin.mjs";
 
 const app = createApp();
 
@@ -18,6 +19,16 @@ try {
   // Never print DATABASE_URL — it carries credentials.
   console.error("  Check that PostgreSQL is running and DATABASE_URL is correct in server/.env\n");
   process.exit(1);
+}
+
+// Guarantee an admin login exists on every boot (idempotent). Non-fatal: a
+// seeding hiccup must not stop the API from serving. This is what makes a fresh
+// deploy have a working admin without a separate seed step.
+try {
+  const status = await ensureAdmin();
+  console.log(`  Admin: ${status}`);
+} catch (e) {
+  console.error("  Admin seed skipped:", e.message.split("\n")[0]);
 }
 
 const server = app.listen(env.port);
