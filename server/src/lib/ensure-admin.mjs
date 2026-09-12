@@ -1,64 +1,71 @@
-// Ensure an admin account always exists.
+// Ensure the single permanent admin exists — idempotent and NON-DESTRUCTIVE.
 //
-// Called on every server boot (index.mjs) so a fresh deploy ALWAYS has a
-// working admin login without any manual seed step, and reused by the
-// `seed:admin` CLI. Idempotent and safe to run repeatedly.
+// Runs on every server boot (both entrypoints) and from `npm run seed:admin`.
+// Contract (protected core — see the admin-protection rules):
+//   - CREATE-IF-MISSING only. If the admin already exists, its password is
+//     NEVER touched, so adding features / restarting / re-seeding can never
+//     change the admin password. Use `npm run admin:reset` to change it on
+//     purpose.
+//   - Exactly ONE admin identity, keyed by the canonical email (ADMIN_EMAIL, or
+//     the built-in default). No API path can create or escalate to admin — the
+//     seed is the only admin-creation path.
+//   - The default password lives ONLY as a bcrypt hash in the repo; env
+//     ADMIN_PASSWORD (backend-only) is used solely to CREATE a first admin.
 //
-// Two modes, in priority order:
-//   1. ENV OVERRIDE — if ADMIN_EMAIL + ADMIN_PASSWORD are set, upsert that
-//      account and reset its password to the env value (env always wins).
-//   2. BUILT-IN DEFAULT — otherwise ensure a permanent default admin EXISTS so
-//      a fresh deploy has a login WITHOUT any env vars. Create-if-missing: it
-//      never resets the password of an admin that already exists, so a password
-//      changed in the app is preserved across redeploys.
-//
-// SECURITY: the default password is NEVER stored in the repo as plaintext —
-// only its bcrypt hash is baked in below.
+// Safe to run once, 10 times or 100 times: it never creates a duplicate admin
+// and never resets a password.
 import { prisma } from "./prisma.mjs";
 import { hashPassword } from "./crypto.mjs";
 
 const DEFAULT_ADMIN = {
   email: (process.env.DEFAULT_ADMIN_EMAIL || "superadmin@zolopackaging.com").trim().toLowerCase(),
   passwordHash: "$2b$10$zsXNaEVjj7lKjEb2XdZ8zutoemx7QGfYvG37FMnWST8oRFa2cCxmW", // bcrypt of the shared default password
-  role: "admin",
 };
 
+/** The canonical admin email this deployment uses. */
+export function adminEmail() {
+  const env = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+  const pw = process.env.ADMIN_PASSWORD || "";
+  return env && pw ? env : DEFAULT_ADMIN.email;
+}
+
 /**
- * Provision/repair the admin account. Returns a short status string.
- * Never throws in a way that should stop the server — callers on boot should
- * still wrap it, but the DB work here is minimal and idempotent.
+ * Provision the permanent admin if (and only if) it does not exist yet.
+ * Returns a short status string. Never overwrites an existing password.
  */
 export async function ensureAdmin() {
   const envEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
   const envPassword = process.env.ADMIN_PASSWORD || "";
-  const envRole = process.env.ADMIN_ROLE || "admin";
+  const useEnv = Boolean(envEmail && envPassword);
+  const email = useEnv ? envEmail : DEFAULT_ADMIN.email;
 
-  if (envEmail && envPassword) {
-    const passwordHash = await hashPassword(envPassword);
-    const user = await prisma.user.upsert({
-      where: { email: envEmail },
-      update: { role: envRole, isActive: true, passwordHash },
-      create: { email: envEmail, passwordHash, firstName: "Zolo", lastName: "Admin", role: envRole },
+  const existing = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, role: true, isActive: true },
+  });
+
+  let status;
+  if (existing) {
+    // Keep the account and its password. Only guarantee it can still sign in
+    // as an active admin (never a password change).
+    if (existing.role !== "admin" || !existing.isActive) {
+      await prisma.user.update({ where: { id: existing.id }, data: { role: "admin", isActive: true } });
+      status = `admin ensured (role/active repaired, password preserved) → ${email}`;
+    } else {
+      status = `admin present (password preserved) → ${email}`;
+    }
+  } else {
+    const passwordHash = useEnv ? await hashPassword(envPassword) : DEFAULT_ADMIN.passwordHash;
+    await prisma.user.create({
+      data: { email, passwordHash, firstName: "Zolo", lastName: "Admin", role: "admin" },
     });
-    return `env override → ${user.email} (role=${user.role})`;
+    status = `admin created → ${email}`;
   }
 
-  const existing = await prisma.user.findUnique({ where: { email: DEFAULT_ADMIN.email }, select: { id: true, role: true, isActive: true } });
-  if (!existing) {
-    const user = await prisma.user.create({
-      data: {
-        email: DEFAULT_ADMIN.email,
-        passwordHash: DEFAULT_ADMIN.passwordHash,
-        firstName: "Zolo",
-        lastName: "Admin",
-        role: DEFAULT_ADMIN.role,
-      },
-    });
-    return `default admin created → ${user.email}`;
-  }
-  if (existing.role !== "admin" || !existing.isActive) {
-    await prisma.user.update({ where: { id: existing.id }, data: { role: "admin", isActive: true } });
-    return `default admin repaired → ${DEFAULT_ADMIN.email}`;
-  }
-  return `default admin present → ${DEFAULT_ADMIN.email}`;
+  // Visibility guard: warn (never auto-delete) if more than one admin exists,
+  // e.g. left over from test runs. Use `npm run admin:dedupe` to consolidate.
+  const adminCount = await prisma.user.count({ where: { role: "admin" } });
+  if (adminCount > 1) status += ` [warning: ${adminCount} admin accounts exist — run "npm run admin:dedupe" to keep only ${email}]`;
+
+  return status;
 }
