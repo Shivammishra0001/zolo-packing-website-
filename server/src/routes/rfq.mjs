@@ -11,6 +11,8 @@ import { ok, wrap } from "../lib/http.mjs";
 import { authenticate, requireAdmin } from "../middleware/auth.mjs";
 import * as rfq from "../services/rfq.mjs";
 import { assist as rfqAssist } from "../services/rfq-assist.mjs";
+import * as chat from "../services/chat.mjs";
+import { emitToRfq, emitUnread } from "../realtime/chat-gateway.mjs";
 
 const notFound = (res) => res.status(404).json({ success: false, error: "Not found", code: "NOT_FOUND" });
 
@@ -75,6 +77,49 @@ rfqRouter.delete("/:id/files/:fileId", wrap(async (req, res) => {
   ok(res, await rfqFiles.removeMine(req.user.id, req.params.id, req.params.fileId));
 }));
 
+// ---- Customer <-> Admin negotiation chat ---------------------------------
+// The same handlers back both the buyer (/rfqs) and admin (/admin/rfqs)
+// routers; chat.* gates every call by the AUTHENTICATED user's role, so a
+// buyer only reaches their own RFQ thread and an admin reaches any.
+function registerChatRoutes(router) {
+  router.get("/:id/chat", wrap(async (req, res) => {
+    ok(res, await chat.listMessages(req.user, req.params.id, { before: req.query.before, limit: req.query.limit }));
+  }));
+
+  router.get("/:id/chat/context", wrap(async (req, res) => {
+    const ctx = await chat.chatContext(req.user, req.params.id);
+    delete ctx._rfq;
+    ok(res, ctx);
+  }));
+
+  router.post("/:id/chat", wrap(async (req, res) => {
+    const msg = await chat.postMessage(req.user, req.params.id, { body: req.body?.body });
+    emitToRfq(req.params.id, "new_message", msg);
+    emitUnread(req.params.id).catch(() => {});
+    ok(res, msg, 201);
+  }));
+
+  router.post("/:id/chat/read", wrap(async (req, res) => {
+    const r = await chat.markRead(req.user, req.params.id);
+    emitToRfq(req.params.id, "message_read", { rfqId: req.params.id, by: req.user.id });
+    emitUnread(req.params.id).catch(() => {});
+    ok(res, r);
+  }));
+
+  router.post("/:id/chat/attachments", wrap(async (req, res) => {
+    const msg = await chat.attachAndPost(req.user, req.params.id, req.body ?? {});
+    emitToRfq(req.params.id, "new_message", msg);
+    emitUnread(req.params.id).catch(() => {});
+    ok(res, msg, 201);
+  }));
+}
+// Batch unread counts for the buyer's own RFQ admin threads (badges). Declared
+// as a 2-segment literal so it never collides with GET "/:id".
+rfqRouter.get("/chat/unread-counts", wrap(async (req, res) => {
+  ok(res, { counts: await chat.unreadCountsForBuyer(req.user) });
+}));
+registerChatRoutes(rfqRouter);
+
 // ---- Buyer responds to a quotation ---------------------------------------
 export const quotationRouter = Router();
 quotationRouter.use(authenticate);
@@ -116,6 +161,26 @@ adminRfqRouter.post("/:id/quotations", wrap(async (req, res) => {
 // Admin reads any RFQ's requirement sheet; requireAdmin on the router is the gate.
 adminRfqRouter.get("/:id/files/:fileId/download", wrap(async (req, res) => {
   sendFile(res, await rfqFiles.readFile({ kind: "admin" }, req.params.id, req.params.fileId));
+}));
+
+// ---- Admin negotiation chat ----------------------------------------------
+// Inbox path is two segments so it never collides with GET "/:id".
+adminRfqRouter.get("/chat/inbox", wrap(async (req, res) => {
+  ok(res, await chat.adminInbox(req.user, { sort: req.query.sort }));
+}));
+
+// Reuse the same per-RFQ chat handlers (chat.* re-checks admin access).
+registerChatRoutes(adminRfqRouter);
+
+// Admin sends a REVISED QUOTATION that appears as a quote card in the chat.
+// Creates a real Quotation (existing versioning) then a QUOTE message.
+adminRfqRouter.post("/:id/chat/quote", wrap(async (req, res) => {
+  const quotation = await rfq.adminCreateQuotation(req.user.id, req.params.id, { ...(req.body ?? {}), send: true });
+  const msg = await chat.postQuoteCard(req.user, req.params.id, quotation.id, req.body?.note);
+  emitToRfq(req.params.id, "new_message", msg);
+  emitToRfq(req.params.id, "quote_sent", { rfqId: req.params.id, quotationId: quotation.id });
+  emitUnread(req.params.id).catch(() => {});
+  ok(res, { quotation, message: msg }, 201);
 }));
 
 // ---- Marketplace: seller leads, competing quotes, messaging --------------

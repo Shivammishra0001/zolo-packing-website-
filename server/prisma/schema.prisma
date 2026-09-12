@@ -1410,6 +1410,11 @@ model Message {
   senderId   String
   sender     User      @relation("MessageSender", fields: [senderId], references: [id])
   body       String
+  // Timeline kind: TEXT (default), FILE (attachment via fileId → RfqFile),
+  // QUOTE (a revised quotation card via quotationId → Quotation), SYSTEM.
+  type       String    @default("TEXT")
+  fileId     String? // → RfqFile.id when type = FILE (scalar ref, resolved in service)
+  quotationId String? // → Quotation.id when type = QUOTE
   readAt     DateTime?
   createdAt  DateTime  @default(now())
 

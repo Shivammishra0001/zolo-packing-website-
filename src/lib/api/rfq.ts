@@ -228,6 +228,87 @@ export interface RfqMessage {
   createdAt: string;
 }
 
+// ---- Customer <-> Admin negotiation chat --------------------------------
+
+export type ChatSenderType = "CUSTOMER" | "ADMIN";
+export type ChatMessageType = "TEXT" | "FILE" | "QUOTE" | "SYSTEM";
+
+export interface ChatFileRef { id: string; fileName: string; mimeType: string; size: number }
+export interface ChatQuoteRef {
+  id: string; quotationNumber: string; version: number; status: QuotationStatus;
+  grandTotalMinor: number; subtotalMinor: number; shippingMinor: number; taxMinor: number;
+  currency: string; leadTimeDays: number | null; validUntil: string | null;
+  items: { quantity: number; unit: string; unitPriceMinor: number; productName: string }[];
+}
+
+export interface ChatMessage {
+  id: string;
+  rfqId: string;
+  senderId: string;
+  senderType: ChatSenderType;
+  senderName: string;
+  type: ChatMessageType;
+  body: string;
+  file: ChatFileRef | null;
+  quote: ChatQuoteRef | null;
+  readAt: string | null;
+  createdAt: string;
+  /** Optimistic echo id, present only on the socket 'new_message' for the sender. */
+  tempId?: string;
+}
+
+export interface ChatContext {
+  rfqId: string;
+  rfqNumber: string;
+  status: RfqStatus;
+  role: ChatSenderType;
+  ship: { city: string | null; state: string | null };
+  customer: { id: string; name: string; email: string | null; phone: string | null } | null;
+  items: { id: string; productName: string; sku: string | null; quantity: number; unit: string; specs: Record<string, unknown> }[];
+  currentQuote: { id: string; quotationNumber: string; version: number; status: QuotationStatus; grandTotalMinor: number; currency: string; leadTimeDays: number | null; validUntil: string | null } | null;
+}
+
+export interface ChatInboxItem {
+  rfqId: string;
+  rfqNumber: string;
+  status: RfqStatus;
+  customer: { id: string; name: string; email: string | null; phone: string | null };
+  productCount: number;
+  unread: number;
+  lastMessage: { preview: string; at: string; fromCustomer: boolean } | null;
+  lastAt: string | null;
+}
+
+const chatBase = (admin: boolean) => (admin ? "/admin/rfqs" : "/rfqs");
+
+export const chatApi = {
+  /** Paginated history (chronological). `before` = ISO cursor of oldest loaded. */
+  messages: (rfqId: string, opts: { before?: string; limit?: number } = {}, admin = false) => {
+    const qs = new URLSearchParams();
+    if (opts.before) qs.set("before", opts.before);
+    if (opts.limit) qs.set("limit", String(opts.limit));
+    const s = qs.toString();
+    return request<{ messages: ChatMessage[]; hasMore: boolean; oldestCursor: string | null }>(
+      `${chatBase(admin)}/${rfqId}/chat${s ? `?${s}` : ""}`,
+    );
+  },
+  context: (rfqId: string, admin = false) => request<ChatContext>(`${chatBase(admin)}/${rfqId}/chat/context`),
+  /** Per-RFQ unread counts for the signed-in buyer's own RFQs (for badges). */
+  unreadCounts: () => request<{ counts: Record<string, number> }>("/rfqs/chat/unread-counts"),
+  send: (rfqId: string, body: string, admin = false) =>
+    request<ChatMessage>(`${chatBase(admin)}/${rfqId}/chat`, { method: "POST", body: { body } }),
+  read: (rfqId: string, admin = false) =>
+    request<{ updated: number }>(`${chatBase(admin)}/${rfqId}/chat/read`, { method: "POST" }),
+  attach: (rfqId: string, payload: { fileName: string; mime: string; dataBase64: string }, admin = false) =>
+    request<ChatMessage>(`${chatBase(admin)}/${rfqId}/chat/attachments`, { method: "POST", body: payload }),
+  /** Admin inbox of all negotiation conversations. */
+  inbox: (sort: "unread" | "latest" | "rfq" | "customer" = "unread") =>
+    request<{ conversations: ChatInboxItem[] }>(`/admin/rfqs/chat/inbox?sort=${sort}`),
+  /** Admin sends a revised quotation that appears as a quote card. */
+  sendQuote: (rfqId: string, input: { items: QuotationDraftItem[]; leadTimeDays?: number; validUntil?: string; shippingMinor?: number; discountMinor?: number; paymentTerms?: string; note?: string }) =>
+    request<{ quotation: Quotation; message: ChatMessage }>(`/admin/rfqs/${rfqId}/chat/quote`, { method: "POST", body: input }),
+};
+
 /** A store product the assistant suggests the buyer consider. */
 export interface RfqAssistProduct {
   id: string;

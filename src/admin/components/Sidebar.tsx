@@ -1,6 +1,7 @@
 import {
   FileText,
   LayoutDashboard,
+  MessageSquare,
   Megaphone,
   Package,
   ReceiptText,
@@ -45,6 +46,7 @@ const NAV_GROUPS: NavGroup[] = [
       // Badge dropped: it counted a mock array that was permanently empty.
       // The Quotations page itself shows live pending counts.
       { to: "/admin/quotes", label: "Quotations (RFQ)", icon: FileText },
+      { to: "/admin/chat", label: "Negotiations", icon: MessageSquare },
       { to: "/admin/orders", label: "Orders", icon: ShoppingCart },
       { to: "/admin/returns", label: "Returns & Recycling", icon: Recycle },
       { to: "/admin/catalog", label: "Product Catalog", icon: Package },

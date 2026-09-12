@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Download, FileText, LogIn, Paperclip, RefreshCw, Send, Users } from "lucide-react";
+import { Download, FileText, LogIn, MessageSquare, Paperclip, RefreshCw, Send, Users } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { RfqChat } from "@/components/rfq/RfqChat";
 import { EmptyState, ErrorState, ListSkeleton, Panel } from "../components/Panel";
 import { Badge, Button, KeyValue, PageHeader, Timeline } from "../components/ui";
 import { formatDateTime, inrMinor } from "../format";
@@ -235,6 +236,7 @@ export default function QuotationDetail() {
   const [rfq, setRfq] = useState<AdminRfqDetail | null>(null);
   const [error, setError] = useState<ReturnType<typeof describeApiError> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showChat, setShowChat] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -339,6 +341,9 @@ export default function QuotationDetail() {
         subtitle={`Submitted ${rfq.submittedAt ? formatDateTime(rfq.submittedAt) : formatDateTime(rfq.createdAt)}`}
         actions={
           <>
+            <Button variant={showChat ? "primary" : "secondary"} icon={MessageSquare} onClick={() => setShowChat((v) => !v)}>
+              {showChat ? "Hide chat" : "Chat / Negotiate"}
+            </Button>
             <Button variant="secondary" icon={RefreshCw} onClick={() => void load()}>Refresh</Button>
             {canQuote && (
               <Button
@@ -360,6 +365,12 @@ export default function QuotationDetail() {
           </>
         }
       />
+
+      {showChat && (
+        <div className="mb-4 h-[560px]">
+          <RfqChat rfqId={rfq.id} admin onQuoteAccepted={() => void load()} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-2">

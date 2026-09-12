@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { BadgeCheck, Download, FileText, Loader2, MapPin, MessageSquare, Paperclip, Plus, RefreshCw, Send, Users } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
-import { rfqApi, type Rfq, type Quotation, type RfqMessage } from "@/lib/api/rfq";
+import { rfqApi, chatApi, type Rfq, type Quotation, type RfqMessage } from "@/lib/api/rfq";
 import { describeApiError, saveBlob } from "@/lib/api/client";
 import { useAuthSession } from "@/components/auth/AuthContext";
+import { RfqChat } from "@/components/rfq/RfqChat";
 import { inrMinor } from "@/admin/format";
 
 // The buyer's quotation history: every RFQ they sent, the quotations received
@@ -14,6 +15,8 @@ export default function MyQuotations() {
   const [rfqs, setRfqs] = useState<Rfq[] | null>(null);
   const [error, setError] = useState<{ kind: string; message: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [openChat, setOpenChat] = useState<string | null>(null);
+  const [unread, setUnread] = useState<Record<string, number>>({});
   const toast = useToast();
 
   const load = useCallback(async () => {
@@ -21,6 +24,7 @@ export default function MyQuotations() {
       setError(null);
       const res = await rfqApi.list();
       setRfqs(res.rfqs);
+      chatApi.unreadCounts().then((r) => setUnread(r.counts)).catch(() => {});
     } catch (e) {
       // Distinguish "session expired" from "server broke" from "offline" —
       // never collapse errors into an empty list or a fake not-found.
@@ -30,6 +34,11 @@ export default function MyQuotations() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  const toggleChat = (rfqId: string) => {
+    setOpenChat((cur) => (cur === rfqId ? null : rfqId));
+    setUnread((u) => ({ ...u, [rfqId]: 0 })); // opening clears the badge
+  };
 
   const act = async (fn: () => Promise<unknown>, id: string, done: string) => {
     setBusy(id);
@@ -134,9 +143,25 @@ export default function MyQuotations() {
                   <span className="rounded-full bg-dark-50 px-3 py-1 text-xs font-bold erp-text dark:bg-white/10">
                     {r.status.replace(/_/g, " ").toLowerCase()}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => toggleChat(r.id)}
+                    className={`relative inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                      openChat === r.id ? "bg-primary-500 text-white" : "bg-primary-50 text-primary-700 hover:bg-primary-100"
+                    }`}
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" aria-hidden /> Chat / Negotiate
+                    {(unread[r.id] ?? 0) > 0 && openChat !== r.id && (
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                        {unread[r.id]}
+                      </span>
+                    )}
+                  </button>
                 </div>
               </header>
 
+              <div className={openChat === r.id ? "mt-3 lg:grid lg:grid-cols-[1fr_minmax(320px,26rem)] lg:gap-4" : ""}>
+              <div className="min-w-0">
               <ul className="mt-3 space-y-1 text-sm erp-text-muted">
                 {r.items.map((i) => (
                   <li key={i.id} className="flex justify-between gap-4">
@@ -208,6 +233,13 @@ export default function MyQuotations() {
               {r.quotations.map((q) => (
                 <QuotationCard key={q.id} q={q} rfqId={r.id} busy={busy} act={act} toast={toast} />
               ))}
+              </div>
+              {openChat === r.id && (
+                <div className="mt-4 h-[560px] lg:mt-0">
+                  <RfqChat rfqId={r.id} onQuoteAccepted={() => void load()} />
+                </div>
+              )}
+              </div>
             </section>
           );
         })}

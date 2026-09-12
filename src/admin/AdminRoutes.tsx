@@ -7,6 +7,7 @@ import Customers from "./pages/Customers";
 import CustomerDetail from "./pages/CustomerDetail";
 import Quotations from "./pages/Quotations";
 import QuotationDetail from "./pages/QuotationDetail";
+import ChatInbox from "./pages/ChatInbox";
 import Orders from "./pages/OrdersReal";
 import OrderDetail from "./pages/OrderDetailReal";
 import OrderInvoice from "./pages/OrderInvoice";
@@ -58,6 +59,7 @@ export default function AdminRoutes() {
         <Route path="customers/:id" element={<CustomerDetail />} />
         <Route path="quotes" element={<Quotations />} />
         <Route path="quotes/:id" element={<QuotationDetail />} />
+        <Route path="chat" element={<ChatInbox />} />
         <Route path="orders" element={<Orders />} />
         <Route path="orders/:id" element={<OrderDetail />} />
         <Route path="orders/:id/invoice" element={<OrderInvoice />} />

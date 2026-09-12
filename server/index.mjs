@@ -3,6 +3,7 @@
 import { createApp } from "./src/app.mjs";
 import { env } from "./src/lib/env.mjs";
 import { prisma } from "./src/lib/prisma.mjs";
+import { initChatGateway } from "./src/realtime/chat-gateway.mjs";
 
 const app = createApp();
 
@@ -21,11 +22,15 @@ try {
 
 const server = app.listen(env.port);
 
+// Attach the RFQ negotiation chat gateway to the same HTTP server.
+initChatGateway(server);
+
 server.on("listening", () => {
   console.log("\n  Zolo Packing API");
   console.log(`  Environment: ${env.isProd ? "production" : "development"}`);
   console.log(`  API: http://localhost:${env.port}/api/v1`);
   console.log(`  Health: http://localhost:${env.port}/api/v1/public/health`);
+  console.log(`  Realtime: socket.io on /socket.io`);
   console.log("  Database: postgresql/zolo_packing (connected)\n");
 });
 
