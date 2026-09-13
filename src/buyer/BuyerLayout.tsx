@@ -129,7 +129,7 @@ function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
       </button>
       <div className="min-w-0">
         <p className="truncate text-sm font-bold erp-text">Welcome back, {profile.firstName}</p>
-        <p className="truncate text-xs erp-text-muted">{profile.company}</p>
+        <p className="truncate text-xs erp-text-muted">{profile.company || profile.email}</p>
       </div>
 
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
@@ -159,7 +159,11 @@ function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
         {/* User menu */}
         <div ref={userRef} className="relative">
           <button onClick={() => setUserOpen((o) => !o)} className="flex h-11 items-center gap-2 rounded-lg px-1.5 hover:erp-surface-2 sm:px-2" aria-label="Account menu" aria-expanded={userOpen}>
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-amber-400 text-xs font-bold text-white">{initials}</span>
+            {profile.avatarUrl ? (
+              <img src={profile.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover" />
+            ) : (
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-amber-400 text-xs font-bold text-white">{initials}</span>
+            )}
             <ChevronDown className="hidden h-3.5 w-3.5 erp-text-faint sm:block" aria-hidden />
           </button>
           {userOpen && (

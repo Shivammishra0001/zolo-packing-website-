@@ -19,3 +19,6 @@ addressRouter.patch("/:id", wrap(async (req, res) => {
 }));
 
 addressRouter.delete("/:id", wrap(async (req, res) => ok(res, await addresses.deleteAddress(req.user.id, req.params.id))));
+
+// Explicitly make an address the default for its kind (billing / shipping).
+addressRouter.post("/:id/default", wrap(async (req, res) => ok(res, await addresses.setDefaultAddress(req.user.id, req.params.id))));

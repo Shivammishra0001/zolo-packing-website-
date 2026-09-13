@@ -376,6 +376,7 @@ export async function customerList({ limit = 50, offset = 0, search = null, incl
             { email: { contains: search, mode: "insensitive" } },
             { firstName: { contains: search, mode: "insensitive" } },
             { lastName: { contains: search, mode: "insensitive" } },
+            { company: { contains: search, mode: "insensitive" } },
             { phone: { contains: search } },
           ],
         }
@@ -388,7 +389,9 @@ export async function customerList({ limit = 50, offset = 0, search = null, incl
       select: {
         id: true, email: true, firstName: true, lastName: true, phone: true,
         isActive: true, createdAt: true, lastLoginAt: true,
-        // Company comes from the org the buyer belongs to, when there is one.
+        // Customer profile fields (User is the source of truth).
+        avatarUrl: true, company: true, businessType: true, gstin: true, industry: true, alternatePhone: true,
+        // Legacy fallback: an org the buyer belongs to, when there is one.
         memberships: { select: { organization: { select: { name: true } } }, take: 1 },
         // City comes from the buyer's own address book — default first.
         addresses: {
@@ -440,7 +443,13 @@ export async function customerList({ limit = 50, offset = 0, search = null, incl
         email: u.email,
         phone: u.phone,
         // Null (not "—") when unknown: the UI decides how to render absence.
-        company: u.memberships?.[0]?.organization?.name ?? null,
+        // The buyer's own profile wins; org membership is the legacy fallback.
+        company: u.company ?? u.memberships?.[0]?.organization?.name ?? null,
+        avatarUrl: u.avatarUrl ?? null,
+        businessType: u.businessType ?? null,
+        gstin: u.gstin ?? null,
+        industry: u.industry ?? null,
+        alternatePhone: u.alternatePhone ?? null,
         city: addr?.city ?? ship?.shipCity ?? null,
         state: addr?.state ?? ship?.shipState ?? null,
         isActive: u.isActive,
@@ -464,6 +473,9 @@ export async function customerDetail(userId) {
     select: {
       id: true, email: true, firstName: true, lastName: true, phone: true,
       isActive: true, createdAt: true, updatedAt: true, lastLoginAt: true, role: true,
+      // Customer profile fields (User is the source of truth).
+      avatarUrl: true, alternatePhone: true, company: true, businessType: true,
+      gstin: true, pan: true, website: true, industry: true, preferences: true,
     },
   });
   if (!user) return null;
@@ -531,7 +543,16 @@ export async function customerDetail(userId) {
       firstName: user.firstName, lastName: user.lastName,
       email: user.email, phone: user.phone, isActive: user.isActive,
       createdAt: user.createdAt, updatedAt: user.updatedAt, lastLoginAt: user.lastLoginAt,
-      company: membership?.organization?.name ?? null,
+      // The buyer's own profile wins; org membership is the legacy fallback.
+      company: user.company ?? membership?.organization?.name ?? null,
+      avatarUrl: user.avatarUrl ?? null,
+      alternatePhone: user.alternatePhone ?? null,
+      businessType: user.businessType ?? null,
+      gstin: user.gstin ?? null,
+      pan: user.pan ?? null,
+      website: user.website ?? null,
+      industry: user.industry ?? null,
+      preferences: user.preferences && typeof user.preferences === "object" ? user.preferences : {},
       city: defaultAddress?.city ?? latestShip?.shipCity ?? null,
       state: defaultAddress?.state ?? latestShip?.shipState ?? null,
       totalOrders: agg._count ?? 0,

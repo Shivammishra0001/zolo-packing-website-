@@ -1,13 +1,10 @@
 import { useMemo, useState } from "react";
-import { IndianRupee, Building2, Users, UserPlus } from "lucide-react";
-import { useToast } from "@/components/ui/Toast";
+import { IndianRupee, Building2, Users } from "lucide-react";
 import { MetricCard, MetricCardSkeleton } from "../components/MetricCard";
 import { DataTable, TableSkeleton, type Column } from "../components/DataTable";
 import { EmptyState, Panel, QueryState } from "../components/Panel";
 import {
   Badge,
-  Button,
-  Dialog,
   PageHeader,
   Pagination,
   SearchInput,
@@ -27,84 +24,16 @@ const SEGMENT_TONE: Record<CustomerSegment, "primary" | "info" | "success"> = {
 
 const PAGE_SIZE = 8;
 
-// ---------- New customer dialog ----------
+// A customer row as this table renders it: the shared Customer shape plus the
+// uploaded profile photo (null → initials tile).
+type CustomerRow = Customer & { avatarUrl: string | null };
 
-function NewCustomerDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const toast = useToast();
-  const [form, setForm] = useState({ company: "", name: "", email: "", segment: "small_seller" });
-  const set = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
-
-  function save() {
-    toast.success("Customer created", `${form.company || "New customer"} has been added.`);
-    setForm({ company: "", name: "", email: "", segment: "small_seller" });
-    onClose();
-  }
-
-  const field = "h-10 w-full rounded-lg border erp-border erp-surface px-3 text-sm erp-text outline-none transition-colors placeholder:erp-text-faint focus:border-primary-500 focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-500/20";
-
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title="New Customer"
-      description="Create a customer profile. You can add addresses and GST details later."
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={save}>
-            Create customer
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <label className="block">
-          <span className="mb-1 block text-xs font-semibold erp-text-muted">Company</span>
-          <input
-            className={field}
-            placeholder="Acme Packaging Co."
-            value={form.company}
-            onChange={(e) => set("company")(e.target.value)}
-          />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-xs font-semibold erp-text-muted">Contact name</span>
-          <input
-            className={field}
-            placeholder="Full name"
-            value={form.name}
-            onChange={(e) => set("name")(e.target.value)}
-          />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-xs font-semibold erp-text-muted">Email</span>
-          <input
-            type="email"
-            className={field}
-            placeholder="name@company.com"
-            value={form.email}
-            onChange={(e) => set("email")(e.target.value)}
-          />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-xs font-semibold erp-text-muted">Segment</span>
-          <Select value={form.segment} onChange={set("segment")} className="w-full" aria-label="Segment">
-            <option value="small_seller">Small Seller</option>
-            <option value="d2c_brand">D2C Brand</option>
-            <option value="enterprise">Enterprise</option>
-          </Select>
-        </label>
-      </div>
-    </Dialog>
-  );
-}
-
-// ---------- Page ----------
+// NOTE: the former "New Customer" dialog was removed — it only showed a success
+// toast and persisted nothing. Customers are created by registering on the
+// storefront; there is no admin-side create endpoint, and this page must never
+// pretend otherwise.
 
 export default function Customers() {
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [segment, setSegment] = useState("all");
   const [page, setPage] = useState(1);
@@ -115,11 +44,11 @@ export default function Customers() {
   // Existing panel JSX consumes the MockQuery shape; adapt rather than rewrite.
   const q = asMockQuery(live);
 
-  // Company comes from the buyer's organisation and city from their address
-  // book (falling back to the latest order's shipping snapshot). Either can be
-  // genuinely absent — that stays null here and renders as an em dash, so an
-  // empty field is visibly "not recorded" rather than invented.
-  const customers: Customer[] = useMemo(
+  // Company comes from the buyer's own profile (falling back to their
+  // organisation) and city from their address book (falling back to the latest
+  // order's shipping snapshot). Either can be genuinely absent — that stays
+  // null here and renders as an em dash, never invented.
+  const customers: CustomerRow[] = useMemo(
     () =>
       (live.data?.customers ?? []).map((c) => ({
         id: c.id,
@@ -131,6 +60,7 @@ export default function Customers() {
         city: c.city ?? "",
         totalOrders: c.totalOrders,
         lifetimeValue: c.lifetimeValueMinor / 100,
+        avatarUrl: c.avatarUrl ?? null,
       })),
     [live.data],
   );
@@ -158,7 +88,7 @@ export default function Customers() {
   const enterpriseCount = customers.filter((c) => c.segment === "enterprise").length;
   const d2cCount = customers.filter((c) => c.segment === "d2c_brand").length;
 
-  const columns: Column<Customer>[] = [
+  const columns: Column<CustomerRow>[] = [
     {
       // COMPANY / NAME — company leads when we have one, otherwise the person's
       // name is promoted so the row is never headed by a placeholder.
@@ -169,9 +99,13 @@ export default function Customers() {
         const secondary = c.company ? c.name : c.email;
         return (
           <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg erp-surface-2 text-xs font-bold erp-text-muted">
-              {primary.slice(0, 2).toUpperCase()}
-            </span>
+            {c.avatarUrl ? (
+              <img src={c.avatarUrl} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+            ) : (
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg erp-surface-2 text-xs font-bold erp-text-muted">
+                {primary.slice(0, 2).toUpperCase()}
+              </span>
+            )}
             <div className="min-w-0">
               <p className="truncate font-semibold erp-text">{primary}</p>
               <p className="truncate text-xs erp-text-muted">{secondary}</p>
@@ -224,11 +158,6 @@ export default function Customers() {
         breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Customers" }]}
         title="Customers"
         subtitle="Every buyer, brand and enterprise account you sell packaging to."
-        actions={
-          <Button variant="primary" icon={UserPlus} onClick={() => setDialogOpen(true)}>
-            New Customer
-          </Button>
-        }
       />
 
       <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -236,9 +165,9 @@ export default function Customers() {
           Array.from({ length: 4 }).map((_, i) => <MetricCardSkeleton key={i} />)
         ) : (
           <>
-            <MetricCard label="Total Customers" value={customers.length} icon={Users} detail="active accounts" to="/admin/customers" />
+            <MetricCard label="Total Customers" value={live.data?.total ?? customers.length} icon={Users} detail="active accounts" to="/admin/customers" />
             <MetricCard label="Enterprise" value={enterpriseCount} icon={Building2} detail={`${d2cCount} D2C brands`} to="/admin/customers" />
-            <MetricCard label="Total Lifetime Value" value={inr(totalLtv)} icon={IndianRupee} detail="across all accounts" to="/admin/customers" />
+            <MetricCard label="Total Lifetime Value" value={inr(totalLtv)} icon={IndianRupee} detail="across loaded accounts" to="/admin/customers" />
             <MetricCard label="Avg. LTV" value={inr(customers.length ? totalLtv / customers.length : 0)} icon={IndianRupee} detail="per customer" to="/admin/customers" />
           </>
         )}
@@ -304,8 +233,6 @@ export default function Customers() {
           />
         )}
       </Panel>
-
-      <NewCustomerDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
     </div>
   );
 }

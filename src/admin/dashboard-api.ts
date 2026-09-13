@@ -160,8 +160,12 @@ export type CustomerSegmentKey = "small_seller" | "d2c_brand" | "enterprise";
 
 export interface AdminCustomer {
   id: string; name: string; email: string; phone: string | null;
-  /** Null when the buyer isn't attached to an organisation — never a placeholder. */
+  /** From the buyer's own profile (falls back to their organisation) — never a placeholder. */
   company: string | null;
+  /** Uploaded profile photo URL; null = show initials. */
+  avatarUrl: string | null;
+  businessType: string | null; gstin: string | null; industry: string | null;
+  alternatePhone: string | null;
   city: string | null; state: string | null;
   isActive: boolean; totalOrders: number; lifetimeValueMinor: number;
   lastOrderAt: string | null; createdAt: string; lastLoginAt: string | null;
@@ -169,7 +173,7 @@ export interface AdminCustomer {
 }
 
 export interface AdminCustomerAddress {
-  id: string; kind: string; name: string; phone: string | null;
+  id: string; kind: string; label?: string | null; name: string; phone: string | null;
   line1: string; line2: string | null; city: string; state: string;
   postalCode: string; country: string; isDefault: boolean;
 }
@@ -187,6 +191,8 @@ export interface AdminCustomerPayment {
 
 export interface AdminCustomerDetail extends AdminCustomer {
   firstName: string; lastName: string | null;
+  pan: string | null; website: string | null;
+  preferences: Record<string, boolean>;
   cancelledOrders: number; addressCount: number;
   averageOrderMinor: number;
   /** Last profile change — proves admin reads the live row, not a copy. */

@@ -33,12 +33,30 @@ export default function CheckoutAddress() {
   const load = () =>
     addressApi.list().then((list) => {
       setAddresses(list);
-      // Auto-select default (or first) when nothing chosen yet.
-      if (!shippingAddressId && list.length) setShippingAddressId((list.find((a) => a.isDefault) ?? list[0]).id);
+      // Auto-select the default SHIPPING address (a billing-only default must
+      // not be shipped to), else the first shipping one, else anything.
+      if (!shippingAddressId && list.length) {
+        const pick =
+          list.find((a) => a.kind === "shipping" && a.isDefault) ??
+          list.find((a) => a.kind === "shipping") ??
+          list[0];
+        setShippingAddressId(pick.id);
+      }
       if (list.length === 0) setShowForm(true);
     }).catch(() => setAddresses([]));
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  // The session can resolve AFTER first paint; re-prefill the contact fields
+  // once it does (only while the user hasn't typed anything themselves).
+  useEffect(() => {
+    if (!user) return;
+    setForm((f) =>
+      f.name || f.phone
+        ? f
+        : { ...f, name: [user.firstName, user.lastName].filter(Boolean).join(" "), phone: user.phone ?? "" },
+    );
+  }, [user]);
 
   const set = (k: keyof AddressInput) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -88,6 +106,12 @@ export default function CheckoutAddress() {
         <CheckoutSteps current={1} />
         <h1 className="font-display text-2xl font-extrabold text-dark-900">Delivery address</h1>
         <p className="mt-0.5 text-sm text-dark-500">Choose where we should ship your order.</p>
+        {user && (
+          <p className="mt-2 text-xs text-dark-500">
+            Ordering as <span className="font-semibold text-dark-800">{[user.firstName, user.lastName].filter(Boolean).join(" ") || user.email}</span>
+            {" · "}{user.email}{user.phone ? ` · +91 ${user.phone}` : ""}
+          </p>
+        )}
 
         {/* Saved addresses */}
         <div className="mt-6 space-y-3">
@@ -106,9 +130,10 @@ export default function CheckoutAddress() {
               <label key={a.id} className={`flex cursor-pointer items-start gap-3 rounded-2xl border bg-white p-4 ${shippingAddressId === a.id ? "border-primary-500 ring-1 ring-primary-200" : "border-dark-100"}`}>
                 <input type="radio" name="addr" checked={shippingAddressId === a.id} onChange={() => setShippingAddressId(a.id)} className="mt-1 accent-primary-600" />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="font-bold text-dark-900">{a.name}</span>
-                    {a.isDefault && <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-bold text-primary-700">Default</span>}
+                    {a.label && <span className="rounded-full bg-dark-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-dark-600">{a.label}</span>}
+                    {a.isDefault && <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-bold text-primary-700">Default {a.kind}</span>}
                   </div>
                   <p className="text-sm text-dark-600">{a.line1}{a.line2 ? `, ${a.line2}` : ""}, {a.city}, {a.state} — {a.postalCode}</p>
                   <p className="text-xs text-dark-400">☎ {a.phone}</p>

@@ -47,6 +47,19 @@ model User {
   role         UserRole  @default(buyer)
   isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
+  // ---- Customer profile (User is the single source of truth; the legacy
+  // `Customer` table is unused). All optional so existing rows are untouched.
+  avatarUrl      String? // public upload URL of the profile photo (null = default avatar)
+  alternatePhone String?
+  company        String? // business / company name
+  businessType   String?
+  gstin          String?
+  pan            String?
+  website        String?
+  industry       String?
+  // Notification / communication opt-ins, e.g. { orderUpdates, rfqUpdates,
+  // marketingEmail, whatsapp, sms }. Absent keys mean "default (on)".
+  preferences    Json      @default("{}")
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -655,6 +668,7 @@ model Address {
   userId     String
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   kind       AddressKind @default(shipping)
+  label      String? // nickname shown in the address book, e.g. "Home", "Office", "Warehouse"
   name       String
   phone      String?
   line1      String
@@ -762,6 +776,8 @@ model Order {
   billState       String?
   billPostalCode  String?
   billCountry     String?       @default("India")
+  // frozen contact email at placement (the User's email may change later)
+  customerEmail   String?
   placedAt        DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 

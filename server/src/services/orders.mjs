@@ -219,6 +219,8 @@ export async function placeOrder(user, input) {
         couponId: coupon?.id ?? null,
         couponCode: coupon?.code ?? null,
         notes: notes ?? null,
+        // Frozen contact email: a later profile change must not rewrite history.
+        customerEmail: user.email ?? null,
         shipName: s.name, shipPhone: s.phone, shipLine1: s.line1, shipLine2: s.line2,
         shipCity: s.city, shipState: s.state, shipPostalCode: s.postalCode, shipCountry: s.country,
         billName: b.name, billPhone: b.phone, billLine1: b.line1, billLine2: b.line2,

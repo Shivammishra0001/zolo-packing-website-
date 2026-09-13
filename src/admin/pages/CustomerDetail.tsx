@@ -171,11 +171,32 @@ export default function CustomerDetail() {
 
         <div className="p-4 sm:p-5">
           {tab === "overview" && (
+            <>
+              {/* Profile photo — the same image the customer uploaded in their account. */}
+              <div className="mb-5 flex items-center gap-3">
+                {customer.avatarUrl ? (
+                  <img src={customer.avatarUrl} alt="" className="h-14 w-14 rounded-full object-cover ring-1 erp-border" />
+                ) : (
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full erp-surface-2 text-sm font-bold erp-text-muted">
+                    {(customer.company || customer.name).slice(0, 2).toUpperCase()}
+                  </span>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate font-semibold erp-text">{customer.name}</p>
+                  <p className="truncate text-xs erp-text-muted">{customer.company ?? customer.email}</p>
+                </div>
+              </div>
             <KeyValue
               items={[
                 { label: "Name", value: customer.name },
                 { label: "Company", value: customer.company ?? dash },
+                { label: "Business type", value: customer.businessType ?? dash },
+                { label: "Industry", value: customer.industry ?? dash },
+                { label: "GSTIN", value: customer.gstin ?? dash },
+                { label: "PAN", value: customer.pan ?? dash },
+                { label: "Website", value: customer.website ? <a href={customer.website} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">{customer.website}</a> : dash },
                 { label: "Phone", value: customer.phone ?? dash },
+                { label: "Alternate phone", value: customer.alternatePhone ?? dash },
                 { label: "Email", value: customer.email },
                 { label: "City", value: customer.city ?? dash },
                 { label: "State", value: customer.state ?? dash },
@@ -193,6 +214,7 @@ export default function CustomerDetail() {
                 { label: "Customer ID", value: customer.id },
               ]}
             />
+            </>
           )}
 
           {tab === "orders" &&

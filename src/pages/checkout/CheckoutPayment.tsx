@@ -28,8 +28,18 @@ export default function CheckoutPayment() {
     if (!shippingAddressId || placing) return;
     setPlacing(true);
     try {
+      // Attach the customer's default BILLING address when they have one, so the
+      // order's frozen billing snapshot is their real billing details rather
+      // than a copy of the shipping address.
+      let billingAddressId: string | null = null;
+      try {
+        const { addressApi } = await import("../../lib/api/commerce");
+        const list = await addressApi.list();
+        billingAddressId = list.find((a) => a.kind === "billing" && a.isDefault)?.id ?? null;
+      } catch { /* fall back to shipping-as-billing server-side */ }
       const order = await orderApi.place({
         shippingAddressId,
+        billingAddressId,
         couponCode: couponCode ?? null,
         paymentMethod,
         idempotencyKey,

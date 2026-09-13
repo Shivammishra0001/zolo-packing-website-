@@ -22,6 +22,8 @@ export interface CartView { cartId: string; items: CartLine[] }
 export interface Address {
   id: string;
   kind: "billing" | "shipping";
+  /** Optional nickname, e.g. "Home", "Office", "Warehouse". */
+  label?: string | null;
   name: string;
   phone: string;
   line1: string;
@@ -107,6 +109,8 @@ export const addressApi = {
   create: (input: AddressInput) => request<Address>("/addresses", { method: "POST", body: input }),
   update: (id: string, input: Partial<AddressInput>) => request<Address>(`/addresses/${id}`, { method: "PATCH", body: input }),
   remove: (id: string) => request<{ deleted: boolean }>(`/addresses/${id}`, { method: "DELETE" }),
+  /** Make this the default for its kind (billing or shipping). */
+  setDefault: (id: string) => request<Address>(`/addresses/${id}/default`, { method: "POST" }),
 };
 
 // ---------- Checkout + Orders ----------

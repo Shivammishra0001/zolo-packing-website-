@@ -22,8 +22,10 @@ export function useBuyerProfile() {
       name: [user?.firstName, user?.lastName].filter(Boolean).join(" ") || (user?.email ?? "Customer"),
       email: user?.email ?? "",
       phone: user?.phone ?? "",
-      company: "", // no organisation data for buyers yet — never invented
-      gstin: "",
+      // Real profile data from the backend User row (never invented).
+      avatarUrl: user?.avatarUrl ?? null,
+      company: user?.company ?? "",
+      gstin: user?.gstin ?? "",
       city: "",
       state: "",
     }),

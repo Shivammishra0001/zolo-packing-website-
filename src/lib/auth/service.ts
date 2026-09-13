@@ -1,4 +1,4 @@
-import type { AuthUser, LoginCredentials, RegisterData } from "./types";
+import type { AuthUser, LoginCredentials, ProfileUpdate, RegisterData } from "./types";
 
 // ============================================================
 // Storefront authentication service — REAL backend integration.
@@ -90,6 +90,16 @@ interface BackendUser {
   lastName?: string | null;
   role?: string | null;
   phone?: string | null;
+  avatarUrl?: string | null;
+  alternatePhone?: string | null;
+  company?: string | null;
+  businessType?: string | null;
+  gstin?: string | null;
+  pan?: string | null;
+  website?: string | null;
+  industry?: string | null;
+  preferences?: Record<string, boolean> | null;
+  createdAt?: string | null;
 }
 
 const tokenStore = {
@@ -148,6 +158,16 @@ function toAuthUser(u: BackendUser): AuthUser {
     role,
     firstName: u.firstName ?? undefined,
     lastName: u.lastName ?? undefined,
+    avatarUrl: u.avatarUrl ?? null,
+    alternatePhone: u.alternatePhone ?? null,
+    company: u.company ?? null,
+    businessType: u.businessType ?? null,
+    gstin: u.gstin ?? null,
+    pan: u.pan ?? null,
+    website: u.website ?? null,
+    industry: u.industry ?? null,
+    preferences: u.preferences && typeof u.preferences === "object" ? u.preferences : {},
+    createdAt: u.createdAt ?? null,
   };
 }
 
@@ -257,16 +277,48 @@ export async function logout(): Promise<void> {
  * user object so every consumer of the session sees the change immediately —
  * no logout/login required.
  */
-export async function updateProfile(input: {
-  firstName?: string;
-  lastName?: string | null;
-  email?: string;
-  phone?: string | null;
-}): Promise<AuthUser> {
+export async function updateProfile(input: ProfileUpdate): Promise<AuthUser> {
   const { request } = await import("../api/client");
   const data = await request<{ user: BackendUser }>("/auth/me", { method: "PATCH", body: input });
   const user = toAuthUser(data.user);
   // Keep the cached copy in sync with the server's answer.
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  return user;
+}
+
+const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Upload (or replace) the profile photo. Validated client-side for a fast
+ * error, then again server-side (MIME, size, magic bytes). Sent as base64 JSON
+ * like every other upload in this app. Returns the updated user.
+ */
+export async function uploadPhoto(file: File): Promise<AuthUser> {
+  if (!PHOTO_TYPES.has(file.type)) throw new Error("Use a JPG, PNG or WebP image.");
+  if (file.size > PHOTO_MAX_BYTES) throw new Error("Photo must be 5 MB or smaller.");
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Could not read the selected file."));
+    reader.readAsDataURL(file);
+  });
+  const dataBase64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+  const { request } = await import("../api/client");
+  const data = await request<{ user: BackendUser }>("/auth/me/photo", {
+    method: "POST",
+    body: { name: file.name, mime: file.type, dataBase64 },
+  });
+  const user = toAuthUser(data.user);
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  return user;
+}
+
+/** Remove the profile photo (falls back to the default avatar). */
+export async function removePhoto(): Promise<AuthUser> {
+  const { request } = await import("../api/client");
+  const data = await request<{ user: BackendUser }>("/auth/me/photo", { method: "DELETE" });
+  const user = toAuthUser(data.user);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
   return user;
 }

@@ -58,3 +58,15 @@ authRouter.post("/change-password", authenticate, wrap(async (req, res) => {
   const input = changePasswordSchema.parse(req.body ?? {});
   ok(res, await authService.changePassword(req.user.id, input, req.sessionId));
 }));
+
+// Profile photo. Authenticated + owner-scoped (identity from the session, never
+// the body). Base64 JSON like every other upload in this app; validated and
+// stored server-side, only the URL lands in the database.
+authRouter.post("/me/photo", authenticate, wrap(async (req, res) => {
+  const { name, mime, dataBase64 } = req.body ?? {};
+  ok(res, await authService.updatePhoto(req.user.id, { name, mime, dataBase64 }), 201);
+}));
+
+authRouter.delete("/me/photo", authenticate, wrap(async (req, res) => {
+  ok(res, await authService.removePhoto(req.user.id));
+}));

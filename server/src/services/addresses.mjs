@@ -11,11 +11,28 @@ export const listAddresses = (userId) =>
 export async function createAddress(userId, input) {
   const data = { ...input, phone: normalizePhone(input.phone), userId };
   return prisma.$transaction(async (tx) => {
+    // The first address of a kind becomes that kind's default automatically,
+    // so a customer never ends up with addresses but no default for checkout.
+    const existingOfKind = await tx.address.count({ where: { userId, kind: data.kind } });
+    if (existingOfKind === 0) data.isDefault = true;
     // A newly-defaulted address demotes the previous default of the same kind.
     if (data.isDefault) {
       await tx.address.updateMany({ where: { userId, kind: data.kind }, data: { isDefault: false } });
     }
     return tx.address.create({ data });
+  });
+}
+
+/** Make one owned address the default for its kind (billing or shipping). */
+export async function setDefaultAddress(userId, id) {
+  const existing = await prisma.address.findFirst({ where: { id, userId } });
+  if (!existing) throw notFound("Address not found");
+  return prisma.$transaction(async (tx) => {
+    await tx.address.updateMany({
+      where: { userId, kind: existing.kind, id: { not: id } },
+      data: { isDefault: false },
+    });
+    return tx.address.update({ where: { id }, data: { isDefault: true } });
   });
 }
 
@@ -36,9 +53,22 @@ export async function updateAddress(userId, id, input) {
 }
 
 export async function deleteAddress(userId, id) {
-  const res = await prisma.address.deleteMany({ where: { id, userId } });
-  if (res.count === 0) throw notFound("Address not found");
-  return { deleted: true };
+  const existing = await prisma.address.findFirst({ where: { id, userId } });
+  if (!existing) throw notFound("Address not found");
+  return prisma.$transaction(async (tx) => {
+    await tx.address.delete({ where: { id } });
+    // Deleting the default must not leave the kind with no default: promote
+    // the most recently added remaining address of that kind.
+    if (existing.isDefault) {
+      const next = await tx.address.findFirst({
+        where: { userId, kind: existing.kind },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      if (next) await tx.address.update({ where: { id: next.id }, data: { isDefault: true } });
+    }
+    return { deleted: true };
+  });
 }
 
 // Fetch an address the caller owns, or throw. Used by checkout for snapshots.

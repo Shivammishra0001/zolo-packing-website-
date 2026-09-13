@@ -182,14 +182,36 @@ const MOBILE_RE = /^[6-9]\d{9}$/; // Indian mobile (normalized digits)
 // Self-service profile update (PATCH /auth/me). Every field optional — the
 // service only touches what is present. Phone accepts common Indian formats;
 // the service normalizes to the last 10 digits before the uniqueness check.
+const INDIAN_MOBILE_RE = /^(\+?91[\s-]?)?[6-9]\d{9}$/;
+// Optional text that the client may clear: accepts a value, "" or null.
+const clearableText = (max) => z.union([z.string().trim().max(max), z.null()]).optional();
+
 export const profileUpdateSchema = z
   .object({
     firstName: z.string().trim().min(1, "First name is required").max(80).optional(),
     lastName: z.string().trim().max(80).nullable().optional(),
     email: z.string().trim().email("Enter a valid email").max(200).optional(),
     phone: z
-      .union([z.string().trim().regex(/^(\+?91[\s-]?)?[6-9]\d{9}$/, "Enter a valid Indian mobile number"), z.null()])
+      .union([z.string().trim().regex(INDIAN_MOBILE_RE, "Enter a valid Indian mobile number"), z.null()])
       .optional(),
+    // ---- Business / contact profile (all optional, all clearable) ----
+    alternatePhone: z
+      .union([z.string().trim().regex(INDIAN_MOBILE_RE, "Enter a valid Indian mobile number"), z.literal(""), z.null()])
+      .optional(),
+    company: clearableText(160),
+    businessType: clearableText(80),
+    gstin: z
+      .union([z.string().trim().toUpperCase().regex(GSTIN_RE, "Enter a valid 15-character GSTIN"), z.literal(""), z.null()])
+      .optional(),
+    pan: z
+      .union([z.string().trim().toUpperCase().regex(PAN_RE, "Enter a valid 10-character PAN"), z.literal(""), z.null()])
+      .optional(),
+    website: z
+      .union([z.string().trim().url("Enter a valid URL (include https://)").max(200), z.literal(""), z.null()])
+      .optional(),
+    industry: clearableText(80),
+    // Notification / communication opt-ins — a flat map of booleans.
+    preferences: z.record(z.string().max(40), z.boolean()).optional(),
   })
   .refine((o) => Object.values(o).some((v) => v !== undefined), { message: "Nothing to update" });
 
@@ -210,6 +232,7 @@ export const updateCartItemSchema = z.object({
 
 export const addressSchema = z.object({
   kind: z.enum(["billing", "shipping"]).default("shipping"),
+  label: z.string().trim().max(40).optional().nullable(),
   name: z.string().trim().min(2).max(120),
   phone: z.string().trim().regex(MOBILE_RE, "Enter a valid Indian mobile number"),
   line1: z.string().trim().min(3).max(200),

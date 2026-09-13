@@ -15,13 +15,40 @@ export interface AuthUser {
   role?: UserRole;
   firstName?: string;
   lastName?: string;
-  company?: string;
-  gstin?: string;
+  // ---- Customer profile (persisted on the backend User row) ----
+  /** Public URL of the profile photo; null/undefined = default avatar. */
+  avatarUrl?: string | null;
+  alternatePhone?: string | null;
+  company?: string | null;
+  businessType?: string | null;
+  gstin?: string | null;
+  pan?: string | null;
+  website?: string | null;
+  industry?: string | null;
+  /** Notification / communication opt-ins. Missing key = default (on). */
+  preferences?: Record<string, boolean>;
+  createdAt?: string | null;
   /**
    * Links a buyer to their customer record so the buyer dashboard can scope
    * data to THIS customer only. Never used for admin users.
    */
   customerId?: string;
+}
+
+/** Fields a customer may edit on their own profile (PATCH /auth/me). */
+export interface ProfileUpdate {
+  firstName?: string;
+  lastName?: string | null;
+  email?: string;
+  phone?: string | null;
+  alternatePhone?: string | null;
+  company?: string | null;
+  businessType?: string | null;
+  gstin?: string | null;
+  pan?: string | null;
+  website?: string | null;
+  industry?: string | null;
+  preferences?: Record<string, boolean>;
 }
 
 /** Home route for a role after login. */

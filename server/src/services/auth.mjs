@@ -57,9 +57,21 @@ async function issueSession(user, meta, tx) {
   return { accessToken: accessFor(user, session.id), refreshToken: refresh, expiresAt };
 }
 
+// The user as the client may see it. NEVER includes passwordHash.
 const publicUser = (u) => ({
   id: u.id, email: u.email, firstName: u.firstName, lastName: u.lastName,
   role: u.role, phone: u.phone,
+  // Customer profile
+  avatarUrl: u.avatarUrl ?? null,
+  alternatePhone: u.alternatePhone ?? null,
+  company: u.company ?? null,
+  businessType: u.businessType ?? null,
+  gstin: u.gstin ?? null,
+  pan: u.pan ?? null,
+  website: u.website ?? null,
+  industry: u.industry ?? null,
+  preferences: u.preferences && typeof u.preferences === "object" ? u.preferences : {},
+  createdAt: u.createdAt ?? null,
 });
 
 /**
@@ -83,7 +95,12 @@ export async function register({ email, password, firstName, lastName, phone, ac
 
   return prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
-      data: { email: normEmail, passwordHash, firstName, lastName: lastName || null, phone: normPhone, role },
+      data: {
+        email: normEmail, passwordHash, firstName, lastName: lastName || null, phone: normPhone, role,
+        // Buyers keep their business name on the profile (sellers get an
+        // Organization below instead). Previously this was silently dropped.
+        company: accountType !== "seller" && companyName ? String(companyName).trim() || null : null,
+      },
     });
 
     let organizationId = null;
@@ -231,13 +248,31 @@ export async function logoutAll(userId) {
  * stay login identifiers, so uniqueness conflicts answer 409 with the same
  * codes registration uses (EMAIL_TAKEN / PHONE_TAKEN).
  */
-export async function updateProfile(userId, { firstName, lastName, email, phone }) {
+export async function updateProfile(
+  userId,
+  { firstName, lastName, email, phone, alternatePhone, company, businessType, gstin, pan, website, industry, preferences },
+) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw unauthorized();
 
   const data = {};
   if (firstName !== undefined) data.firstName = firstName.trim();
   if (lastName !== undefined) data.lastName = lastName === null ? null : lastName.trim() || null;
+
+  // Business / contact profile. "" and null both clear the field.
+  const text = (v) => (v === null ? null : String(v).trim() || null);
+  if (alternatePhone !== undefined) data.alternatePhone = alternatePhone ? normalizePhone(alternatePhone) : null;
+  if (company !== undefined) data.company = text(company);
+  if (businessType !== undefined) data.businessType = text(businessType);
+  if (gstin !== undefined) data.gstin = gstin ? String(gstin).trim().toUpperCase() : null;
+  if (pan !== undefined) data.pan = pan ? String(pan).trim().toUpperCase() : null;
+  if (website !== undefined) data.website = text(website);
+  if (industry !== undefined) data.industry = text(industry);
+  // Merge so a partial preferences update never wipes the other toggles.
+  if (preferences !== undefined) {
+    const current = user.preferences && typeof user.preferences === "object" ? user.preferences : {};
+    data.preferences = { ...current, ...preferences };
+  }
 
   if (email !== undefined) {
     const nextEmail = email.trim().toLowerCase();
@@ -305,6 +340,46 @@ export async function changePassword(userId, { currentPassword, newPassword }, c
   });
 
   return { changed: true, otherSessionsRevoked: revoked.count };
+}
+
+/**
+ * Replace the caller's profile photo. Reuses the catalogue image validator
+ * (MIME allow-list, base64 decode, size cap, magic-byte check) and the public
+ * upload store; the previous file is deleted so replaced photos don't pile up.
+ * Only the resulting URL is persisted — never the bytes — in PostgreSQL.
+ */
+export async function updatePhoto(userId, { name, mime, dataBase64 }) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, avatarUrl: true } });
+  if (!user) throw unauthorized();
+  const { storeImage } = await import("./catalog.mjs");
+  const url = storeImage({ name: name || "avatar", mime, dataBase64 });
+  const updated = await prisma.user.update({ where: { id: userId }, data: { avatarUrl: url } });
+  await removeStoredPhoto(user.avatarUrl);
+  await recordEvent({ eventType: "user.photo.updated", actorId: userId, entityType: "User", entityId: userId, metadata: {} });
+  return { user: publicUser(updated) };
+}
+
+/** Remove the caller's profile photo (file + URL). Falls back to the default avatar. */
+export async function removePhoto(userId) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, avatarUrl: true } });
+  if (!user) throw unauthorized();
+  const updated = await prisma.user.update({ where: { id: userId }, data: { avatarUrl: null } });
+  await removeStoredPhoto(user.avatarUrl);
+  await recordEvent({ eventType: "user.photo.removed", actorId: userId, entityType: "User", entityId: userId, metadata: {} });
+  return { user: publicUser(updated) };
+}
+
+// Storage keys are flat filenames, so the key is the URL's last path segment.
+// Best-effort: a missing file must never fail the profile update.
+async function removeStoredPhoto(url) {
+  if (!url) return;
+  try {
+    const { remove } = await import("../lib/storage.mjs");
+    const key = String(url).split("/").pop();
+    if (key) remove(key);
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function me(userId) {

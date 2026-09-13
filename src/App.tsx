@@ -45,7 +45,8 @@ export type WishlistItem = { productId: string };
 
 export type AuthState = {
   loggedIn: boolean;
-  user?: { name: string; email: string; avatar: string };
+  /** `avatar` = initials fallback; `avatarUrl` = the uploaded profile photo. */
+  user?: { name: string; email: string; avatar: string; avatarUrl?: string | null };
 };
 
 // ---------- Contexts ----------
@@ -312,9 +313,13 @@ function Navbar() {
               </button>
               <Link to="/account/dashboard" className={`hidden sm:flex h-9 w-9 items-center justify-center rounded-full relative ${overHero ? "hover:bg-white/10" : "hover:bg-dark-50"}`}>
                 {auth.loggedIn ? (
-                  <div className="h-7 w-7 rounded-full bg-gradient-to-br from-primary-500 to-amber-400 text-white text-xs font-bold flex items-center justify-center">
-                    {auth.user?.avatar}
-                  </div>
+                  auth.user?.avatarUrl ? (
+                    <img src={auth.user.avatarUrl} alt="" className="h-7 w-7 rounded-full object-cover ring-2 ring-white/60" />
+                  ) : (
+                    <div className="h-7 w-7 rounded-full bg-gradient-to-br from-primary-500 to-amber-400 text-white text-xs font-bold flex items-center justify-center">
+                      {auth.user?.avatar}
+                    </div>
+                  )
                 ) : (
                   <User className={`h-4 w-4 ${overHero ? "text-white" : "text-dark-600"}`} />
                 )}
@@ -723,7 +728,7 @@ function LegacyAuthBridge({ onChange }: { onChange: (s: AuthState) => void }) {
         // NOTE: role is deliberately NOT mirrored here. This context feeds
         // presentation only (avatar/'"'"'signed in'"'"' chrome); every authorization
         // decision reads the verified session via useAuthSession().
-        ? { loggedIn: true, user: { name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email, email: user.email, avatar: (user.firstName?.[0] ?? user.email[0] ?? "U").toUpperCase() } }
+        ? { loggedIn: true, user: { name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email, email: user.email, avatar: (user.firstName?.[0] ?? user.email[0] ?? "U").toUpperCase(), avatarUrl: user.avatarUrl ?? null } }
         : { loggedIn: false },
     );
   }, [user, authReady, onChange]);
