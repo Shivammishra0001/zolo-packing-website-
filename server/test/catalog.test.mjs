@@ -2,7 +2,7 @@
 // Run: npm test  (from server/)
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { startServer, stopServer, api } from "./helpers.mjs";
+import { startServer, stopServer, api, adminToken } from "./helpers.mjs";
 import { prisma } from "../src/lib/prisma.mjs";
 
 const rnd = () => Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -19,7 +19,8 @@ const sku = (tag) => {
 const PNG_B64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
-before(async () => { await startServer(); });
+let ADMIN;
+before(async () => { await startServer(); ADMIN = await adminToken(); });
 
 after(async () => {
   // Only ever remove rows this file created.
@@ -32,7 +33,7 @@ test("import creates products and auto-creates the category", async () => {
   const cat = `Test Cat ${rnd()}`;
   createdCats.push(cat);
   const s = sku("A");
-  const { status, body } = await api("/products/import", {
+  const { status, body } = await api("/products/import", { token: ADMIN,
     method: "POST",
     body: { products: [{ sku: s, name: "Imported Box", category: cat, gsm: 350, moq: 100 }], mode: "update" },
   });
@@ -50,7 +51,7 @@ test("category matching is case-insensitive — no duplicate categories", async 
   const cat = `Dupe Cat ${rnd()}`;
   createdCats.push(cat);
   const [a, b, c] = [sku("C1"), sku("C2"), sku("C3")];
-  await api("/products/import", {
+  await api("/products/import", { token: ADMIN,
     method: "POST",
     body: {
       products: [
@@ -70,14 +71,14 @@ test("category matching is case-insensitive — no duplicate categories", async 
 
 test("gsm omitted stays NULL — never coerced to 0", async () => {
   const s = sku("N");
-  await api("/products/import", { method: "POST", body: { products: [{ sku: s, name: "No GSM", category: "Boxes" }], mode: "update" } });
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "No GSM", category: "Boxes" }], mode: "update" } });
   const row = await prisma.product.findUnique({ where: { sku: s } });
   assert.equal(row.gsm, null);
 });
 
 test("one bad row does not prevent the good rows from importing", async () => {
   const good1 = sku("G1"), good2 = sku("G2");
-  const { body } = await api("/products/import", {
+  const { body } = await api("/products/import", { token: ADMIN,
     method: "POST",
     body: {
       products: [
@@ -97,8 +98,8 @@ test("one bad row does not prevent the good rows from importing", async () => {
 
 test("duplicate SKU: skip leaves the original untouched", async () => {
   const s = sku("SK");
-  await api("/products/import", { method: "POST", body: { products: [{ sku: s, name: "Original", category: "Boxes" }], mode: "update" } });
-  const { body } = await api("/products/import", { method: "POST", body: { products: [{ sku: s, name: "Replacement", category: "Boxes" }], mode: "skip" } });
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "Original", category: "Boxes" }], mode: "update" } });
+  const { body } = await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "Replacement", category: "Boxes" }], mode: "skip" } });
   assert.equal(body.data.skipped, 1);
   const row = await prisma.product.findUnique({ where: { sku: s } });
   assert.equal(row.name, "Original");
@@ -106,8 +107,8 @@ test("duplicate SKU: skip leaves the original untouched", async () => {
 
 test("duplicate SKU: update merges into the existing product", async () => {
   const s = sku("UP");
-  await api("/products/import", { method: "POST", body: { products: [{ sku: s, name: "Before", category: "Boxes" }], mode: "update" } });
-  const { body } = await api("/products/import", { method: "POST", body: { products: [{ sku: s, name: "After", category: "Boxes", gsm: 250 }], mode: "update" } });
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "Before", category: "Boxes" }], mode: "update" } });
+  const { body } = await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "After", category: "Boxes", gsm: 250 }], mode: "update" } });
   assert.equal(body.data.updated, 1);
   const row = await prisma.product.findUnique({ where: { sku: s } });
   assert.equal(row.name, "After");
@@ -116,8 +117,8 @@ test("duplicate SKU: update merges into the existing product", async () => {
 
 test("duplicate SKU: create makes a new suffixed SKU, never overwriting", async () => {
   const s = sku("CR");
-  await api("/products/import", { method: "POST", body: { products: [{ sku: s, name: "First", category: "Boxes" }], mode: "update" } });
-  const { body } = await api("/products/import", { method: "POST", body: { products: [{ sku: s, name: "Second", category: "Boxes" }], mode: "create" } });
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "First", category: "Boxes" }], mode: "update" } });
+  const { body } = await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "Second", category: "Boxes" }], mode: "create" } });
   assert.equal(body.data.created, 1);
   created.push(`${s}-2`);
   const original = await prisma.product.findUnique({ where: { sku: s } });
@@ -127,21 +128,21 @@ test("duplicate SKU: create makes a new suffixed SKU, never overwriting", async 
 
 test("update with no image does NOT erase an existing image", async () => {
   const s = sku("IMG");
-  await api("/products/import", {
+  await api("/products/import", { token: ADMIN,
     method: "POST",
     body: { products: [{ sku: s, name: "Has Image", category: "Boxes", images: ["http://example.com/a.jpg"] }], mode: "update" },
   });
-  await api("/products/import", { method: "POST", body: { products: [{ sku: s, name: "Has Image", category: "Boxes" }], mode: "update" } });
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "Has Image", category: "Boxes" }], mode: "update" } });
   const row = await prisma.product.findUnique({ where: { sku: s } });
   assert.deepEqual(row.images, ["http://example.com/a.jpg"], "existing image survives an imageless re-import");
 });
 
 test("single image upload attaches to the product and returns a URL", async () => {
   const s = sku("UPL");
-  await api("/products/import", { method: "POST", body: { products: [{ sku: s, name: "Needs Image", category: "Boxes" }], mode: "update" } });
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "Needs Image", category: "Boxes" }], mode: "update" } });
   const product = await prisma.product.findUnique({ where: { sku: s } });
 
-  const { status, body } = await api(`/products/${product.id}/image`, {
+  const { status, body } = await api(`/products/${product.id}/image`, { token: ADMIN,
     method: "POST",
     body: { name: "shot.png", mime: "image/png", dataBase64: PNG_B64 },
   });
@@ -153,18 +154,18 @@ test("single image upload attaches to the product and returns a URL", async () =
 
 test("corrupt or mistyped image files are rejected", async () => {
   const s = sku("BAD");
-  await api("/products/import", { method: "POST", body: { products: [{ sku: s, name: "P", category: "Boxes" }], mode: "update" } });
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "P", category: "Boxes" }], mode: "update" } });
   const product = await prisma.product.findUnique({ where: { sku: s } });
 
   // Claims PNG, but the bytes are plain text.
   const bogus = Buffer.from("this is definitely not a png").toString("base64");
-  const { status } = await api(`/products/${product.id}/image`, {
+  const { status } = await api(`/products/${product.id}/image`, { token: ADMIN,
     method: "POST",
     body: { name: "evil.png", mime: "image/png", dataBase64: bogus },
   });
   assert.equal(status, 400);
 
-  const { status: badType } = await api(`/products/${product.id}/image`, {
+  const { status: badType } = await api(`/products/${product.id}/image`, { token: ADMIN,
     method: "POST",
     body: { name: "clip.mp4", mime: "video/mp4", dataBase64: PNG_B64 },
   });
@@ -173,9 +174,9 @@ test("corrupt or mistyped image files are rejected", async () => {
 
 test("bulk image upload matches by SKU and reports unmatched", async () => {
   const s = sku("BLK");
-  await api("/products/import", { method: "POST", body: { products: [{ sku: s, name: "Bulk Target", category: "Boxes" }], mode: "update" } });
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "Bulk Target", category: "Boxes" }], mode: "update" } });
 
-  const { status, body } = await api("/products/images/bulk", {
+  const { status, body } = await api("/products/images/bulk", { token: ADMIN,
     method: "POST",
     body: {
       images: [
@@ -194,10 +195,10 @@ test("bulk image upload matches by SKU and reports unmatched", async () => {
 
 test("delete is a SOFT delete and hides the product from listings", async () => {
   const s = sku("DEL");
-  await api("/products/import", { method: "POST", body: { products: [{ sku: s, name: "To Delete", category: "Boxes" }], mode: "update" } });
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "To Delete", category: "Boxes" }], mode: "update" } });
   const product = await prisma.product.findUnique({ where: { sku: s } });
 
-  const { status } = await api(`/products/${product.id}`, { method: "DELETE" });
+  const { status } = await api(`/products/${product.id}`, { token: ADMIN, method: "DELETE" });
   assert.equal(status, 200);
 
   const row = await prisma.product.findUnique({ where: { sku: s } });
@@ -211,10 +212,10 @@ test("delete is a SOFT delete and hides the product from listings", async () => 
 
 test("bulk delete soft-deletes every selected product", async () => {
   const a = sku("BD1"), b = sku("BD2");
-  await api("/products/import", { method: "POST", body: { products: [{ sku: a, name: "A", category: "Boxes" }, { sku: b, name: "B", category: "Boxes" }], mode: "update" } });
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: a, name: "A", category: "Boxes" }, { sku: b, name: "B", category: "Boxes" }], mode: "update" } });
   const rows = await prisma.product.findMany({ where: { sku: { in: [a, b] } } });
 
-  const { status, body } = await api("/products/bulk-delete", { method: "POST", body: { ids: rows.map((r) => r.id) } });
+  const { status, body } = await api("/products/bulk-delete", { token: ADMIN, method: "POST", body: { ids: rows.map((r) => r.id) } });
   assert.equal(status, 200);
   assert.equal(body.data.deleted, 2);
 
@@ -223,7 +224,7 @@ test("bulk delete soft-deletes every selected product", async () => {
 });
 
 test("an unknown duplicate mode is rejected", async () => {
-  const { status } = await api("/products/import", { method: "POST", body: { products: [], mode: "obliterate" } });
+  const { status } = await api("/products/import", { token: ADMIN, method: "POST", body: { products: [], mode: "obliterate" } });
   assert.equal(status, 400);
 });
 
@@ -244,7 +245,7 @@ test("concurrent imports of the same new category create exactly one row", async
 
   // Six separate import calls (separate category caches) racing on one name.
   const results = await Promise.all(
-    skus.map((s) => api("/products/import", {
+    skus.map((s) => api("/products/import", { token: ADMIN,
       method: "POST",
       body: { products: [{ sku: s, name: `Race ${s}`, category: cat }], mode: "update" },
     })),
@@ -270,7 +271,7 @@ test("category name variants collapse to one row across separate requests", asyn
   const skus = variants.map((_, i) => sku(`VC${i}`));
 
   for (let i = 0; i < variants.length; i++) {
-    await api("/products/import", {
+    await api("/products/import", { token: ADMIN,
       method: "POST",
       body: { products: [{ sku: skus[i], name: "V", category: variants[i] }], mode: "update" },
     });
@@ -302,7 +303,7 @@ test("import creates a subcategory nested under its parent category", async () =
   const cat = `Tax Cat ${rnd()}`;
   createdCats.push(cat, "Tax Sub");
   const s = sku("TX");
-  await api("/products/import", { method: "POST", body: {
+  await api("/products/import", { token: ADMIN, method: "POST", body: {
     products: [{ SKU: s, "Product Name": "Taxed", Category: cat, Subcategory: "Tax Sub" }], mode: "update" } });
 
   const product = await prisma.product.findUnique({ where: { sku: s } });
@@ -318,7 +319,7 @@ test("the same subcategory name under one parent is reused, not duplicated", asy
   const cat = `Reuse Cat ${rnd()}`;
   createdCats.push(cat, "Shared Sub");
   const [a, b] = [sku("R1"), sku("R2")];
-  await api("/products/import", { method: "POST", body: { products: [
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [
     { SKU: a, "Product Name": "A", Category: cat, Subcategory: "Shared Sub" },
     { SKU: b, "Product Name": "B", Category: cat, Subcategory: "  SHARED SUB  " },
   ], mode: "update" } });
@@ -331,7 +332,7 @@ test("'General' never becomes a subcategory record", async () => {
   const cat = `Gen Cat ${rnd()}`;
   createdCats.push(cat);
   const s = sku("GN");
-  await api("/products/import", { method: "POST", body: {
+  await api("/products/import", { token: ADMIN, method: "POST", body: {
     products: [{ SKU: s, "Product Name": "G", Category: cat, Subcategory: "General" }], mode: "update" } });
   const product = await prisma.product.findUnique({ where: { sku: s } });
   assert.equal(product.subcategoryId, null, "the placeholder is not a taxonomy node");
@@ -339,7 +340,7 @@ test("'General' never becomes a subcategory record", async () => {
 
 test("Size becomes dimensions only when it is a real 3-axis measurement", async () => {
   const [a, b] = [sku("D1"), sku("D2")];
-  await api("/products/import", { method: "POST", body: { products: [
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [
     { SKU: a, "Product Name": "Box", Category: "Boxes", Size: "12 x 4 x 4 inch" },
     { SKU: b, "Product Name": "Cup", Category: "Boxes", Size: "12 oz" },
   ], mode: "update" } });
@@ -360,10 +361,10 @@ test("re-importing the same rows creates no duplicate products or categories", a
   const s = sku("ID");
   const rows = [{ SKU: s, "Product Name": "Idem", Category: cat, Subcategory: "Idem Sub", GSM: "300" }];
 
-  const first = await api("/products/import", { method: "POST", body: { products: rows, mode: "update" } });
+  const first = await api("/products/import", { token: ADMIN, method: "POST", body: { products: rows, mode: "update" } });
   assert.equal(first.body.data.created, 1);
 
-  const second = await api("/products/import", { method: "POST", body: { products: rows, mode: "update" } });
+  const second = await api("/products/import", { token: ADMIN, method: "POST", body: { products: rows, mode: "update" } });
   assert.equal(second.body.data.created, 0, "no duplicate product");
   assert.equal(second.body.data.updated, 1);
   assert.equal(second.body.data.subcategoriesCreated, 0, "no duplicate subcategory");
@@ -376,11 +377,11 @@ test("editing a product's category re-links BOTH foreign keys", async () => {
   const catA = `Move A ${rnd()}`, catB = `Move B ${rnd()}`;
   createdCats.push(catA, catB, "Sub A", "Sub B");
   const s = sku("MV");
-  await api("/products/import", { method: "POST", body: {
+  await api("/products/import", { token: ADMIN, method: "POST", body: {
     products: [{ SKU: s, "Product Name": "Mover", Category: catA, Subcategory: "Sub A" }], mode: "update" } });
   const before = await prisma.product.findUnique({ where: { sku: s } });
 
-  await api(`/products/${before.id}`, { method: "PATCH", body: { category: catB, subcategory: "Sub B" } });
+  await api(`/products/${before.id}`, { token: ADMIN, method: "PATCH", body: { category: catB, subcategory: "Sub B" } });
 
   const after = await prisma.product.findUnique({ where: { sku: s } });
   assert.equal(after.category, catB);
@@ -393,7 +394,7 @@ test("the categories endpoint returns a tree with real product counts", async ()
   const cat = `Tree Cat ${rnd()}`;
   createdCats.push(cat, "Tree Sub");
   const s = sku("TR");
-  await api("/products/import", { method: "POST", body: {
+  await api("/products/import", { token: ADMIN, method: "POST", body: {
     products: [{ SKU: s, "Product Name": "T", Category: cat, Subcategory: "Tree Sub", Status: "active" }], mode: "update" } });
 
   const { status, body } = await api("/categories");
@@ -408,7 +409,7 @@ test("the categories endpoint returns a tree with real product counts", async ()
 test("import reports real per-run taxonomy and failure accounting", async () => {
   const cat = `Acct Cat ${rnd()}`;
   createdCats.push(cat, "Acct Sub");
-  const { body } = await api("/products/import", { method: "POST", body: { products: [
+  const { body } = await api("/products/import", { token: ADMIN, method: "POST", body: { products: [
     { SKU: sku("AC"), "Product Name": "Good", Category: cat, Subcategory: "Acct Sub" },
     { SKU: "", "Product Name": "Bad — no SKU", Category: cat },
   ], mode: "update" } });
@@ -423,11 +424,11 @@ test("deactivating a category is a soft delete that reports usage", async () => 
   const cat = `Del Cat ${rnd()}`;
   createdCats.push(cat);
   const s = sku("DC");
-  await api("/products/import", { method: "POST", body: {
+  await api("/products/import", { token: ADMIN, method: "POST", body: {
     products: [{ SKU: s, "Product Name": "D", Category: cat }], mode: "update" } });
   const product = await prisma.product.findUnique({ where: { sku: s } });
 
-  const res = await api(`/categories/${product.categoryId}`, { method: "DELETE" });
+  const res = await api(`/categories/${product.categoryId}`, { token: ADMIN, method: "DELETE" });
   assert.equal(res.status, 200);
   assert.equal(res.body.data.productsAffected, 1, "reports what still references it");
 

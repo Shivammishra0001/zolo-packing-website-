@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { catalogApi } from "@/lib/catalog-api";
+import { catalogApi, toDb, type ProductWriteInput } from "@/lib/catalog-api";
 import { deriveStockStatus } from "./statuses-ext";
 import type { CatalogProduct, ProductStatus, StockStatus } from "./types";
 
@@ -9,9 +9,13 @@ import type { CatalogProduct, ProductStatus, StockStatus } from "./types";
 //
 // Reads: hydrated from GET /api/v1/products on load — a page refresh refetches
 // from the database, never resets to static data.
-// Writes: optimistic local update for instant UI, then persisted to the API;
-// the store record is reconciled with the DATABASE-SAVED response. Persist
-// failures are surfaced via onCatalogPersistError (never silently swallowed).
+// Writes:
+//   • create/edit (the product form) AWAIT the API and insert the
+//     DATABASE-SAVED record — the server generates the id, so an optimistic
+//     placeholder could never be reconciled and used to leave a phantom row.
+//   • quick actions (stock, status, archive) stay optimistic for instant UI and
+//     are reconciled with the saved response; failures surface via
+//     onCatalogPersistError (never silently swallowed).
 // ============================================================
 
 function slugify(s: string): string {
@@ -110,13 +114,16 @@ export function getProductBySku(sku: string): CatalogProduct | undefined {
   return products.find((p) => p.sku.toLowerCase() === s);
 }
 
-// ---------- Mutators (optimistic local + persisted to PostgreSQL) ----------
+// ---------- Mutators ----------
 
 const nowIso = () => new Date().toISOString();
 
 /** Reconcile one record with the database-saved copy the API returned. */
 function reconcile(saved: CatalogProduct) {
-  products = products.map((p) => (p.id === saved.id ? normalize(saved) : p));
+  const next = normalize(saved);
+  products = products.some((p) => p.id === next.id)
+    ? products.map((p) => (p.id === next.id ? next : p))
+    : [next, ...products];
   emit();
 }
 
@@ -176,18 +183,30 @@ export function setProductStatus(id: string, status: ProductStatus) {
   replace(id, (p) => ({ ...p, status, updatedAt: nowIso() }), "Saving status failed");
 }
 
-/** Create a product: optimistic prepend, then reconcile with the DB record. */
-export function addProduct(p: CatalogProduct) {
-  const normalized = normalize(p);
-  products = [normalized, ...products];
-  emit();
-  catalogApi
-    .create(normalized)
-    .then(reconcile)
-    .catch((err) => reportPersistError(`Saving "${p.name}" failed`, err));
+/**
+ * Create a product from the admin form. Waits for PostgreSQL, then inserts the
+ * saved record (server-generated id, stored image URLs). Throws on failure —
+ * the form shows the error and keeps the operator's input.
+ */
+export async function createProduct(input: ProductWriteInput): Promise<CatalogProduct> {
+  const saved = await catalogApi.create(input);
+  reconcile(saved);
+  return saved;
 }
 
-/** Patch arbitrary editable fields (used by the edit form). */
+/** Edit a product from the admin form (partial update, awaited, reconciled). */
+export async function saveProduct(id: string, input: ProductWriteInput): Promise<CatalogProduct> {
+  const saved = await catalogApi.update(id, input);
+  reconcile(saved);
+  return saved;
+}
+
+/** Create a product from an existing CatalogProduct shape (e.g. "Duplicate"). Awaited. */
+export async function addProduct(p: CatalogProduct): Promise<CatalogProduct> {
+  return createProduct(toDb(p));
+}
+
+/** Patch arbitrary editable fields (quick actions; optimistic + reconciled). */
 export function updateProduct(id: string, patch: Partial<CatalogProduct>) {
   replace(id, (p) => ({ ...p, ...patch, updatedAt: nowIso() }), "Saving product failed");
 }

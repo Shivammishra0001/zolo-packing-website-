@@ -15,8 +15,15 @@ import {
   slugify,
 } from "../services/catalog.mjs";
 import { recordImport } from "../services/catalog-imports.mjs";
+import { createProduct, updateProduct } from "../services/product-write.mjs";
+import { authenticate, requireAdmin } from "../middleware/auth.mjs";
 
 export const productsRouter = Router();
+
+// Reads (GET /products, GET /categories) stay public for the storefront.
+// Every WRITE below requires an authenticated admin — hiding a button in the
+// UI is not authorization.
+const adminOnly = [authenticate, requireAdmin];
 
 /**
  * List products. Soft-deleted rows are hidden by default so the storefront and
@@ -42,55 +49,32 @@ productsRouter.get("/products", wrap(async (req, res) => {
   ok(res, { products, total });
 }));
 
-productsRouter.post("/products", wrap(async (req, res) => {
-  const body = req.body ?? {};
-  if (!String(body.sku ?? "").trim()) throw badRequest("SKU is required", "SKU_REQUIRED");
-  if (!String(body.name ?? "").trim()) throw badRequest("Product name is required", "NAME_REQUIRED");
-
-  // Route single creates through the same importer so categories are upserted
-  // and slugs stay unique — one implementation, no drift.
-  const result = await importProducts([body], "create");
-  if (result.failed > 0) throw badRequest(result.errors[0]?.error ?? "Could not create product", "CREATE_FAILED");
-  ok(res, { product: result.products[0] }, 201);
-}));
-
 /**
- * Resolve the category/subcategory NAMES on an update into real FK links, so
- * a taxonomy change made in the admin form persists as a relation and not just
- * a denormalized string.
+ * Create ONE product from the admin form. Strict validation (400 with
+ * field-level issues), a hard 409 on a duplicate SKU, a category that must
+ * exist, and images stored in the same transaction as the row. The id is
+ * generated server-side — a client-supplied id is ignored.
  */
-async function applyTaxonomy(data) {
-  if (!data.category) return data;
-  const cat = await resolveCategory(data.category);
-  if (!cat) return data;
-  data.categoryId = cat.id;
-  data.category = cat.name;
-
-  if (data.subcategory && String(data.subcategory).toLowerCase() !== "general") {
-    const sub = await resolveSubcategory(data.subcategory, cat);
-    if (sub) { data.subcategoryId = sub.id; data.subcategory = sub.name; }
-  } else if (data.subcategory !== undefined) {
-    // Explicitly cleared → drop the link rather than leaving a stale one.
-    data.subcategoryId = null;
-    data.subcategory = "General";
-  }
-  return data;
-}
-
-productsRouter.put("/products/:id", wrap(async (req, res) => {
-  const { id: _ignore, createdAt, updatedAt, ...data } = req.body ?? {};
-  await applyTaxonomy(data);
-  if (data.name && !data.slug) delete data.slug;
-  const updated = await prisma.product.update({ where: { id: req.params.id }, data });
-  ok(res, { product: updated });
+productsRouter.post("/products", ...adminOnly, wrap(async (req, res) => {
+  const { id: _clientId, slug: _slug, imageEmoji: _emoji, createdAt, updatedAt, ...body } = req.body ?? {};
+  const product = await createProduct(body, { actorId: req.user.id });
+  ok(res, { product }, 201);
 }));
 
-// PATCH mirrors PUT for callers that prefer partial semantics.
-productsRouter.patch("/products/:id", wrap(async (req, res) => {
-  const { id: _ignore, createdAt, updatedAt, ...data } = req.body ?? {};
-  await applyTaxonomy(data);
-  const updated = await prisma.product.update({ where: { id: req.params.id }, data });
-  ok(res, { product: updated });
+// Strip fields the client may echo back but must never write directly.
+const editable = (body) => {
+  const { id: _id, slug: _slug, imageEmoji: _emoji, createdAt, updatedAt, deletedAt, categoryRef, subcategoryRef, sellerId, reservedStock, commissionBps, ...rest } = body ?? {};
+  return rest;
+};
+
+// PUT and PATCH share one validated, transactional update (partial semantics:
+// only supplied fields change; images/taxonomy are re-linked when supplied).
+productsRouter.put("/products/:id", ...adminOnly, wrap(async (req, res) => {
+  ok(res, { product: await updateProduct(req.params.id, editable(req.body), { actorId: req.user.id }) });
+}));
+
+productsRouter.patch("/products/:id", ...adminOnly, wrap(async (req, res) => {
+  ok(res, { product: await updateProduct(req.params.id, editable(req.body), { actorId: req.user.id }) });
 }));
 
 /**
@@ -98,7 +82,7 @@ productsRouter.patch("/products/:id", wrap(async (req, res) => {
  * `?hard=1` is deliberately NOT supported — financial snapshots depend on the
  * row surviving.
  */
-productsRouter.delete("/products/:id", wrap(async (req, res) => {
+productsRouter.delete("/products/:id", ...adminOnly, wrap(async (req, res) => {
   const { deleted } = await softDeleteProducts([req.params.id]);
   if (deleted === 0) {
     const exists = await prisma.product.findUnique({ where: { id: req.params.id }, select: { id: true } });
@@ -109,7 +93,7 @@ productsRouter.delete("/products/:id", wrap(async (req, res) => {
 }));
 
 /** Bulk soft-delete for the catalog's multi-select toolbar. */
-productsRouter.post("/products/bulk-delete", wrap(async (req, res) => {
+productsRouter.post("/products/bulk-delete", ...adminOnly, wrap(async (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
   const result = await softDeleteProducts(ids);
   ok(res, result);
@@ -119,7 +103,7 @@ productsRouter.post("/products/bulk-delete", wrap(async (req, res) => {
  * Bulk import. Row-isolated: one bad row is reported and skipped while every
  * other row still commits.
  */
-productsRouter.post("/products/import", wrap(async (req, res) => {
+productsRouter.post("/products/import", ...adminOnly, wrap(async (req, res) => {
   const { products = [], mode = "update", fileName = null, fileSizeBytes = null, imagesMatched = 0 } = req.body ?? {};
   if (!Array.isArray(products)) throw badRequest("`products` must be an array", "BAD_PAYLOAD");
   if (!["update", "skip", "create"].includes(mode)) {
@@ -140,7 +124,7 @@ productsRouter.post("/products/import", wrap(async (req, res) => {
 }));
 
 /** Attach an image to one product (admin "Upload Image" action). */
-productsRouter.post("/products/:id/image", wrap(async (req, res) => {
+productsRouter.post("/products/:id/image", ...adminOnly, wrap(async (req, res) => {
   const { name, mime, dataBase64, replace } = req.body ?? {};
   const url = storeImage({ name, mime, dataBase64 });
   const product = await setProductImage(req.params.id, url, { replace: replace === true });
@@ -152,7 +136,7 @@ productsRouter.post("/products/:id/image", wrap(async (req, res) => {
  * product by SKU; unmatched images and invalid files are reported rather than
  * failing the batch.
  */
-productsRouter.post("/products/images/bulk", wrap(async (req, res) => {
+productsRouter.post("/products/images/bulk", ...adminOnly, wrap(async (req, res) => {
   const items = Array.isArray(req.body?.images) ? req.body.images : [];
   if (items.length === 0) throw badRequest("No images supplied", "NO_IMAGES");
   if (items.length > 500) throw badRequest("Too many images in one batch (max 500)", "TOO_MANY");
@@ -181,7 +165,7 @@ productsRouter.post("/products/images/bulk", wrap(async (req, res) => {
 }));
 
 // Generic image upload — unchanged public contract (used by the editor + import).
-productsRouter.post("/uploads", wrap(async (req, res) => {
+productsRouter.post("/uploads", ...adminOnly, wrap(async (req, res) => {
   const { name = "image", mime, dataBase64 } = req.body ?? {};
   const url = storeImage({ name, mime, dataBase64 });
   ok(res, { url }, 201);
@@ -265,7 +249,7 @@ productsRouter.get("/categories", wrap(async (req, res) => {
 }));
 
 /** Create a category, or a subcategory when `parentId` is supplied. */
-productsRouter.post("/categories", wrap(async (req, res) => {
+productsRouter.post("/categories", ...adminOnly, wrap(async (req, res) => {
   const name = String(req.body?.name ?? "").trim();
   if (!name) throw badRequest("Category name is required", "NAME_REQUIRED");
   const parentId = req.body?.parentId ? String(req.body.parentId) : null;
@@ -284,7 +268,7 @@ productsRouter.post("/categories", wrap(async (req, res) => {
  * order history must keep resolving. Products keep their link and simply stop
  * surfacing under an inactive category.
  */
-productsRouter.delete("/categories/:id", wrap(async (req, res) => {
+productsRouter.delete("/categories/:id", ...adminOnly, wrap(async (req, res) => {
   const category = await prisma.category.findUnique({ where: { id: req.params.id } });
   if (!category) throw notFound("Category not found");
   const inUse = await prisma.product.count({

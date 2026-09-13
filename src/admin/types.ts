@@ -292,6 +292,16 @@ export interface CatalogProduct {
   /** Derived availability; kept explicit so "mark out of stock" can pin it. */
   stockStatus?: StockStatus;
   description?: string;
+  /** Board / substrate, e.g. "Kraft", "Corrugated E-flute". */
+  material?: string;
+  /** Catalog "Type" descriptor, e.g. "Mailer box", "Cup". */
+  productType?: string;
+  thickness?: string;
+  sizeLabel?: string;
+  /** Normalised taxonomy links (Category table ids) — set by the API. */
+  categoryId?: string | null;
+  subcategoryId?: string | null;
+  createdAt?: string;
 }
 
 export interface Category {

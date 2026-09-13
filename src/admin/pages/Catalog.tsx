@@ -33,9 +33,8 @@ import {
 } from "../components/ui";
 // Canonical categories from PostgreSQL (NOT the empty mock array, which is
 // why this page used to report "Categories = 0").
-import { useCategories, hydrateCategories, createCategory, type AdminCategory } from "../categories-store";
-import { API_BASE } from "@/lib/api-config";
-import { addProduct, hydrateCatalog, useCatalog } from "../catalog-store";
+import { useCategories, hydrateCategories, createCategory, archiveCategory, type AdminCategory } from "../categories-store";
+import { addProduct, hydrateCatalog, onCatalogPersistError, useCatalog } from "../catalog-store";
 import { catalogApi } from "@/lib/catalog-api";
 import { PRODUCT_STATUS, STOCK_STATUS } from "../statuses-ext";
 import type { CatalogProduct, ProductStatus, StockStatus } from "../types";
@@ -316,19 +315,25 @@ function ProductsTab() {
     setSearch(""); setCategory("all"); setStockStatus("all"); setProductStatus("all"); setSummary("all"); resetPage();
   };
 
-  const duplicate = (p: CatalogProduct) => {
-    const id = `PRD-${Math.floor(1100 + Math.random() * 800)}`;
-    addProduct({
-      ...p,
-      id,
-      name: `${p.name} (Copy)`,
-      sku: `${p.sku}-C`,
-      status: "draft",
-      stock: 0,
-      stockStatus: "out_of_stock",
-      updatedAt: new Date().toISOString(),
-    });
-    toast.success("Duplicated", `Created a draft copy of ${p.name}.`);
+  // Duplicate = a real create on the server (new server-generated id, draft,
+  // zero stock). Awaited so a failure (e.g. the copy SKU already exists) is
+  // reported instead of leaving a phantom row in the list.
+  const duplicate = async (p: CatalogProduct) => {
+    try {
+      const saved = await addProduct({
+        ...p,
+        name: `${p.name} (Copy)`,
+        sku: `${p.sku}-C`,
+        status: "draft",
+        stock: 0,
+        stockStatus: "out_of_stock",
+        updatedAt: new Date().toISOString(),
+      });
+      toast.success("Duplicated", `Created a draft copy as ${saved.sku}.`);
+    } catch (e) {
+      const { describeCatalogError } = await import("@/lib/catalog-api");
+      toast.error("Couldn't duplicate", describeCatalogError(e));
+    }
   };
 
   return (
@@ -648,11 +653,8 @@ function CategoriesTab() {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/categories/${row.id}`, { method: "DELETE" });
-      const body = await res.json();
-      if (!body?.success) throw new Error(body?.error ?? "Request failed");
-      await hydrateCategories(true);
-      toast.success("Category archived", `${row.name} — ${body.data.productsAffected} product(s) still reference it.`);
+      const res = await archiveCategory(row.id);
+      toast.success("Category archived", `${row.name} — ${res.productsAffected} product(s) still reference it.`);
     } catch (e) {
       toast.error("Could not archive", e instanceof Error ? e.message : "Please try again.");
     }
@@ -769,6 +771,12 @@ export default function Catalog() {
 
   const liveCategories = useCategories();
   useEffect(() => { void hydrateCategories(); }, []);
+  // Quick actions (stock / status / archive) persist in the background; when
+  // PostgreSQL rejects one, say so instead of silently keeping a stale row.
+  useEffect(() => {
+    const off = onCatalogPersistError((msg) => toast.error("Catalog change not saved", msg));
+    return () => { off(); };
+  }, [toast]);
 
   const tabs: TabItem[] = [
     { key: "products", label: "Products", count: products.length, icon: Package },

@@ -78,15 +78,18 @@ export function categoryOptions(): { value: string; label: string }[] {
   ]);
 }
 
-/** Create a category (or a subcategory when `parentId` is given). */
+/** Create a category (or a subcategory when `parentId` is given). Admin-only on the server. */
 export async function createCategory(name: string, parentId?: string): Promise<AdminCategory | null> {
-  const res = await fetch(`${API_BASE}/categories`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, parentId }),
-  });
-  const body = await res.json();
-  if (!body?.success) throw new Error(body?.error ?? "Could not create the category.");
+  const { catalogApi } = await import("@/lib/catalog-api");
+  const category = await catalogApi.createCategory(name, parentId);
   await hydrateCategories(true);
-  return body.data.category ?? null;
+  return category ? (tree.find((c) => c.id === category.id) ?? null) : null;
+}
+
+/** Deactivate a category (soft; products keep their link). Admin-only on the server. */
+export async function archiveCategory(id: string): Promise<{ productsAffected: number }> {
+  const { catalogApi } = await import("@/lib/catalog-api");
+  const res = await catalogApi.archiveCategory(id);
+  await hydrateCategories(true);
+  return res;
 }

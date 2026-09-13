@@ -8,14 +8,15 @@ import assert from "node:assert/strict";
 import { startServer, stopServer, api, adminToken, unique } from "./helpers.mjs";
 import { prisma } from "../src/lib/prisma.mjs";
 
-test.before(async () => { await startServer(); });
+let ADMIN;
+test.before(async () => { await startServer(); ADMIN = await adminToken(); });
 test.after(async () => { await stopServer(); });
 
 const sku = () => `HIST-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
 test("a successful import is recorded and readable via admin history", async () => {
   const s1 = sku(), s2 = sku();
-  const res = await api("/products/import", { method: "POST", body: {
+  const res = await api("/products/import", { token: ADMIN, method: "POST", body: {
     fileName: "catalog.xlsx",
     mode: "create",
     products: [
@@ -44,7 +45,7 @@ test("a successful import is recorded and readable via admin history", async () 
 
 test("a partial failure is recorded as COMPLETED_WITH_ERRORS with row errors", async () => {
   const good = sku();
-  const res = await api("/products/import", { method: "POST", body: {
+  const res = await api("/products/import", { token: ADMIN, method: "POST", body: {
     mode: "create",
     products: [
       { sku: good, name: "Good Row", category: "Boxes" },
@@ -75,7 +76,7 @@ test("a missing import id 404s", async () => {
 });
 
 test("import records the uploaded file size (shown in Import History)", async () => {
-  const res = await api("/products/import", { method: "POST", body: {
+  const res = await api("/products/import", { token: ADMIN, method: "POST", body: {
     fileName: "big-catalog.zip",
     fileSizeBytes: 327 * 1024 * 1024, // 327 MB
     mode: "create",
