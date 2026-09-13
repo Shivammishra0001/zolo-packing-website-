@@ -812,6 +812,8 @@ function AnimatedRoutes() {
             }
           />
           {/* Legacy storefront routes now consolidated into the buyer portal (/account/*). */}
+          {/* Secure payment link (from a payment request). Token-only, no sign-in. */}
+          <Route path="/pay/:token" element={<PayPage />} />
           <Route path="/order-tracking" element={<Navigate to="/account/orders" replace />} />
           <Route path="/dashboard" element={<Navigate to="/account/dashboard" replace />} />
           <Route path="/contact" element={<Contact />} />
@@ -838,6 +840,7 @@ import CheckoutAddress from "./pages/checkout/CheckoutAddress";
 import CheckoutReview from "./pages/checkout/CheckoutReview";
 import CheckoutPayment from "./pages/checkout/CheckoutPayment";
 import CheckoutSuccess from "./pages/checkout/CheckoutSuccess";
+import PayPage from "./pages/PayPage";
 
 export { TopBar, Navbar, Footer };
 export type { Product };

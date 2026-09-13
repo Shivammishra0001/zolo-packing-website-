@@ -6,6 +6,7 @@ import {
   ExternalLink,
   FileText,
   LayoutDashboard,
+  Link2,
   LogOut,
   MapPin,
   Menu,
@@ -27,6 +28,17 @@ import { AdminThemeProvider, useTheme, type ThemePref } from "@/admin/theme";
 import { ToastProvider } from "@/components/ui/Toast";
 import { useAuthSession } from "@/components/auth/AuthContext";
 import { useBuyerProfile } from "./data";
+import { markAllNotificationsRead, markNotificationRead, useAdminNotifications, type AppNotificationRow } from "@/admin/dashboard-api";
+import { relativeTime } from "@/admin/format";
+
+/** Where a buyer notification should take the customer when clicked. */
+function buyerNotificationHref(n: AppNotificationRow): string {
+  if (n.entityType === "PaymentRequest") return "/account/payment-requests";
+  if (n.entityType === "Order") return n.entityId ? `/account/orders/${n.entityId}` : "/account/orders";
+  if (n.entityType === "Quotation" || n.entityType === "Rfq") return "/account/quotations";
+  if (n.entityType === "ReturnRequest") return "/account/recycle";
+  return "/account/dashboard";
+}
 
 // ---------- Buyer sidebar: ONLY buyer modules, never admin ----------
 interface NavItem {
@@ -42,6 +54,7 @@ const NAV: NavItem[] = [
   { to: "/account/orders", label: "Orders", icon: ShoppingCart },
   { to: "/account/tracking", label: "Tracking", icon: MapPin },
   { to: "/account/payments", label: "Payment History", icon: Wallet },
+  { to: "/account/payment-requests", label: "Payment Requests", icon: Link2 },
   { to: "/account/recycle", label: "Returns & Recycling", icon: Recycle },
   { to: "/account/reports", label: "Reports", icon: ReceiptText },
   { to: "/account/settings", label: "Settings", icon: Settings },
@@ -119,6 +132,12 @@ function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   const [userOpen, setUserOpen] = useState(false);
   const themeRef = useClickOutside(() => setThemeOpen(false));
   const userRef = useClickOutside(() => setUserOpen(false));
+  const [bellOpen, setBellOpen] = useState(false);
+  const bellRef = useClickOutside(() => setBellOpen(false));
+  // Live in-app notifications (GET /notifications, scoped to this customer).
+  const notifQuery = useAdminNotifications();
+  const notifications = notifQuery.data?.items ?? [];
+  const unread = notifQuery.data?.unread ?? 0;
   const ThemeIcon = pref === "system" ? Monitor : resolved === "dark" ? Moon : Sun;
   const initials = `${profile.firstName[0] ?? "U"}${profile.lastName[0] ?? ""}`.toUpperCase();
 
@@ -150,11 +169,53 @@ function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
           )}
         </div>
 
-        {/* Notifications (static) */}
-        <button className="relative flex h-11 w-11 items-center justify-center rounded-lg erp-text-muted hover:erp-surface-2" aria-label="Notifications">
-          <Bell className="h-5 w-5" aria-hidden />
-          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary-500" aria-hidden />
-        </button>
+        {/* Notifications — real rows from the database */}
+        <div ref={bellRef} className="relative">
+          <button
+            onClick={() => setBellOpen((o) => !o)}
+            className="relative flex h-11 w-11 items-center justify-center rounded-lg erp-text-muted hover:erp-surface-2"
+            aria-label={`Notifications${unread ? ` (${unread} unread)` : ""}`}
+            aria-expanded={bellOpen}
+          >
+            <Bell className="h-5 w-5" aria-hidden />
+            {unread > 0 && (
+              <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{unread}</span>
+            )}
+          </button>
+          {bellOpen && (
+            <div className="absolute right-0 top-full mt-1.5 w-80 max-w-[90vw] overflow-hidden rounded-lg border erp-border erp-surface shadow-lg">
+              <div className="flex items-center justify-between border-b erp-border-soft px-4 py-2.5">
+                <span className="text-sm font-bold erp-text">Notifications</span>
+                {unread > 0 && (
+                  <button onClick={() => { void markAllNotificationsRead().then(() => notifQuery.refetch()).catch(() => {}); }} className="text-[11px] font-bold text-primary-600 hover:underline dark:text-primary-400">
+                    Mark all read
+                  </button>
+                )}
+              </div>
+              <ul className="max-h-96 overflow-y-auto">
+                {notifications.length === 0 && (
+                  <li className="px-4 py-6 text-center text-xs erp-text-muted">{notifQuery.status === "loading" ? "Loading…" : "No notifications yet."}</li>
+                )}
+                {notifications.map((n) => (
+                  <li key={n.id} className="border-b erp-border-soft last:border-0">
+                    <Link
+                      to={buyerNotificationHref(n)}
+                      onClick={() => { setBellOpen(false); if (n.status === "UNREAD") void markNotificationRead(n.id).then(() => notifQuery.refetch()).catch(() => {}); }}
+                      className="flex gap-3 px-4 py-3 hover:erp-surface-2"
+                    >
+                      <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", n.status === "READ" ? "bg-dark-300 dark:bg-dark-600" : "bg-primary-500")} aria-hidden />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold erp-text">{n.title}</span>
+                        {n.body && <span className="mt-0.5 block text-xs leading-relaxed erp-text-muted">{n.body}</span>}
+                        <span className="mt-1 block text-[11px] font-medium erp-text-faint">{relativeTime(n.createdAt)}</span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
 
         {/* User menu */}
         <div ref={userRef} className="relative">

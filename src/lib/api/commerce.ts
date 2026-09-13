@@ -42,10 +42,18 @@ export interface Quote {
   discountMinor: number;
   taxMinor: number;
   shippingMinor: number;
+  /** Cash-on-delivery surcharge (admin-configured); 0 for other methods. */
+  codChargeMinor: number;
   grandTotalMinor: number;
   couponCode: string | null;
   couponError: string | null;
+  paymentMethod: string | null;
+  /** Set when the chosen method is disabled / outside its limits. */
+  paymentError: string | null;
 }
+
+/** Offline payment methods accepted at checkout (gated by admin settings). */
+export type CheckoutPaymentMethod = "cod" | "upi" | "bank_transfer" | "neft" | "cheque";
 
 export interface OrderAddress { name: string; phone: string; line1: string; line2?: string | null; city: string; state: string; postalCode: string; country: string }
 export interface OrderItem { id: string; productId: string | null; productName: string; sku: string | null; variant: string | null; specs: unknown; quantity: number; unitPriceMinor: number; discountMinor: number; taxMinor: number; lineTotalMinor: number }
@@ -64,6 +72,7 @@ export interface Order {
   discountMinor: number;
   taxMinor: number;
   shippingMinor: number;
+  codChargeMinor?: number;
   grandTotalMinor: number;
   paidMinor: number;
   couponCode: string | null;
@@ -79,13 +88,15 @@ export interface Order {
   shipments: OrderShipment[];
   invoice: { invoiceNumber: string; status: string; issuedAt: string } | null;
   customer?: { id: string; name: string; email: string; phone: string | null };
+  /** Present right after placing a UPI / bank-transfer order: the payment link. */
+  paymentRequest?: { id: string; requestNumber: string; status: string; amountMinor: number; payUrl?: string } | null;
 }
 
 export interface PlaceOrderInput {
   shippingAddressId: string;
   billingAddressId?: string | null;
   couponCode?: string | null;
-  paymentMethod?: "cod";
+  paymentMethod?: CheckoutPaymentMethod;
   notes?: string | null;
   idempotencyKey?: string | null;
 }
@@ -115,7 +126,8 @@ export const addressApi = {
 
 // ---------- Checkout + Orders ----------
 export const orderApi = {
-  quote: (couponCode?: string | null) => request<Quote>("/checkout/quote", { method: "POST", body: { couponCode: couponCode ?? null } }),
+  quote: (couponCode?: string | null, paymentMethod?: CheckoutPaymentMethod | null) =>
+    request<Quote>("/checkout/quote", { method: "POST", body: { couponCode: couponCode ?? null, paymentMethod: paymentMethod ?? null } }),
   place: (input: PlaceOrderInput) => request<Order>("/checkout/place", { method: "POST", body: input }),
   list: () => request<Order[]>("/orders"),
   get: (id: string) => request<Order>(`/orders/${id}`),

@@ -265,6 +265,8 @@ export const addressUpdateSchema = addressSchema.partial();
 // Preview pricing without placing an order (cart page / review page).
 export const quoteSchema = z.object({
   couponCode: z.string().trim().max(40).optional().nullable(),
+  // So the preview can include the COD surcharge when COD is selected.
+  paymentMethod: z.enum(["cod", "upi", "neft", "cheque", "bank_transfer"]).optional().nullable(),
 });
 
 // Place an order from the caller's cart. Prices/totals are NOT accepted from
@@ -273,12 +275,11 @@ export const placeOrderSchema = z.object({
   shippingAddressId: z.string().min(1),
   billingAddressId: z.string().min(1).optional().nullable(),
   couponCode: z.string().trim().max(40).optional().nullable(),
-  // Offline methods only. COD captures on delivery; neft/cheque/bank_transfer
-  // stay PENDING until an admin confirms receipt via PATCH /admin/payments/:id.
-  // Gateway-backed methods (upi/card) are deliberately absent until a real
-  // payment gateway is integrated — accepting them here would create orders
-  // that can never actually be paid.
-  paymentMethod: z.enum(["cod", "neft", "cheque", "bank_transfer"]).default("cod"),
+  // Methods are gated by Settings → Payments (enabled flag, COD limits). COD
+  // captures on delivery; upi (manual QR, verified by admin), neft, cheque and
+  // bank_transfer stay PENDING until an admin verifies receipt. Card/gateway
+  // methods are deliberately absent until a real payment gateway is integrated.
+  paymentMethod: z.enum(["cod", "upi", "neft", "cheque", "bank_transfer"]).default("cod"),
   notes: z.string().trim().max(500).optional().nullable(),
   // Idempotency key: repeated submits with the same key return the same order.
   idempotencyKey: z.string().trim().min(8).max(100).optional().nullable(),

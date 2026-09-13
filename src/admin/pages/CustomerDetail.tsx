@@ -32,6 +32,8 @@ import {
 } from "../dashboard-api";
 import { SEGMENT_LABEL } from "../statuses";
 import { statusTone, paymentTone, prettyStatus } from "@/lib/order-status";
+import { PaymentRequestsPanel, SendPaymentRequestDialog } from "../components/PaymentRequests";
+import { Link2, Send } from "lucide-react";
 
 const SEGMENT_TONE: Record<CustomerSegmentKey, "primary" | "info" | "success"> = {
   small_seller: "info",
@@ -45,6 +47,7 @@ const TABS: TabItem[] = [
   { key: "payments", label: "Payment History" },
   { key: "addresses", label: "Addresses" },
   { key: "rfqs", label: "RFQs" },
+  { key: "requests", label: "Payment Requests", icon: Link2 },
 ];
 
 const dash = <span className="erp-text-faint">—</span>;
@@ -52,6 +55,8 @@ const dash = <span className="erp-text-faint">—</span>;
 export default function CustomerDetail() {
   const { id } = useParams();
   const [tab, setTab] = useState("overview");
+  const [sendOpen, setSendOpen] = useState(false);
+  const [requestsVersion, setRequestsVersion] = useState(0);
   const q = useAdminCustomer(id ?? null);
 
   if (q.status === "loading") {
@@ -148,6 +153,14 @@ export default function CustomerDetail() {
         subtitle={[customer.company ? customer.name : null, customer.city, customer.email]
           .filter(Boolean)
           .join(" · ")}
+        actions={<Button variant="primary" icon={Send} onClick={() => setSendOpen(true)}>Send payment request</Button>}
+      />
+      <SendPaymentRequestDialog
+        open={sendOpen}
+        onClose={() => setSendOpen(false)}
+        customer={{ id: customer.id, name: customer.name, email: customer.email }}
+        orders={orders.filter((o) => o.paymentStatus !== "PAID" && o.status !== "CANCELLED").map((o) => ({ id: o.id, orderNumber: o.orderNumber, grandTotalMinor: o.grandTotalMinor, paymentStatus: o.paymentStatus }))}
+        onCreated={() => { setRequestsVersion((v) => v + 1); setTab("requests"); }}
       />
 
       <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -296,6 +309,15 @@ export default function CustomerDetail() {
             ) : (
               <EmptyState icon={Package} title="No RFQs yet" message="This customer hasn't requested a quotation." />
             ))}
+
+          {tab === "requests" && (
+            <PaymentRequestsPanel
+              key={requestsVersion}
+              userId={customer.id}
+              compact
+              action={<Button size="sm" variant="primary" icon={Send} onClick={() => setSendOpen(true)}>New request</Button>}
+            />
+          )}
         </div>
       </Panel>
     </div>

@@ -1,34 +1,28 @@
-// WhatsApp owner notifications.
+// WhatsApp — the WhatsAppProvider behind the notification service (Meta Cloud API).
 //
-// Contract with the RFQ flow:
-//   - Called ONLY after the RFQ transaction has committed. A delivery failure
-//     must never fail (or roll back) the RFQ itself.
+// Contract (shared with email.mjs):
+//   - Called ONLY after the relevant transaction has committed. A delivery
+//     failure must never fail (or roll back) the business change.
 //   - Never fakes success: without configured credentials the delivery is
 //     recorded as SKIPPED and logged, not "sent".
-//   - Every attempt leaves a NotificationDelivery row (provider, recipient,
-//     status, provider message id, error) so the admin can see what happened.
+//   - Every attempt leaves a NotificationDelivery row (channel "whatsapp").
 //
-// Configuration (server/.env — see .env.example):
-//   WHATSAPP_PROVIDER=meta            currently only Meta's Cloud API
-//   WHATSAPP_ACCESS_TOKEN=...
-//   WHATSAPP_PHONE_NUMBER_ID=...
-//   OWNER_WHATSAPP_NUMBER=91XXXXXXXXXX  (digits, country code first)
-//   ADMIN_BASE_URL=https://yourdomain   (for the "View RFQ" link)
+// Configuration comes from Settings → Notifications → WhatsApp (PostgreSQL,
+// token encrypted at rest) with server/.env as a fallback — see
+// services/settings.mjs. This is a real integration: if it is not configured it
+// says so; it never pretends a message was sent.
 import { prisma } from "../lib/prisma.mjs";
+import { getNotificationSettings, isWhatsAppConfigured } from "./settings.mjs";
 
 const GRAPH_VERSION = "v20.0";
 
-function config() {
-  return {
-    provider: String(process.env.WHATSAPP_PROVIDER || "").trim().toLowerCase(),
-    accessToken: String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim(),
-    phoneNumberId: String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim(),
-    ownerNumber: String(process.env.OWNER_WHATSAPP_NUMBER || "").replace(/[^\d]/g, ""),
-    adminBaseUrl: String(process.env.ADMIN_BASE_URL || "").trim().replace(/\/$/, ""),
-  };
+/** Indian numbers: keep digits, prefix 91 when a bare 10-digit mobile is given. */
+export function toWhatsAppNumber(raw) {
+  const d = String(raw ?? "").replace(/[^\d]/g, "");
+  if (!d) return "";
+  if (d.length === 10) return `91${d}`;
+  return d;
 }
-
-const isConfigured = (c) => c.provider === "meta" && c.accessToken && c.phoneNumberId && c.ownerNumber;
 
 function formatSpecs(specs = {}) {
   const parts = [];
@@ -64,79 +58,95 @@ export function buildNewRfqMessage(rfq, { adminBaseUrl } = {}) {
   return lines.join("\n");
 }
 
-async function sendViaMeta(c, to, body) {
-  const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${c.phoneNumberId}/messages`, {
+async function sendViaMeta(w, to, body) {
+  const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${w.phoneNumberId}/messages`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${c.accessToken}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${w.accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body } }),
   });
   const payload = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(payload?.error?.message || `WhatsApp API responded ${res.status}`);
-  }
+  if (!res.ok) throw new Error(payload?.error?.message || `WhatsApp API responded ${res.status}`);
   return payload?.messages?.[0]?.id ?? null;
 }
 
 /**
- * Notify the owner about a newly submitted RFQ.
- *
- * Never throws — the RFQ is already committed and must stay successful whatever
- * happens here. Returns the delivery record's final status.
+ * Send a WhatsApp text to any number. Records a NotificationDelivery and never
+ * throws. `userId` links the delivery to the customer it was for.
+ */
+export async function sendWhatsApp({ to, body, messageType = "whatsapp", entityType = null, entityId = null, userId = null }) {
+  const s = await getNotificationSettings();
+  const configured = isWhatsAppConfigured(s);
+  const recipient = toWhatsAppNumber(to);
+  let delivery = null;
+  try {
+    delivery = await prisma.notificationDelivery.create({
+      data: {
+        channel: "whatsapp",
+        provider: configured ? s.whatsapp.provider : "none",
+        recipient: recipient || "unconfigured",
+        messageType, entityType, entityId, userId,
+        body: body ? String(body).slice(0, 4000) : null,
+        status: "PENDING",
+      },
+    });
+  } catch (e) {
+    console.error("[WhatsApp] delivery bookkeeping failed:", e.message);
+  }
+
+  if (!recipient || !configured) {
+    const reason = !recipient ? "No recipient number" : "WhatsApp provider not configured";
+    console.log(`[WhatsApp] ${messageType} not sent (${reason})`);
+    if (delivery) await prisma.notificationDelivery.update({ where: { id: delivery.id }, data: { status: "SKIPPED", error: reason } }).catch(() => {});
+    return { status: "SKIPPED", error: reason, deliveryId: delivery?.id ?? null };
+  }
+
+  try {
+    const messageId = await sendViaMeta(s.whatsapp, recipient, body);
+    if (delivery) await prisma.notificationDelivery.update({ where: { id: delivery.id }, data: { status: "SENT", providerMessageId: messageId, sentAt: new Date() } }).catch(() => {});
+    return { status: "SENT", providerMessageId: messageId, deliveryId: delivery?.id ?? null };
+  } catch (e) {
+    const error = String(e.message).slice(0, 500);
+    console.error(`[WhatsApp] ${messageType} FAILED:`, error);
+    if (delivery) await prisma.notificationDelivery.update({ where: { id: delivery.id }, data: { status: "FAILED", error, failedAt: new Date() } }).catch(() => {});
+    return { status: "FAILED", error, deliveryId: delivery?.id ?? null };
+  }
+}
+
+/** Admin "Test WhatsApp": really sends through the configured provider. */
+export async function sendTestWhatsApp(to, { actorId = null } = {}) {
+  const s = await getNotificationSettings();
+  if (!isWhatsAppConfigured(s)) return { status: "SKIPPED", error: "WhatsApp is not configured — save the provider, phone number id and access token first." };
+  return sendWhatsApp({
+    to,
+    body: "✅ Zolo Packaging — WhatsApp test message. If you received this, notifications are working.",
+    messageType: "settings.whatsapp.test",
+    entityType: "NotificationSetting",
+    entityId: "default",
+    userId: actorId,
+  });
+}
+
+/**
+ * Notify the owner about a newly submitted RFQ (sent to the business number).
+ * Never throws — the RFQ is already committed and must stay successful.
  */
 export async function sendNewRfqNotification(rfqId) {
   try {
     const rfq = await prisma.rfq.findUnique({
       where: { id: rfqId },
-      include: {
-        items: true,
-        files: true,
-        user: { select: { email: true, firstName: true, lastName: true, phone: true } },
-      },
+      include: { items: true, files: true, user: { select: { email: true, firstName: true, lastName: true, phone: true } } },
     });
     if (!rfq) return { status: "FAILED", error: "RFQ not found" };
-
-    const c = config();
-    const delivery = await prisma.notificationDelivery.create({
-      data: {
-        channel: "whatsapp",
-        provider: isConfigured(c) ? c.provider : "none",
-        recipient: c.ownerNumber || "unconfigured",
-        messageType: "rfq.created",
-        entityType: "Rfq",
-        entityId: rfq.id,
-        status: "PENDING",
-      },
+    const s = await getNotificationSettings();
+    return sendWhatsApp({
+      to: s.whatsapp.businessNumber,
+      body: buildNewRfqMessage(rfq, { adminBaseUrl: s.publicBaseUrl }),
+      messageType: "rfq.created",
+      entityType: "Rfq",
+      entityId: rfq.id,
     });
-
-    if (!isConfigured(c)) {
-      // Development / not-yet-configured: log honestly, never fake a delivery.
-      console.log(`[WhatsApp] New RFQ notification queued: ${rfq.rfqNumber} (no provider configured — not sent)`);
-      await prisma.notificationDelivery.update({
-        where: { id: delivery.id },
-        data: { status: "SKIPPED", error: "WhatsApp provider not configured" },
-      });
-      return { status: "SKIPPED" };
-    }
-
-    try {
-      const messageId = await sendViaMeta(c, c.ownerNumber, buildNewRfqMessage(rfq, { adminBaseUrl: c.adminBaseUrl }));
-      await prisma.notificationDelivery.update({
-        where: { id: delivery.id },
-        data: { status: "SENT", providerMessageId: messageId },
-      });
-      console.log(`[WhatsApp] New RFQ notification sent: ${rfq.rfqNumber}`);
-      return { status: "SENT" };
-    } catch (e) {
-      await prisma.notificationDelivery.update({
-        where: { id: delivery.id },
-        data: { status: "FAILED", error: String(e.message).slice(0, 500) },
-      });
-      console.error(`[WhatsApp] New RFQ notification FAILED for ${rfq.rfqNumber}:`, e.message);
-      return { status: "FAILED", error: e.message };
-    }
   } catch (e) {
-    // Even the bookkeeping failed — log and move on; the RFQ stands.
-    console.error("[WhatsApp] delivery bookkeeping failed:", e.message);
+    console.error("[WhatsApp] new RFQ notification failed:", e.message);
     return { status: "FAILED", error: e.message };
   }
 }

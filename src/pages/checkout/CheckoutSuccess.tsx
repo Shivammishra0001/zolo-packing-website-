@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { CheckCircle2, Download, MapPin, Package, Truck } from "lucide-react";
+import { CheckCircle2, Download, MapPin, Package, QrCode, Truck } from "lucide-react";
 import { CheckoutSteps } from "../CartPage";
 import { orderApi, type Order } from "../../lib/api/commerce";
+import { paymentRequestsApi, type PaymentRequest } from "../../lib/api/settings";
 
 const inr = (m: number) => "₹" + Math.round(m / 100).toLocaleString("en-IN");
 const fmtDate = (s: string) => new Date(s).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
@@ -10,11 +11,17 @@ const fmtDate = (s: string) => new Date(s).toLocaleDateString("en-IN", { day: "n
 export default function CheckoutSuccess() {
   const { orderId } = useParams();
   const [order, setOrder] = useState<Order | null>(null);
+  const [payReq, setPayReq] = useState<PaymentRequest | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     if (orderId) orderApi.get(orderId).then(setOrder).catch(() => setError(true));
   }, [orderId]);
+  // UPI / bank-transfer orders have a payment link waiting for the customer.
+  useEffect(() => {
+    if (!order || order.paymentStatus === "PAID" || !["upi", "bank_transfer"].includes(order.paymentMethod)) return;
+    paymentRequestsApi.mine(order.id).then((r) => setPayReq(r.requests.find((x) => x.status === "SENT" || x.status === "PENDING" || x.status === "SUBMITTED") ?? null)).catch(() => {});
+  }, [order]);
 
   // Estimated delivery: +7 days from placement (display only).
   const eta = order ? new Date(new Date(order.placedAt).getTime() + 7 * 86400000).toISOString() : null;
@@ -39,8 +46,22 @@ export default function CheckoutSuccess() {
           <Info icon={Package} label="Order ID" value={order.orderNumber} />
           <Info icon={Truck} label="Estimated delivery" value={eta ? fmtDate(eta) : "—"} />
           <Info icon={MapPin} label="Delivery to" value={`${order.shippingAddress.name}, ${order.shippingAddress.city}`} />
-          <Info icon={CheckCircle2} label="Payment" value={`${order.paymentMethod.toUpperCase()} · ${order.paymentStatus}`} />
+          <Info icon={CheckCircle2} label="Payment" value={`${order.paymentMethod.replace(/_/g, " ").toUpperCase()} · ${order.paymentStatus}`} />
         </div>
+
+        {payReq && (
+          <section className="mt-5 rounded-2xl border border-primary-200 bg-primary-50/60 p-5">
+            <h2 className="flex items-center gap-2 font-bold text-dark-900"><QrCode className="h-5 w-5 text-primary-600" /> Complete your payment</h2>
+            <p className="mt-1 text-sm text-dark-600">
+              {payReq.status === "SUBMITTED"
+                ? "We've received your payment details and are verifying them — you'll be notified once confirmed."
+                : <>Pay <b>{inr(payReq.amountMinor)}</b> via {order.paymentMethod === "upi" ? "UPI / QR" : "bank transfer"} using your secure payment link, then share the transaction reference. Your order is confirmed once we verify it. The link was also sent to you by email / WhatsApp.</>}
+            </p>
+            {payReq.payUrl && payReq.status !== "SUBMITTED" && (
+              <a href={payReq.payUrl.replace(/^https?:\/\/[^/]+/, "")} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-primary-500 px-5 py-3 text-sm font-bold text-white hover:bg-primary-600">Pay now</a>
+            )}
+          </section>
+        )}
 
         {/* Items */}
         <section className="mt-5 rounded-2xl border border-dark-100 bg-white p-5">

@@ -284,12 +284,18 @@ export async function sellerSubmitQuote(supplierId, userId, rfqId, input) {
     return quotation;
   });
 
-  // Post-commit: email the buyer that a quotation arrived (best-effort).
+  // Post-commit: notify the buyer (email/WhatsApp per admin settings) — best-effort.
   try {
-    const { sendQuoteReceived } = await import("./email.mjs");
-    await sendQuoteReceived(created.id);
+    const { dispatch } = await import("./notification-service.mjs");
+    const total = `₹${(created.grandTotalMinor / 100).toLocaleString("en-IN")}`;
+    await dispatch({
+      event: created.version > 1 ? "QUOTATION_UPDATED" : "QUOTATION_CREATED", userId: created.userId, skipInApp: true,
+      title: `${created.version > 1 ? "Revised quotation" : "New quotation"} ${created.quotationNumber} — ${total}`,
+      body: `A supplier sent quotation ${created.quotationNumber}${created.version > 1 ? ` (v${created.version})` : ""} for your request.\nTotal: ${total}${created.leadTimeDays ? `\nLead time: ${created.leadTimeDays} days` : ""}\n\nCompare and respond under My Quotes.`,
+      entityType: "Quotation", entityId: created.id,
+    });
   } catch (e) {
-    console.error("[marketplace] quote received email failed:", e.message);
+    console.error("[marketplace] quote received notification failed:", e.message);
   }
   return created;
 }

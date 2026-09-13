@@ -23,6 +23,9 @@ import {
   CUSTOMER_CANCELLABLE,
 } from "../lib/commerce.mjs";
 import { recordEvent, notify, notifyRoles } from "./events.mjs";
+import { HttpError } from "../lib/http.mjs";
+import { assertMethodAllowed, codChargeFor } from "./settings.mjs";
+import { dispatch } from "./notification-service.mjs";
 // Tiered pricing + commission are resolved server-side; see pricing.mjs.
 import { resolveUnitPriceMinor, commissionBpsFor, commissionFor } from "./pricing.mjs";
 
@@ -99,7 +102,7 @@ async function resolveCoupon(couponCode, subtotalMinor, userId, tx = prisma) {
 }
 
 // Preview pricing for the cart (no order created). Used by cart + review pages.
-export async function quote(userId, { couponCode } = {}) {
+export async function quote(userId, { couponCode, paymentMethod } = {}) {
   const priced = await buildPricedItems(userId).catch((e) => {
     if (e.code === "CART_EMPTY") return [];
     throw e;
@@ -121,12 +124,27 @@ export async function quote(userId, { couponCode } = {}) {
     }
   }
 
-  const totals = priceOrder({ items: priced, discountMinor });
+  // COD surcharge (admin-configured) shows in the preview when COD is chosen;
+  // a disabled/out-of-range method surfaces as paymentError, not a throw.
+  let codChargeMinor = 0;
+  let paymentError = null;
+  if (paymentMethod && priced.length) {
+    try {
+      await assertMethodAllowed(paymentMethod, { subtotalMinor });
+      codChargeMinor = await codChargeFor(paymentMethod);
+    } catch (e) {
+      if (!(e instanceof HttpError)) throw e;
+      paymentError = e.message;
+    }
+  }
+  const totals = priceOrder({ items: priced, discountMinor, codChargeMinor });
   return {
     items: priced.map(({ product: _p, ...rest }) => rest),
     ...totals,
     couponCode: appliedCode,
     couponError,
+    paymentMethod: paymentMethod ?? null,
+    paymentError,
   };
 }
 
@@ -164,11 +182,15 @@ export async function placeOrder(user, input) {
     : ship;
   if (!bill) throw badRequest("Select a valid billing address", "ADDRESS_INVALID");
 
+  let paymentRequestId = null;
   const order = await prisma.$transaction(async (tx) => {
     const priced = await buildPricedItems(user.id, tx);
     const subtotalMinor = priced.reduce((s, it) => s + it.lineTotalMinor, 0);
     const { coupon, discountMinor } = await resolveCoupon(couponCode, subtotalMinor, user.id, tx);
-    const totals = priceOrder({ items: priced, discountMinor });
+    // Payment method must be enabled by the admin (and within COD limits).
+    await assertMethodAllowed(paymentMethod, { subtotalMinor });
+    const codChargeMinor = await codChargeFor(paymentMethod);
+    const totals = priceOrder({ items: priced, discountMinor, codChargeMinor });
 
     // Stock is deducted before the order row exists, so the ledger rows are
     // linked back to the order immediately after it is created.
@@ -214,6 +236,7 @@ export async function placeOrder(user, input) {
         discountMinor: totals.discountMinor,
         taxMinor: totals.taxMinor,
         shippingMinor: totals.shippingMinor,
+        codChargeMinor: totals.codChargeMinor,
         grandTotalMinor: totals.grandTotalMinor,
         paidMinor: 0,
         couponId: coupon?.id ?? null,
@@ -313,11 +336,39 @@ export async function placeOrder(user, input) {
       tx,
     );
 
+    // Online offline-methods (UPI / bank transfer) get a payment link so the
+    // customer can pay and share the reference; admin verifies before PAID.
+    if (paymentMethod === "upi" || paymentMethod === "bank_transfer") {
+      const { createForOrder } = await import("./payment-requests.mjs");
+      const pr = await createForOrder(tx, { order: created, userId: user.id, method: paymentMethod });
+      paymentRequestId = pr.id;
+    }
+
     return created;
   });
 
+  // Post-commit customer notifications (email/WhatsApp per admin settings).
+  // The in-app row was already written inside the transaction.
+  const total = `₹${(order.grandTotalMinor / 100).toLocaleString("en-IN")}`;
+  await dispatch({
+    event: "ORDER_CREATED", userId: user.id, skipInApp: true,
+    title: `Order ${order.orderNumber} placed — ${total}`,
+    body: `Thanks for your order! ${order.orderNumber} for ${total} (${order.items.length} item${order.items.length === 1 ? "" : "s"}) has been placed and is awaiting confirmation.${paymentMethod === "cod" ? " Please keep the amount ready for cash on delivery." : ""}`,
+    entityType: "Order", entityId: order.id,
+  });
+  if (paymentRequestId) {
+    const { notifyOrderPaymentRequest } = await import("./payment-requests.mjs");
+    await notifyOrderPaymentRequest(paymentRequestId);
+  }
+
   const full = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
-  return shapeOrder(full);
+  const shaped = shapeOrder(full);
+  if (paymentRequestId) {
+    const { listMine } = await import("./payment-requests.mjs");
+    const mine = await listMine(user.id, { orderId: order.id });
+    shaped.paymentRequest = mine.requests[0] ?? null;
+  }
+  return shaped;
 }
 
 // Gapless invoice numbering: ZOLO/<year>/<6-digit seq>, incremented under a
@@ -357,6 +408,7 @@ function shapeOrder(o, includeUser = false) {
     discountMinor: o.discountMinor,
     taxMinor: o.taxMinor,
     shippingMinor: o.shippingMinor,
+    codChargeMinor: o.codChargeMinor ?? 0,
     grandTotalMinor: o.grandTotalMinor,
     paidMinor: o.paidMinor,
     couponCode: o.couponCode,
@@ -498,7 +550,9 @@ export async function adminUpdateStatus(adminUser, orderId, { status, note, cour
       "USE_RETURNS_WORKFLOW",
     );
   }
-  return prisma.$transaction(async (tx) => {
+  // Customer email/WhatsApp fires only after the transaction commits.
+  const after = [];
+  const result = await prisma.$transaction(async (tx) => {
     const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true, invoice: true } });
     if (!order) throw notFound("Order not found");
     if (order.status === status) throw badRequest("Order is already in that status", "NO_CHANGE");
@@ -561,9 +615,20 @@ export async function adminUpdateStatus(adminUser, orderId, { status, note, cour
     await recordEvent({ eventType: "order.status_changed", actorId: adminUser.id, entityType: "Order", entityId: order.id, metadata: { from: order.status, to: status, note: note ?? null } }, tx);
     await notify({ userId: order.userId, type: "order.status", title: "Order update", body: `Your order ${order.orderNumber} is now ${status.replace(/_/g, " ").toLowerCase()}.`, entityType: "Order", entityId: order.id }, tx);
 
+    const pretty = status.replace(/_/g, " ").toLowerCase();
+    const event = status === "CONFIRMED" ? "ORDER_CONFIRMED" : status === "DELIVERED" ? "ORDER_DELIVERED" : status === "SHIPPED" ? "SHIPMENT_DISPATCHED" : "ORDER_STATUS_CHANGED";
+    after.push({
+      event, userId: order.userId, skipInApp: true,
+      title: status === "CONFIRMED" ? `Order ${order.orderNumber} confirmed` : status === "DELIVERED" ? `Order ${order.orderNumber} delivered` : `Order ${order.orderNumber} is ${pretty}`,
+      body: `Your order ${order.orderNumber} is now ${pretty}.${note ? `\n${note}` : ""}${status === "SHIPPED" && trackingNumber ? `\nTracking: ${trackingNumber}${courier ? ` (${courier})` : ""}` : ""}`,
+      entityType: "Order", entityId: order.id,
+    });
+
     const full = await tx.order.findUnique({ where: { id: order.id }, include: { ...orderInclude, user: true } });
     return shapeOrder(full, true);
   });
+  for (const n of after) await dispatch(n);
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -624,7 +689,8 @@ const PAID_STATUSES = new Set(["PAID", "SUCCESS"]);
 export async function adminUpdatePayment(adminUser, paymentId, { status, reference, method, note } = {}) {
   if (!PAYMENT_STATUSES.has(status)) throw badRequest(`Unknown payment status: ${status}`);
 
-  return prisma.$transaction(async (tx) => {
+  const after = [];
+  const result = await prisma.$transaction(async (tx) => {
     const payment = await tx.payment.findUnique({ where: { id: paymentId }, include: { order: true } });
     if (!payment) throw notFound("Payment not found");
     const order = payment.order;
@@ -683,10 +749,22 @@ export async function adminUpdatePayment(adminUser, paymentId, { status, referen
       },
       tx,
     );
+    if (payment.status !== status) {
+      const amt = `₹${(payment.amountMinor / 100).toLocaleString("en-IN")}`;
+      after.push({
+        event: isPaid ? "PAYMENT_RECEIVED" : status === "FAILED" ? "PAYMENT_FAILED" : "REFUND_UPDATE",
+        userId: order.userId, skipInApp: true,
+        title: isPaid ? `Payment of ${amt} received for ${order.orderNumber}` : `Payment update for ${order.orderNumber}`,
+        body: `Payment ${payment.paymentNumber} (${amt}) for order ${order.orderNumber} is now ${status.replace(/_/g, " ").toLowerCase()}.${reference ? ` Reference: ${reference}.` : ""}`,
+        entityType: "Order", entityId: order.id,
+      });
+    }
 
     const full = await tx.order.findUnique({ where: { id: order.id }, include: { ...orderInclude, user: true } });
     return shapeOrder(full, true);
   });
+  for (const n of after) await dispatch(n);
+  return result;
 }
 
 /** Admin raises a refund against a captured payment. */
@@ -753,6 +831,14 @@ export async function adminCreateRefund(adminUser, paymentId, { amountMinor, rea
       tx,
     );
 
+    return { refund, userId: payment.order.userId, orderNumber: payment.order.orderNumber, orderId: payment.orderId };
+  }).then(async ({ refund, userId, orderNumber, orderId }) => {
+    await dispatch({
+      event: "REFUND_UPDATE", userId, skipInApp: true,
+      title: `Refund of ₹${(amount / 100).toLocaleString("en-IN")} issued for ${orderNumber}`,
+      body: `A refund of ₹${(amount / 100).toLocaleString("en-IN")} (${refund.refundNumber}) has been issued for order ${orderNumber}.${reason ? ` Reason: ${reason}.` : ""} It may take 5–7 working days to reflect.`,
+      entityType: "Order", entityId: orderId,
+    });
     return refund;
   });
 }
@@ -822,6 +908,14 @@ export async function adminCreateShipment(adminUser, orderId, { courier, trackin
       tx,
     );
 
+    return { shipment, order };
+  }).then(async ({ shipment, order }) => {
+    await dispatch({
+      event: "ORDER_STATUS_CHANGED", userId: order.userId, skipInApp: true,
+      title: `Order ${order.orderNumber} is being packed`,
+      body: `Shipment ${shipment.shipmentNumber} has been created for your order ${order.orderNumber}${courier ? ` with ${courier}` : ""}.${trackingNumber ? `\nTracking: ${trackingNumber}` : ""}`,
+      entityType: "Order", entityId: order.id,
+    });
     return shipment;
   });
 }
@@ -907,7 +1001,18 @@ export async function adminAddShipmentEvent(adminUser, shipmentId, { status, loc
       tx,
     );
 
-    return tx.shipment.findUnique({ where: { id: shipment.id }, include: { events: { orderBy: { createdAt: "desc" } } } });
+    const row = await tx.shipment.findUnique({ where: { id: shipment.id }, include: { events: { orderBy: { createdAt: "desc" } } } });
+    return { row, order, shipmentNumber: shipment.shipmentNumber };
+  }).then(async ({ row, order }) => {
+    const pretty = status.replace(/_/g, " ").toLowerCase();
+    const event = status === "DELIVERED" ? "ORDER_DELIVERED" : status === "IN_TRANSIT" || status === "OUT_FOR_DELIVERY" ? "SHIPMENT_IN_TRANSIT" : status === "AWB_BOOKED" || status === "DISPATCHED" ? "SHIPMENT_DISPATCHED" : "ORDER_STATUS_CHANGED";
+    await dispatch({
+      event, userId: order.userId, skipInApp: true,
+      title: status === "DELIVERED" ? `Order ${order.orderNumber} delivered` : `Shipment update for ${order.orderNumber}`,
+      body: `Your shipment ${row.shipmentNumber} for order ${order.orderNumber} is now ${pretty}${location ? ` — ${location}` : ""}.${row.trackingNumber ? `\nTracking: ${row.trackingNumber}${row.courier ? ` (${row.courier})` : ""}` : ""}`,
+      entityType: "Order", entityId: order.id,
+    });
+    return row;
   });
 }
 

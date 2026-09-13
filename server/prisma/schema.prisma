@@ -82,6 +82,10 @@ model User {
   rfqs               Rfq[]
   quotations         Quotation[]
   authoredQuotations Quotation[]          @relation("QuotationAuthor")
+  // payment requests (custom payment links)
+  paymentRequests        PaymentRequest[] @relation("PaymentRequestCustomer")
+  createdPaymentRequests PaymentRequest[] @relation("PaymentRequestCreator")
+  notificationDeliveries NotificationDelivery[]
   sentMessages       Message[]            @relation("MessageSender")
   savedRequirements  SavedRequirement[]
   rfqFiles           RfqFile[]            @relation("RfqFileUploader")
@@ -504,26 +508,38 @@ enum NotificationStatus {
 enum DeliveryStatus {
   PENDING
   SENT
+  DELIVERED
   FAILED
   SKIPPED
+  READ
 }
 
 model NotificationDelivery {
   id                String         @id @default(cuid())
-  channel           String // "whatsapp"
-  provider          String // "meta" | "none"
-  recipient         String // E.164-ish phone; "unconfigured" when no owner number is set
-  messageType       String // e.g. "rfq.created"
+  channel           String // "email" | "whatsapp" | "sms" | "in_app"
+  provider          String // "smtp" | "meta" | "none"
+  recipient         String // email / E.164-ish phone; "unconfigured" when none
+  messageType       String // e.g. "ORDER_CREATED" / "rfq.created"
   entityType        String?
   entityId          String?
+  // The customer this delivery was for (null for owner/admin alerts).
+  userId            String?
+  user              User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  subject           String?
+  body              String?
   status            DeliveryStatus @default(PENDING)
   providerMessageId String?
   error             String?
+  sentAt            DateTime?
+  failedAt          DateTime?
+  readAt            DateTime?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
   @@index([entityType, entityId])
   @@index([status])
+  @@index([userId, createdAt])
+  @@index([channel, createdAt])
 }
 
 model Notification {
@@ -790,6 +806,10 @@ model Order {
   invoice          Invoice?
   couponRedemption CouponRedemption?
   returnRequests   ReturnRequest[]
+  paymentRequests  PaymentRequest[]
+  // Cash-on-delivery surcharge applied at placement (from Payment Settings);
+  // already included in grandTotalMinor.
+  codChargeMinor   Int                  @default(0)
   // Provenance when this order came from an accepted quotation.
   rfqId            String?
   rfq              Rfq?                 @relation(fields: [rfqId], references: [id])
@@ -869,10 +889,127 @@ model Payment {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  refunds Refund[]
+  refunds        Refund[]
+  paymentRequest PaymentRequest?
 
   @@index([orderId])
   @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Admin-managed payment methods (Settings → Payments). One row per method key;
+// customer-facing checkout only offers rows with enabled = true. `config` holds
+// method-specific fields (COD limits/charge, UPI id + QR image URL, bank
+// details). Nothing secret lives here — a QR image is a public asset.
+// ---------------------------------------------------------------------------
+model PaymentMethodSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique // cod | upi | bank_transfer | neft | cheque
+  enabled     Boolean  @default(true)
+  displayName String
+  description String?
+  sortOrder   Int      @default(0)
+  config      Json     @default("{}")
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([enabled, sortOrder])
+}
+
+// ---------------------------------------------------------------------------
+// Admin-managed notification configuration (Settings → Notifications). A
+// singleton row (id = "default"). Secrets (SMTP password, WhatsApp token) are
+// stored AES-256-GCM encrypted (lib/crypto encryptField) and never returned to
+// the browser — the API only reports whether one is set.
+// ---------------------------------------------------------------------------
+model NotificationSetting {
+  id                     String   @id @default("default")
+  emailEnabled           Boolean  @default(false)
+  whatsappEnabled        Boolean  @default(false)
+  smsEnabled             Boolean  @default(false)
+  inAppEnabled           Boolean  @default(true)
+  // { EVENT_KEY: { email, whatsapp, sms, inApp } } — missing keys use defaults.
+  eventMatrix            Json     @default("{}")
+  // Email / SMTP
+  smtpHost               String?
+  smtpPort               Int?
+  smtpSecure             Boolean  @default(false)
+  smtpUser               String?
+  smtpPassEnc            String?
+  fromEmail              String?
+  fromName               String?
+  replyTo                String?
+  // WhatsApp
+  whatsappProvider       String? // "meta"
+  whatsappPhoneNumberId  String?
+  whatsappAccessTokenEnc String?
+  whatsappBusinessNumber String? // display / owner number, digits only
+  updatedById            String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Custom payment requests ("send a payment link"). Created by an admin for a
+// customer, optionally tied to an order/quotation. The customer opens a
+// secure link (random 256-bit token; only its hash is indexed, the plaintext is
+// stored encrypted so the admin can re-share it), pays via an enabled offline
+// method (UPI/QR, bank transfer…), submits the reference/proof, and an admin
+// verifies before it is marked PAID — never auto-paid from a client claim.
+// ---------------------------------------------------------------------------
+enum PaymentRequestStatus {
+  PENDING // created, link not yet sent
+  SENT // link sent to the customer
+  SUBMITTED // customer submitted payment reference/proof — awaiting review
+  PAID // admin verified and recorded the payment
+  REJECTED // admin rejected the submitted proof
+  EXPIRED
+  CANCELLED
+}
+
+model PaymentRequest {
+  id             String               @id @default(cuid())
+  requestNumber  String               @unique // PR-xxxx
+  userId         String
+  user           User                 @relation("PaymentRequestCustomer", fields: [userId], references: [id], onDelete: Cascade)
+  orderId        String?
+  order          Order?               @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  quotationId    String?
+  quotation      Quotation?           @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  title          String
+  description    String?
+  amountMinor    Int
+  currency       String               @default("INR")
+  status         PaymentRequestStatus @default(PENDING)
+  allowedMethods String[]             @default([])
+  tokenHash      String               @unique
+  tokenEnc       String
+  expiresAt      DateTime?
+  createdById    String
+  createdBy      User                 @relation("PaymentRequestCreator", fields: [createdById], references: [id])
+  sentAt         DateTime?
+  // customer submission
+  submittedAt    DateTime?
+  proofMethod    String?
+  proofReference String?
+  proofNote      String?
+  proofFileKey   String? // private storage key — streamed only via admin route
+  proofFileName  String?
+  proofMime      String?
+  // admin review
+  reviewedById   String?
+  reviewedAt     DateTime?
+  reviewNote     String?
+  paidAt         DateTime?
+  paymentId      String?              @unique
+  payment        Payment?             @relation(fields: [paymentId], references: [id])
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([userId, status])
+  @@index([status])
+  @@index([orderId])
 }
 
 enum PaymentStatus {
@@ -1303,8 +1440,9 @@ model Quotation {
   updatedAt       DateTime        @updatedAt
 
   items      QuotationItem[]
-  orders     Order[]
-  versions   QuoteVersion[]
+  orders          Order[]
+  versions        QuoteVersion[]
+  paymentRequests PaymentRequest[]
   // Null = quoted by admin (house). Set = quoted by a competing seller.
   supplierId String?
   supplier   SupplierProfile? @relation("QuotationSupplier", fields: [supplierId], references: [id])

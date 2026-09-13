@@ -14,6 +14,12 @@ import { isAdminRole } from "../middleware/auth.mjs";
 
 export const orderRouter = Router();
 
+// Payment methods enabled by the admin (Settings → Payments), customer-safe shape.
+orderRouter.get("/checkout/payment-methods", wrap(async (_req, res) => {
+  const { publicPaymentMethods } = await import("../services/settings.mjs");
+  ok(res, { methods: await publicPaymentMethods() });
+}));
+
 orderRouter.post("/checkout/quote", wrap(async (req, res) => {
   const input = quoteSchema.parse(req.body ?? {});
   ok(res, await orders.quote(req.user.id, input));

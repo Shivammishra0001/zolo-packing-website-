@@ -8,6 +8,7 @@ import { formatDateTime, inr, inrMinor } from "../format";
 import { useAdminAnalytics, useAdminFinance } from "../dashboard-api";
 import { INVOICE_STATUS } from "../statuses-ext";
 import type { Invoice, Payment, PaymentMethod } from "../types";
+import { PaymentRequestsPanel } from "../components/PaymentRequests";
 
 // Finance — live invoices, payments and revenue from PostgreSQL.
 //
@@ -51,8 +52,8 @@ function useFinanceData() {
   return { q, invoices, payments, summary: q.data?.summary ?? null };
 }
 
-const METHOD_LABEL: Record<PaymentMethod, string> = { upi: "UPI", neft: "NEFT", card: "Card", cheque: "Cheque", cash: "Cash" };
-const METHOD_TONE: Record<PaymentMethod, "primary" | "info" | "success" | "neutral"> = { upi: "primary", neft: "info", card: "success", cheque: "neutral", cash: "neutral" };
+const METHOD_LABEL: Record<string, string> = { upi: "UPI", neft: "NEFT", card: "Card", cheque: "Cheque", cash: "Cash", cod: "COD", bank_transfer: "Bank transfer" };
+const METHOD_TONE: Record<string, "primary" | "info" | "success" | "neutral"> = { upi: "primary", neft: "info", card: "success", cheque: "neutral", cash: "neutral", cod: "neutral", bank_transfer: "info" };
 
 function InvoicesTab() {
   const { invoices, summary } = useFinanceData();
@@ -175,6 +176,7 @@ function RevenueTab() {
 const TABS = [
   { key: "invoices", label: "Invoices" },
   { key: "payments", label: "Payments" },
+  { key: "requests", label: "Payment requests" },
   { key: "revenue", label: "Revenue" },
 ];
 
@@ -192,6 +194,7 @@ export default function Finance() {
       </div>
       {tab === "invoices" && <InvoicesTab />}
       {tab === "payments" && <PaymentsTab />}
+      {tab === "requests" && <PaymentRequestsPanel title="Payment requests to verify" />}
       {tab === "revenue" && <RevenueTab />}
     </div>
   );

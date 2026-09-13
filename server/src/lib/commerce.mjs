@@ -56,15 +56,17 @@ export function evaluateCoupon(coupon, subtotalMinor, now = new Date()) {
 // The authoritative pricing engine. Given priced line items (each with a
 // server-resolved unitPriceMinor + quantity) and an optional evaluated coupon
 // discount, produce the full money breakdown. All integer paise.
-export function priceOrder({ items, discountMinor = 0 }) {
+export function priceOrder({ items, discountMinor = 0, codChargeMinor = 0 }) {
   const subtotalMinor = items.reduce((s, it) => s + it.unitPriceMinor * it.quantity, 0);
   const clampedDiscount = Math.min(Math.max(0, discountMinor), subtotalMinor);
   const taxableMinor = subtotalMinor - clampedDiscount;
   const taxMinor = Math.round(taxableMinor * GST_RATE);
   const shippingMinor =
     subtotalMinor === 0 || subtotalMinor >= FREE_SHIP_THRESHOLD_MINOR ? 0 : FLAT_SHIP_MINOR;
-  const grandTotalMinor = taxableMinor + taxMinor + shippingMinor;
-  return { subtotalMinor, discountMinor: clampedDiscount, taxMinor, shippingMinor, grandTotalMinor };
+  // Optional cash-on-delivery surcharge from Payment Settings (0 for other methods).
+  const cod = subtotalMinor === 0 ? 0 : Math.max(0, Math.round(Number(codChargeMinor) || 0));
+  const grandTotalMinor = taxableMinor + taxMinor + shippingMinor + cod;
+  return { subtotalMinor, discountMinor: clampedDiscount, taxMinor, shippingMinor, codChargeMinor: cod, grandTotalMinor };
 }
 
 // Order status transitions the buyer/admin may perform. Payment status is a

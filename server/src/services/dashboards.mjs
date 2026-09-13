@@ -168,6 +168,21 @@ export function describeEvent(row) {
     "seller.onboarding.submitted": () => ({ title: "Seller submitted onboarding", body: meta.orgName ?? actor }),
     "product.created": () => ({ title: "Product created", body: meta.sku ?? meta.name ?? "A product was created" }),
     "inventory.low": () => ({ title: "Low stock", body: `${meta.name ?? meta.sku ?? "A product"} — ${meta.available ?? "?"} remaining` }),
+    // Settings + payment requests
+    "payment_method.enabled": () => ({ title: "Payment method enabled", body: `${String(meta.method ?? "").replace(/_/g, " ").toUpperCase()} enabled by ${actor}` }),
+    "payment_method.disabled": () => ({ title: "Payment method disabled", body: `${String(meta.method ?? "").replace(/_/g, " ").toUpperCase()} disabled by ${actor}` }),
+    "payment_method.updated": () => ({ title: "Payment method updated", body: `${String(meta.method ?? "").replace(/_/g, " ").toUpperCase()}: ${(meta.fields ?? []).join(", ")}` }),
+    "payment_settings.qr_updated": () => ({ title: "UPI QR code " + (meta.action ?? "updated"), body: `by ${actor}` }),
+    "settings.smtp.updated": () => ({ title: "Email (SMTP) settings updated", body: `${meta.host ?? ""}${meta.port ? `:${meta.port}` : ""}${meta.passwordChanged ? " — password changed" : ""}` }),
+    "settings.whatsapp.updated": () => ({ title: "WhatsApp settings updated", body: `${meta.provider ?? "provider cleared"}${meta.tokenChanged ? " — token changed" : ""}` }),
+    "settings.notifications.updated": () => ({ title: "Notification settings updated", body: `${(meta.fields ?? []).join(", ")} by ${actor}` }),
+    "payment_request.created": () => ({ title: "Payment request created", body: `${meta.requestNumber ?? ""} — ₹${((meta.amountMinor ?? 0) / 100).toLocaleString("en-IN")}${meta.orderNumber ? ` for ${meta.orderNumber}` : ""}` }),
+    "payment_request.sent": () => ({ title: meta.resend ? "Payment link resent" : "Payment link sent", body: meta.requestNumber ?? "" }),
+    "payment_request.submitted": () => ({ title: "Payment proof submitted", body: `${meta.requestNumber ?? ""} via ${String(meta.method ?? "").replace(/_/g, " ")}` }),
+    "payment_request.paid": () => ({ title: "Payment verified", body: `${meta.requestNumber ?? ""} — ₹${((meta.amountMinor ?? 0) / 100).toLocaleString("en-IN")}${meta.orderNumber ? ` for ${meta.orderNumber}` : ""}` }),
+    "payment_request.rejected": () => ({ title: "Payment proof rejected", body: `${meta.requestNumber ?? ""}${meta.note ? ` — ${meta.note}` : ""}` }),
+    "payment_request.expired": () => ({ title: "Payment request expired", body: meta.requestNumber ?? "" }),
+    "payment_request.cancelled": () => ({ title: "Payment request cancelled", body: meta.requestNumber ?? "" }),
   };
 
   const built = titles[row.eventType]?.() ?? {

@@ -11,6 +11,7 @@ import OrderDetail from "./pages/OrderDetailReal";
 import InvoiceView from "./pages/InvoiceView";
 import Tracking from "./pages/Tracking";
 import Payments from "./pages/Payments";
+import PaymentRequests from "./pages/PaymentRequests";
 import Recycle from "./pages/Recycle";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
@@ -34,6 +35,7 @@ export default function BuyerRoutes() {
           <Route path="orders/:id/invoice" element={<InvoiceView />} />
           <Route path="tracking" element={<Tracking />} />
           <Route path="payments" element={<Payments />} />
+          <Route path="payment-requests" element={<PaymentRequests />} />
           <Route path="recycle" element={<Recycle />} />
           <Route path="reports" element={<Reports />} />
           <Route path="settings" element={<Settings />} />

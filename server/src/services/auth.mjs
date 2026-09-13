@@ -154,6 +154,16 @@ export async function register({ email, password, firstName, lastName, phone, ac
 
     const tokens = await issueSession(user, meta, tx);
     return { user: publicUser(user), organizationId, ...tokens };
+  }).then(async (result) => {
+    // Post-commit welcome (email/WhatsApp per admin notification settings).
+    const { dispatch } = await import("./notification-service.mjs");
+    await dispatch({
+      event: "CUSTOMER_REGISTRATION", userId: result.user.id, skipInApp: true,
+      title: "Welcome to Zolo Packaging",
+      body: `Your account (${result.user.email}) is ready. Browse packaging, request bulk quotes and track orders from your dashboard.`,
+      entityType: "User", entityId: result.user.id,
+    });
+    return result;
   });
 }
 

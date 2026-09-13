@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
+import type { CheckoutPaymentMethod } from "../../lib/api/commerce";
 
 // Ephemeral checkout state shared across the address → review → payment steps.
 // Persisted to sessionStorage so a refresh (or returning from payment) recovers
@@ -8,17 +9,19 @@ interface CheckoutState {
   setShippingAddressId: (id: string | null) => void;
   couponCode: string | null;
   setCouponCode: (code: string | null) => void;
-  paymentMethod: "cod";
-  setPaymentMethod: (m: "cod") => void;
+  /** Chosen from the methods the admin has enabled (see /checkout/payment-methods). */
+  paymentMethod: CheckoutPaymentMethod;
+  setPaymentMethod: (m: CheckoutPaymentMethod) => void;
 }
 
 const Ctx = createContext<CheckoutState | null>(null);
 
 const KEY = "zolo.checkout";
-function load(): { shippingAddressId: string | null; couponCode: string | null } {
+interface Persisted { shippingAddressId: string | null; couponCode: string | null; paymentMethod?: CheckoutPaymentMethod }
+function load(): Persisted {
   try { return JSON.parse(sessionStorage.getItem(KEY) || "{}"); } catch { return { shippingAddressId: null, couponCode: null }; }
 }
-function save(s: { shippingAddressId: string | null; couponCode: string | null }) {
+function save(s: Persisted) {
   try { sessionStorage.setItem(KEY, JSON.stringify(s)); } catch { /* ignore */ }
 }
 
@@ -26,10 +29,11 @@ export function CheckoutProvider({ children }: { children: ReactNode }) {
   const initial = load();
   const [shippingAddressId, setShipId] = useState<string | null>(initial.shippingAddressId ?? null);
   const [couponCode, setCoupon] = useState<string | null>(initial.couponCode ?? null);
-  const [paymentMethod, setPaymentMethod] = useState<"cod">("cod");
+  const [paymentMethod, setMethod] = useState<CheckoutPaymentMethod>(initial.paymentMethod ?? "cod");
 
-  const setShippingAddressId = (id: string | null) => { setShipId(id); save({ shippingAddressId: id, couponCode }); };
-  const setCouponCode = (code: string | null) => { setCoupon(code); save({ shippingAddressId, couponCode: code }); };
+  const setShippingAddressId = (id: string | null) => { setShipId(id); save({ shippingAddressId: id, couponCode, paymentMethod }); };
+  const setCouponCode = (code: string | null) => { setCoupon(code); save({ shippingAddressId, couponCode: code, paymentMethod }); };
+  const setPaymentMethod = (m: CheckoutPaymentMethod) => { setMethod(m); save({ shippingAddressId, couponCode, paymentMethod: m }); };
 
   return (
     <Ctx.Provider value={{ shippingAddressId, setShippingAddressId, couponCode, setCouponCode, paymentMethod, setPaymentMethod }}>

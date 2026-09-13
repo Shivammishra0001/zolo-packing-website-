@@ -135,7 +135,7 @@ test("draft -> submit: files-first flow notifies admin and records an honest del
 
   // WhatsApp is unconfigured in tests: delivery row exists and is SKIPPED —
   // the RFQ succeeded anyway, and nothing pretended to send.
-  const deliveries = await prisma.notificationDelivery.findMany({ where: { entityType: "Rfq", entityId: rfq.id } });
+  const deliveries = await prisma.notificationDelivery.findMany({ where: { entityType: "Rfq", entityId: rfq.id, channel: "whatsapp" } });
   assert.equal(deliveries.length, 1);
   assert.equal(deliveries[0].status, "SKIPPED");
   assert.equal(deliveries[0].channel, "whatsapp");
@@ -190,7 +190,7 @@ test("the classic single-call create (submit:true) also records a delivery", asy
   assert.equal(res.status, 201);
   assert.equal(res.body.data.status, "SUBMITTED");
 
-  const deliveries = await prisma.notificationDelivery.findMany({ where: { entityType: "Rfq", entityId: res.body.data.id } });
+  const deliveries = await prisma.notificationDelivery.findMany({ where: { entityType: "Rfq", entityId: res.body.data.id, channel: "whatsapp" } });
   assert.equal(deliveries.length, 1);
   assert.equal(deliveries[0].status, "SKIPPED");
 });

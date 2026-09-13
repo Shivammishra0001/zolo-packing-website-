@@ -457,13 +457,20 @@ export async function adminCreateQuotation(adminId, rfqId, { items, leadTimeDays
     return quotation;
   });
 
-  // Post-commit: email the buyer when a house quotation was actually sent.
+  // Post-commit: notify the buyer (email/WhatsApp per admin settings) when a
+  // house quotation was actually sent. In-app row was written in the tx.
   if (send) {
     try {
-      const { sendQuoteReceived } = await import("./email.mjs");
-      await sendQuoteReceived(created.id);
+      const { dispatch } = await import("./notification-service.mjs");
+      const total = `₹${(created.grandTotalMinor / 100).toLocaleString("en-IN")}`;
+      await dispatch({
+        event: created.version > 1 ? "QUOTATION_UPDATED" : "QUOTATION_CREATED", userId: created.userId, skipInApp: true,
+        title: `${created.version > 1 ? "Revised quotation" : "New quotation"} ${created.quotationNumber} — ${total}`,
+        body: `Zolo Packaging sent quotation ${created.quotationNumber}${created.version > 1 ? ` (v${created.version})` : ""} for your request.\nTotal: ${total}${leadTimeDays ? `\nLead time: ${leadTimeDays} days` : ""}\n\nCompare and respond under My Quotes.`,
+        entityType: "Quotation", entityId: created.id,
+      });
     } catch (e) {
-      console.error("[rfq] quote received email failed:", e.message);
+      console.error("[rfq] quote received notification failed:", e.message);
     }
   }
 
@@ -568,6 +575,17 @@ export async function acceptQuotation(userId, quotationId) {
       tx,
     );
     return { quotation: { ...q, status: "ACCEPTED" }, order };
+  }).then(async (result) => {
+    // Post-commit: confirm to the buyer (email/WhatsApp per admin settings).
+    const { dispatch } = await import("./notification-service.mjs");
+    const total = `₹${(q.grandTotalMinor / 100).toLocaleString("en-IN")}`;
+    await dispatch({
+      event: "QUOTATION_ACCEPTED", userId,
+      title: `Quotation ${q.quotationNumber} accepted — order ${result.order.orderNumber} created`,
+      body: `You accepted quotation ${q.quotationNumber} (${total}). Order ${result.order.orderNumber} has been created and our team will confirm it shortly; payment instructions will follow.`,
+      entityType: "Order", entityId: result.order.id,
+    });
+    return result;
   });
 }
 

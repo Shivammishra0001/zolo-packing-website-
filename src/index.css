@@ -233,6 +233,22 @@ input[type="range"]::-webkit-slider-thumb {
 .erp-text-muted { color: var(--erp-text-muted); }
 .erp-text-faint { color: var(--erp-text-faint); }
 
+/* Form control: theme-aware text input / textarea used by admin settings forms */
+.erp-input {
+  min-height: 2.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--erp-border);
+  background-color: var(--erp-surface);
+  color: var(--erp-text);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.erp-input:focus { border-color: #f97316; box-shadow: 0 0 0 3px rgba(249,115,22,.15); }
+.erp-input::placeholder { color: var(--erp-text-faint); }
+.erp-input:disabled { opacity: .6; cursor: not-allowed; }
+
 /* Card: the workhorse surface — rounded-xl, soft shadow, theme-aware */
 .erp-card {
   background-color: var(--erp-surface);

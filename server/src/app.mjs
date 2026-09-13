@@ -18,6 +18,8 @@ import { rfqRouter, quotationRouter, adminRfqRouter, sellerRfqRouter } from "./r
 import { returnsRouter, adminReturnsRouter } from "./routes/returns.mjs";
 import { addressRouter } from "./routes/addresses.mjs";
 import { orderRouter } from "./routes/orders.mjs";
+import { adminSettingsRouter } from "./routes/settings.mjs";
+import { adminPaymentRequestsRouter, buyerPaymentRequestsRouter, publicPayRouter } from "./routes/payment-requests.mjs";
 
 export function createApp() {
   const app = express();
@@ -137,6 +139,9 @@ export function createApp() {
     ok(res, { blocks: await listActiveBlocks() });
   }));
 
+  // Payment links: token-only access (no session), rate-limited per link.
+  app.use(`${API}/public/pay`, publicPayRouter);
+
   app.get(`${API}/health`, wrap(async (_req, res) => {
     const products = await prisma.product.count();
     ok(res, { db: "postgresql/zolo_packing", products });
@@ -153,6 +158,7 @@ export function createApp() {
   // Buyer commerce (cart, addresses, checkout, orders) — any authenticated user.
   app.use(`${API}/cart`, authenticate, requireBuyer, cartRouter);
   app.use(`${API}/addresses`, authenticate, requireBuyer, addressRouter);
+  app.use(`${API}/me/payment-requests`, authenticate, requireBuyer, buyerPaymentRequestsRouter);
   app.use(API, authenticate, requireBuyer, orderRouter); // /checkout/*, /orders/*
   app.use(`${API}/sellers/rfqs`, authenticate, requireSeller, loadSupplierOrg, sellerRfqRouter);
   app.use(`${API}/sellers`, authenticate, requireSeller, loadSupplierOrg, sellerRouter);
@@ -165,6 +171,9 @@ export function createApp() {
   app.use(`${API}/returns`, authenticate, requireBuyer, returnsRouter);
   app.use(`${API}/admin/returns`, authenticate, requireAdmin, adminReturnsRouter);
 
+  // Admin settings (payment methods, notifications) + payment requests.
+  app.use(`${API}/admin/settings`, authenticate, requireAdmin, adminSettingsRouter);
+  app.use(`${API}/admin/payment-requests`, authenticate, requireAdmin, adminPaymentRequestsRouter);
   app.use(`${API}/admin`, authenticate, requireAdmin, adminRouter);
 
   // 404 for unknown API routes
