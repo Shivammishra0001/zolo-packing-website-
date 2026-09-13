@@ -39,10 +39,14 @@ test("all business/contact fields + preferences persist and the admin sees the s
     pan: pan.toLowerCase(),
     website: "https://acme.example",
     alternatePhone: "+91 9123456780",
+    dateOfBirth: "1990-05-15",
+    gender: "female",
     preferences: { orderUpdates: true, promotions: false },
   } });
   assert.equal(res.status, 200, JSON.stringify(res.body));
   const u = res.body.data.user;
+  assert.equal(u.dateOfBirth, "1990-05-15", "DOB round-trips as YYYY-MM-DD");
+  assert.equal(u.gender, "female");
   assert.equal(u.company, "Acme Packaging");
   assert.equal(u.gstin, gstin.toUpperCase());
   assert.equal(u.pan, pan.toUpperCase());
@@ -70,6 +74,8 @@ test("all business/contact fields + preferences persist and the admin sees the s
   assert.equal(c.gstin, gstin.toUpperCase());
   assert.equal(c.pan, pan.toUpperCase());
   assert.equal(c.alternatePhone, "9123456780");
+  assert.equal(c.dateOfBirth, "1990-05-15");
+  assert.equal(c.gender, "female");
   assert.deepEqual(c.preferences, { orderUpdates: true, promotions: false, whatsapp: true });
 
   // …and the list is searchable by company.
@@ -79,7 +85,7 @@ test("all business/contact fields + preferences persist and the admin sees the s
 
 test("GSTIN / PAN / website are validated", async () => {
   const buyer = await registerBuyer();
-  for (const body of [{ gstin: "NOT-A-GSTIN" }, { pan: "12345" }, { website: "not a url" }]) {
+  for (const body of [{ gstin: "NOT-A-GSTIN" }, { pan: "12345" }, { website: "not a url" }, { dateOfBirth: "2999-01-01" }, { dateOfBirth: "15/05/1990" }, { gender: "unknown" }]) {
     const res = await api("/auth/me", { method: "PATCH", token: buyer.token, body });
     assert.equal(res.status, 400, `expected 400 for ${JSON.stringify(body)}: ${JSON.stringify(res.body)}`);
   }

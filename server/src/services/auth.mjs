@@ -70,6 +70,9 @@ const publicUser = (u) => ({
   pan: u.pan ?? null,
   website: u.website ?? null,
   industry: u.industry ?? null,
+  // Date-only: serialised as YYYY-MM-DD so the client never has to fight timezones.
+  dateOfBirth: u.dateOfBirth ? new Date(u.dateOfBirth).toISOString().slice(0, 10) : null,
+  gender: u.gender ?? null,
   preferences: u.preferences && typeof u.preferences === "object" ? u.preferences : {},
   createdAt: u.createdAt ?? null,
 });
@@ -250,7 +253,7 @@ export async function logoutAll(userId) {
  */
 export async function updateProfile(
   userId,
-  { firstName, lastName, email, phone, alternatePhone, company, businessType, gstin, pan, website, industry, preferences },
+  { firstName, lastName, email, phone, alternatePhone, company, businessType, gstin, pan, website, industry, dateOfBirth, gender, preferences },
 ) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw unauthorized();
@@ -268,6 +271,8 @@ export async function updateProfile(
   if (pan !== undefined) data.pan = pan ? String(pan).trim().toUpperCase() : null;
   if (website !== undefined) data.website = text(website);
   if (industry !== undefined) data.industry = text(industry);
+  if (dateOfBirth !== undefined) data.dateOfBirth = dateOfBirth ? new Date(`${dateOfBirth}T00:00:00Z`) : null;
+  if (gender !== undefined) data.gender = gender || null;
   // Merge so a partial preferences update never wipes the other toggles.
   if (preferences !== undefined) {
     const current = user.preferences && typeof user.preferences === "object" ? user.preferences : {};

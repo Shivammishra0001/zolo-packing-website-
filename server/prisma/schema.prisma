@@ -57,6 +57,8 @@ model User {
   pan            String?
   website        String?
   industry       String?
+  dateOfBirth    DateTime? @db.Date
+  gender         String? // male | female | other | prefer_not_to_say (validated in the API)
   // Notification / communication opt-ins, e.g. { orderUpdates, rfqUpdates,
   // marketingEmail, whatsapp, sms }. Absent keys mean "default (on)".
   preferences    Json      @default("{}")

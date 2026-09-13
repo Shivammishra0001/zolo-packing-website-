@@ -476,6 +476,7 @@ export async function customerDetail(userId) {
       // Customer profile fields (User is the source of truth).
       avatarUrl: true, alternatePhone: true, company: true, businessType: true,
       gstin: true, pan: true, website: true, industry: true, preferences: true,
+      dateOfBirth: true, gender: true,
     },
   });
   if (!user) return null;
@@ -552,6 +553,8 @@ export async function customerDetail(userId) {
       pan: user.pan ?? null,
       website: user.website ?? null,
       industry: user.industry ?? null,
+      dateOfBirth: user.dateOfBirth ? new Date(user.dateOfBirth).toISOString().slice(0, 10) : null,
+      gender: user.gender ?? null,
       preferences: user.preferences && typeof user.preferences === "object" ? user.preferences : {},
       city: defaultAddress?.city ?? latestShip?.shipCity ?? null,
       state: defaultAddress?.state ?? latestShip?.shipState ?? null,

@@ -210,6 +210,22 @@ export const profileUpdateSchema = z
       .union([z.string().trim().url("Enter a valid URL (include https://)").max(200), z.literal(""), z.null()])
       .optional(),
     industry: clearableText(80),
+    // Date of birth as YYYY-MM-DD; must be a real date in the past.
+    dateOfBirth: z
+      .union([
+        z
+          .string()
+          .trim()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, "Use the format YYYY-MM-DD")
+          .refine((s) => {
+            const d = new Date(`${s}T00:00:00Z`);
+            return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s && d < new Date() && d >= new Date("1900-01-01T00:00:00Z");
+          }, "Enter a valid date of birth in the past"),
+        z.literal(""),
+        z.null(),
+      ])
+      .optional(),
+    gender: z.union([z.enum(["male", "female", "other", "prefer_not_to_say"]), z.literal(""), z.null()]).optional(),
     // Notification / communication opt-ins — a flat map of booleans.
     preferences: z.record(z.string().max(40), z.boolean()).optional(),
   })

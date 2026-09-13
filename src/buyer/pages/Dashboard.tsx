@@ -10,6 +10,35 @@ import { inrMinor, formatDate } from "@/admin/format";
 import { statusTone, paymentTone, prettyStatus } from "@/lib/order-status";
 import { buyerApi } from "@/lib/api/commerce";
 import { useBuyerQuery } from "@/buyer/use-buyer-query";
+import { useBuyerProfile } from "@/buyer/data";
+
+/** The signed-in customer at a glance — photo, name, business, contact. Real
+ *  session data only; the photo is the one uploaded under Settings. */
+function ProfileCard() {
+  const p = useBuyerProfile();
+  const initials = `${p.firstName[0] ?? "U"}${p.lastName[0] ?? ""}`.toUpperCase();
+  return (
+    <Panel bodyClassName="p-4 sm:p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        {p.avatarUrl ? (
+          <img src={p.avatarUrl} alt="" className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-primary-100" />
+        ) : (
+          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-amber-400 text-lg font-bold text-white">{initials}</span>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-base font-bold erp-text">{p.name}</p>
+          {p.company && <p className="truncate text-sm erp-text-muted">{p.company}</p>}
+          <p className="truncate text-xs erp-text-muted">
+            {p.email}{p.phone ? ` · +91 ${p.phone}` : ""}
+          </p>
+        </div>
+        <Link to="/account/settings" className="inline-flex shrink-0 items-center gap-2 rounded-lg border erp-border px-4 py-2 text-sm font-semibold erp-text transition-colors erp-hover">
+          Edit profile
+        </Link>
+      </div>
+    </Panel>
+  );
+}
 
 function ErrorPanel({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
@@ -39,6 +68,10 @@ export default function Dashboard() {
   return (
     <div>
       <PageHeader title="Dashboard" subtitle="Your orders, payments and deliveries at a glance." />
+
+      <div className="mb-5">
+        <ProfileCard />
+      </div>
 
       {/* KPIs — skeletons while loading so no zero is ever shown as fact. */}
       <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

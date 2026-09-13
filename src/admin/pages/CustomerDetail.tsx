@@ -198,6 +198,8 @@ export default function CustomerDetail() {
                 { label: "Phone", value: customer.phone ?? dash },
                 { label: "Alternate phone", value: customer.alternatePhone ?? dash },
                 { label: "Email", value: customer.email },
+                { label: "Date of birth", value: customer.dateOfBirth ? formatDate(customer.dateOfBirth) : dash },
+                { label: "Gender", value: customer.gender ? customer.gender.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()) : dash },
                 { label: "City", value: customer.city ?? dash },
                 { label: "State", value: customer.state ?? dash },
                 { label: "Saved addresses", value: customer.addressCount },

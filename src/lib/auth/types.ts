@@ -25,6 +25,9 @@ export interface AuthUser {
   pan?: string | null;
   website?: string | null;
   industry?: string | null;
+  /** YYYY-MM-DD */
+  dateOfBirth?: string | null;
+  gender?: string | null;
   /** Notification / communication opt-ins. Missing key = default (on). */
   preferences?: Record<string, boolean>;
   createdAt?: string | null;
@@ -48,6 +51,8 @@ export interface ProfileUpdate {
   pan?: string | null;
   website?: string | null;
   industry?: string | null;
+  dateOfBirth?: string | null;
+  gender?: string | null;
   preferences?: Record<string, boolean>;
 }
 

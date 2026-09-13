@@ -148,7 +148,7 @@ function ProfilePhoto() {
 function ProfileTab() {
   const toast = useToast();
   const { user, refreshSession } = useAuthSession();
-  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", alternatePhone: "" });
+  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", alternatePhone: "", dateOfBirth: "", gender: "" });
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -162,6 +162,8 @@ function ProfileTab() {
       email: user.email ?? "",
       phone: user.phone ?? "",
       alternatePhone: user.alternatePhone ?? "",
+      dateOfBirth: user.dateOfBirth ?? "",
+      gender: user.gender ?? "",
     });
   }, [user, dirty]);
 
@@ -169,6 +171,11 @@ function ProfileTab() {
     setDirty(true);
     setForm((f) => ({ ...f, [k]: e.target.value }));
   };
+  const setGender = (v: string) => {
+    setDirty(true);
+    setForm((f) => ({ ...f, gender: v }));
+  };
+  const today = new Date().toISOString().slice(0, 10);
 
   const save = async () => {
     if (!form.firstName.trim()) {
@@ -183,6 +190,8 @@ function ProfileTab() {
         email: form.email.trim(),
         phone: form.phone.trim() || null,
         alternatePhone: form.alternatePhone.trim() || null,
+        dateOfBirth: form.dateOfBirth || null,
+        gender: form.gender || null,
       });
       setDirty(false);
       await refreshSession();
@@ -217,6 +226,17 @@ function ProfileTab() {
           </Field>
           <Field label="Alternate phone" htmlFor="aph" hint="Optional second number our team can reach you on.">
             <input id="aph" type="tel" className={INPUT} value={form.alternatePhone} onChange={set("alternatePhone")} placeholder="10-digit mobile" />
+          </Field>
+          <Field label="Date of birth" htmlFor="dob">
+            <input id="dob" type="date" className={INPUT} value={form.dateOfBirth} onChange={set("dateOfBirth")} max={today} min="1900-01-01" />
+          </Field>
+          <Field label="Gender">
+            <Select value={form.gender} onChange={setGender} aria-label="Gender" className="w-full">
+              <option value="">Prefer not to say</option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+              <option value="other">Other</option>
+            </Select>
           </Field>
         </div>
         <p className="mt-3 text-[11px] erp-text-faint">

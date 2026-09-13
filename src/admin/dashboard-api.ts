@@ -192,6 +192,8 @@ export interface AdminCustomerPayment {
 export interface AdminCustomerDetail extends AdminCustomer {
   firstName: string; lastName: string | null;
   pan: string | null; website: string | null;
+  /** YYYY-MM-DD */
+  dateOfBirth: string | null; gender: string | null;
   preferences: Record<string, boolean>;
   cancelledOrders: number; addressCount: number;
   averageOrderMinor: number;

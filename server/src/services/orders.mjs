@@ -376,7 +376,9 @@ function shapeOrder(o, includeUser = false) {
     shipments: (o.shipments ?? []).map((s) => ({ shipmentNumber: s.shipmentNumber, courier: s.courier, trackingNumber: s.trackingNumber, status: s.status, shippedAt: s.shippedAt, deliveredAt: s.deliveredAt, expectedAt: s.expectedAt, events: (s.events ?? []).map((e) => ({ status: e.status, location: e.location, note: e.note, at: e.createdAt })) })),
     invoice: o.invoice ? { invoiceNumber: o.invoice.invoiceNumber, status: o.invoice.status, issuedAt: o.invoice.issuedAt } : null,
   };
-  if (includeUser && o.user) base.customer = { id: o.user.id, name: `${o.user.firstName} ${o.user.lastName ?? ""}`.trim(), email: o.user.email, phone: o.user.phone };
+  // The frozen placement email wins over the live account email, so a later
+  // profile change never rewrites what an old order shows.
+  if (includeUser && o.user) base.customer = { id: o.user.id, name: `${o.user.firstName} ${o.user.lastName ?? ""}`.trim(), email: o.customerEmail ?? o.user.email, phone: o.user.phone, avatarUrl: o.user.avatarUrl ?? null };
   return base;
 }
 

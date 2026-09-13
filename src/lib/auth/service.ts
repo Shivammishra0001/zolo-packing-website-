@@ -98,6 +98,8 @@ interface BackendUser {
   pan?: string | null;
   website?: string | null;
   industry?: string | null;
+  dateOfBirth?: string | null;
+  gender?: string | null;
   preferences?: Record<string, boolean> | null;
   createdAt?: string | null;
 }
@@ -166,6 +168,8 @@ function toAuthUser(u: BackendUser): AuthUser {
     pan: u.pan ?? null,
     website: u.website ?? null,
     industry: u.industry ?? null,
+    dateOfBirth: u.dateOfBirth ?? null,
+    gender: u.gender ?? null,
     preferences: u.preferences && typeof u.preferences === "object" ? u.preferences : {},
     createdAt: u.createdAt ?? null,
   };
