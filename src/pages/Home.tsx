@@ -9,7 +9,7 @@ import {
   Quote,
 } from "lucide-react";
 import { useBuyerProducts } from "../lib/products";
-import { ProductCard } from "../components/NewProductCard";
+import { ProductGrid } from "../components/ProductGrid";
 import { PackagingCategorySection } from "../components/packaging/PackagingCategorySection";
 import TrustedCustomers from "../components/TrustedCustomers";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -53,9 +53,11 @@ export default function Home() {
   const source = useBuyerProducts();
   // "Bestseller" used to be invented from the price — there is no sales-rank
   // data yet, so this rail simply features the catalog.
-  const featured = source.slice(0, 8);
+  // Pools, not fixed counts — ProductGrid trims each to complete rows for
+  // the column count the viewport resolves to.
+  const featured = source.slice(0, 16);
   const newArrivalPool = source.filter((p) => p.newArrival);
-  const newArrivals = (newArrivalPool.length > 0 ? newArrivalPool : source).slice(0, 4);
+  const newArrivals = (newArrivalPool.length > 0 ? newArrivalPool : source).slice(0, 12);
 
   const [currentSlide, setCurrentSlide] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -248,11 +250,7 @@ export default function Home() {
               <p className="mt-1 text-sm text-dark-500">Products added in the catalog will appear here.</p>
             </div>
           ) : (
-            <div className="grid-cards">
-              {featured.map((p, i) => (
-                <ProductCard key={p.id} product={p} index={i} />
-              ))}
-            </div>
+            <ProductGrid products={featured} maxRows={2} />
           )}
         </div>
       </section>
@@ -275,11 +273,7 @@ export default function Home() {
               View all <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
-          <div className="grid-cards">
-            {newArrivals.map((p, i) => (
-              <ProductCard key={p.id} product={p} index={i} />
-            ))}
-          </div>
+          <ProductGrid products={newArrivals} maxRows={1} />
         </div>
       </section>
       )}

@@ -28,7 +28,7 @@ import { addToRfq } from "../lib/rfq-cart-store";
 import { addToCart } from "../lib/cart-store";
 import { useToast } from "../components/ui/Toast";
 import { Button, SectionHeader } from "../components/UI";
-import { ProductCard } from "../components/NewProductCard";
+import { ProductGrid } from "../components/ProductGrid";
 import PackagingMockup from "../components/PackagingMockup";
 import { ProductGallery } from "../components/product/ProductGallery";
 
@@ -131,7 +131,7 @@ export default function Details() {
   }
 
   const wishlisted = has(product._id || product.id);
-  const related = allProducts.filter((p) => p.category === product.category && p.slug !== product.slug).slice(0, 4);
+  const related = allProducts.filter((p) => p.category === product.category && p.slug !== product.slug).slice(0, 12);
   const mockupType = typeToMockup[product.category] || "mailer";
 
   // Share via the native share sheet where available; otherwise copy the link.
@@ -605,11 +605,7 @@ export default function Details() {
         {related.length > 0 && (
           <div className="mt-20">
             <SectionHeader eyebrow="You may also like" title="Related products" />
-            <div className="mt-8 grid-cards">
-              {related.map((p, i) => (
-                <ProductCard key={p.id} product={p} index={i} />
-              ))}
-            </div>
+            <ProductGrid products={related} maxRows={1} className="mt-8" />
           </div>
         )}
       </div>
