@@ -183,7 +183,7 @@ export default function Recycle() {
   const visible = (requests ?? []).filter((r) => tab === "all" || r.type === tab);
 
   return (
-    <div className="mx-auto max-w-[1000px] space-y-5">
+    <div className="shell-form space-y-5">
       <PageHeader
         breadcrumb={[{ label: "Account", to: "/account/dashboard" }, { label: "Returns & Recycling" }]}
         title="My Returns & Recycling"

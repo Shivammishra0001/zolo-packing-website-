@@ -41,7 +41,7 @@ function AdminChrome() {
           range={range}
           onRangeChange={setRange}
         />
-        <main className="flex-1 p-4 sm:p-6">
+        <main className="flex-1 p-4 sm:p-6 2xl:p-8">
           <Outlet context={{ range } satisfies AdminContext} />
         </main>
       </div>

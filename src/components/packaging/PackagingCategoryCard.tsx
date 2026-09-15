@@ -25,10 +25,10 @@ export function PackagingCategoryCard({ category }: { category: Category }) {
     <Link
       to={`/products?category=${category.slug}`}
       aria-label={`${category.name} packaging`}
-      className="group flex w-[150px] shrink-0 flex-col items-center rounded-2xl px-2 pt-8 pb-3 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+      className="group carousel-item flex flex-col items-center rounded-2xl px-2 pt-8 pb-3 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
     >
       {/* Circle + floating image */}
-      <div className="relative flex h-[130px] w-[130px] items-center justify-center">
+      <div className="relative flex aspect-square w-[86%] items-center justify-center">
         <div
           className="absolute inset-0 rounded-full border border-dark-100 bg-dark-50 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)] transition-transform duration-300 ease-out group-hover:scale-[1.02] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
           aria-hidden
@@ -42,11 +42,11 @@ export function PackagingCategoryCard({ category }: { category: Category }) {
             loading="lazy"
             decoding="async"
             // Floats above the circle (negative top) and lifts on hover.
-            className="relative -top-6 h-[140px] w-[140px] object-contain drop-shadow-[0_14px_20px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-out group-hover:-translate-y-1.5 group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:translate-y-0 motion-reduce:group-hover:scale-100"
+            className="absolute left-[-4%] top-[-22%] h-[108%] w-[108%] max-w-none object-contain drop-shadow-[0_14px_20px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-out group-hover:-translate-y-1.5 group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:translate-y-0 motion-reduce:group-hover:scale-100"
           />
         ) : (
           <span
-            className="relative -top-3 select-none text-6xl transition-transform duration-300 ease-out group-hover:-translate-y-1.5 group-hover:scale-[1.04] motion-reduce:transition-none"
+            className="relative -top-3 select-none text-[clamp(2.5rem,4vw,4rem)] transition-transform duration-300 ease-out group-hover:-translate-y-1.5 group-hover:scale-[1.04] motion-reduce:transition-none"
             aria-hidden
           >
             {category.icon}

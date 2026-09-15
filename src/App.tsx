@@ -81,7 +81,7 @@ export const useAuth = () => useContext(AuthCtx);
 function TopBar() {
   return (
     <div className="bg-dark-950 text-white text-xs">
-      <div className="mx-auto max-w-7xl px-4 py-2 flex items-center justify-between gap-4">
+      <div className="shell py-2 flex items-center justify-between gap-4">
         {/* Promo hidden on small phones so the right-side links never clip. */}
         <div className="hidden min-w-0 sm:flex items-center gap-4">
           <span className="flex items-center gap-1.5 truncate">
@@ -161,7 +161,7 @@ function Navbar() {
           : "bg-white/80 backdrop-blur-xl backdrop-saturate-150 border-b border-dark-100"
       } ${scrolled ? "shadow-md" : ""}`}
     >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex items-center gap-2 sm:gap-4">
+      <div className="shell py-3 flex items-center gap-2 sm:gap-4">
         {showMobileSearch ? (
           <form onSubmit={handleSearchSubmit} className="flex-1 flex items-center gap-2">
             <div className="relative flex-1">
@@ -201,7 +201,7 @@ function Navbar() {
               </div>
             </Link>
 
-            <nav className="hidden lg:flex items-center gap-0.5 ml-6">
+            <nav className="hidden lg:flex items-center gap-0.5 ml-6 2xl:ml-10 2xl:gap-1">
               {links.map((l) => (
                 <NavLink
                   key={l.to}
@@ -231,7 +231,7 @@ function Navbar() {
               ))}
             </nav>
 
-            <form onSubmit={handleSearchSubmit} className="flex-1 max-w-md mx-auto hidden md:block">
+            <form onSubmit={handleSearchSubmit} className="flex-1 max-w-md xl:max-w-lg 2xl:max-w-2xl mx-auto hidden md:block">
               <div className="relative">
                 <Search className={`absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ${overHero ? "text-white/60" : "text-dark-400"}`} />
                 <input
@@ -456,7 +456,7 @@ function Footer() {
     <footer className="bg-dark-950 text-white">
       {/* Pre-footer CTA */}
       <div className="border-b border-white/10">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-8 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="shell py-8 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-3">
               <Phone className="h-5 w-5 text-primary-400" />
@@ -482,7 +482,7 @@ function Footer() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-14">
+      <div className="shell py-14">
         <div className="grid gap-10 md:grid-cols-5">
           <div className="md:col-span-2">
             <div className="flex items-center gap-2.5 mb-4">
@@ -812,8 +812,6 @@ function AnimatedRoutes() {
             }
           />
           {/* Legacy storefront routes now consolidated into the buyer portal (/account/*). */}
-          {/* Secure payment link (from a payment request). Token-only, no sign-in. */}
-          <Route path="/pay/:token" element={<PayPage />} />
           <Route path="/order-tracking" element={<Navigate to="/account/orders" replace />} />
           <Route path="/dashboard" element={<Navigate to="/account/dashboard" replace />} />
           <Route path="/contact" element={<Contact />} />
@@ -840,7 +838,6 @@ import CheckoutAddress from "./pages/checkout/CheckoutAddress";
 import CheckoutReview from "./pages/checkout/CheckoutReview";
 import CheckoutPayment from "./pages/checkout/CheckoutPayment";
 import CheckoutSuccess from "./pages/checkout/CheckoutSuccess";
-import PayPage from "./pages/PayPage";
 
 export { TopBar, Navbar, Footer };
 export type { Product };

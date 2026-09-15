@@ -98,7 +98,7 @@ export function PackagingCategorySection() {
 
   return (
     <section className="py-20 bg-white">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+      <div className="shell">
         {/* Header — unchanged layout: eyebrow, title, subtitle, View all */}
         <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
           <div className="w-full min-w-0 sm:w-auto">

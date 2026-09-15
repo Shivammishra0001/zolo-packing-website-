@@ -52,7 +52,7 @@ export default function Categories() {
 
   return (
     <main className="py-12">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+      <div className="shell">
         <SectionHeader
           eyebrow="Categories"
           title={<>Shop by <span className="grad-text">packaging type</span></>}
@@ -60,7 +60,7 @@ export default function Categories() {
           align="center"
         />
 
-        <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="mt-12 grid-cards-lg">
           {CATEGORIES.filter((c) => c.id !== "others").map((c, i) => (
             <motion.div
               key={c.id}

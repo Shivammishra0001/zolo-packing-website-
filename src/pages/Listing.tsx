@@ -35,7 +35,7 @@ export default function Listing() {
   const [sort, setSort] = useState(sortParam);
   const [search, setSearch] = useState(params.get("search") || "");
   const [material, setMaterial] = useState<string>("");
-  const [grid, setGrid] = useState<3 | 4>(3);
+  const [grid, setGrid] = useState<3 | 4>(4);
   const [showFilters, setShowFilters] = useState(false);
 
   // Unified product source: admin catalog store (includes manual + bulk-imported
@@ -138,7 +138,7 @@ export default function Listing() {
 
   return (
     <main className="py-10">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+      <div className="shell">
         {/* Breadcrumb */}
         <div className="mb-6 text-xs text-dark-500">
           <span>Home</span> <span className="mx-2">/</span>
@@ -363,9 +363,7 @@ export default function Listing() {
                 <div className="text-dark-500 text-sm">Try adjusting your filters or search terms.</div>
               </div>
             ) : (
-              <div className={`grid gap-5 ${
-                grid === 3 ? "sm:grid-cols-2 lg:grid-cols-3" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
-              }`}>
+              <div className={grid === 3 ? "grid-cards-lg" : "grid-cards"}>
                 {filtered.map((p, i) => (
                   <ProductCard key={p.id} product={p} index={i} />
                 ))}

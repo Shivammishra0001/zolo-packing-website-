@@ -9,7 +9,7 @@ import { EmptyState, Panel } from "../components/Panel";
 // exports exist, this page says so honestly and points at the live views.
 export default function Reports() {
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="shell-admin">
       <PageHeader
         breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Reports" }]}
         title="Reports"

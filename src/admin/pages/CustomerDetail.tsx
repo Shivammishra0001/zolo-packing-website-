@@ -61,7 +61,7 @@ export default function CustomerDetail() {
 
   if (q.status === "loading") {
     return (
-      <div className="mx-auto max-w-[1400px]">
+      <div className="shell-admin">
         <PageHeader
           breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Customers", to: "/admin/customers" }, { label: "Loading…" }]}
           title="Customer"
@@ -76,7 +76,7 @@ export default function CustomerDetail() {
 
   if (q.status === "error") {
     return (
-      <div className="mx-auto max-w-[1400px]">
+      <div className="shell-admin">
         <PageHeader
           breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Customers", to: "/admin/customers" }, { label: "Error" }]}
           title="Couldn't load this customer"
@@ -136,7 +136,7 @@ export default function CustomerDetail() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="shell-admin">
       <PageHeader
         breadcrumb={[
           { label: "Home", to: "/admin" },

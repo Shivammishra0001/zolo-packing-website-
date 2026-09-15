@@ -7,7 +7,7 @@ import { PageHeader } from "../components/ui";
 // raised" / "Goods received" actions were toasts that persisted nothing.
 export default function Procurement() {
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="shell-admin">
       <PageHeader
         breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Procurement" }]}
         title="Procurement"

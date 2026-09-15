@@ -120,7 +120,7 @@ export default function Shipping() {
   }, [tab, search]);
 
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="shell-admin">
       <PageHeader
         breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Shipping" }]}
         title="Shipping & Logistics"

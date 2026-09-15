@@ -664,7 +664,7 @@ export default function Settings() {
   useEffect(() => { try { sessionStorage.setItem("zolo.admin.settings.tab", tab); } catch { /* ignore */ } }, [tab]);
 
   return (
-    <div className="mx-auto max-w-[1100px]">
+    <div className="shell-form">
       <PageHeader
         breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Settings" }]}
         title="Settings"

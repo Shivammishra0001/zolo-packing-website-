@@ -8,7 +8,7 @@ import { PageHeader } from "../components/ui";
 // module is built, it says so honestly.
 export default function Artwork() {
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="shell-admin">
       <PageHeader
         breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Artwork" }]}
         title="Artwork"

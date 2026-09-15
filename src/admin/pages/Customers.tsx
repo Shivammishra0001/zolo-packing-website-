@@ -153,7 +153,7 @@ export default function Customers() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="shell-admin">
       <PageHeader
         breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Customers" }]}
         title="Customers"

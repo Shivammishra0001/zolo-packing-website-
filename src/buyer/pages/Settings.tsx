@@ -774,7 +774,7 @@ function AccountTab() {
 export default function Settings() {
   const [tab, setTab] = useState<SettingsTab>("profile");
   return (
-    <div className="mx-auto max-w-[1200px] space-y-5">
+    <div className="shell-admin space-y-5">
       <PageHeader
         breadcrumb={[{ label: "Account", to: "/account/dashboard" }, { label: "Settings" }]}
         title="Settings"

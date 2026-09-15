@@ -138,7 +138,7 @@ export default function Home() {
         {/* Hero CTAs — only on the first slide (re-animates each loop). The banner
             artwork already carries the headline, so we keep just the actions. */}
         {currentSlide === 0 && (
-          <div className="absolute inset-x-0 bottom-10 z-20 mx-auto w-full max-w-7xl px-4 sm:px-6">
+          <div className="absolute inset-x-0 bottom-10 z-20 shell">
             <motion.div
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
@@ -163,14 +163,14 @@ export default function Home() {
         <button
           onClick={prevSlide}
           aria-label="Previous slide"
-          className="absolute left-4 top-1/2 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur transition-all hover:bg-white/40 sm:h-12 sm:w-12"
+          className="absolute right-16 top-4 z-30 flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur sm:left-4 sm:right-auto sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2 transition-all hover:bg-white/40 sm:h-12 sm:w-12"
         >
           <ChevronLeft className="h-6 w-6" />
         </button>
         <button
           onClick={nextSlide}
           aria-label="Next slide"
-          className="absolute right-4 top-1/2 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur transition-all hover:bg-white/40 sm:h-12 sm:w-12"
+          className="absolute right-4 top-4 z-30 flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2 transition-all hover:bg-white/40 sm:h-12 sm:w-12"
         >
           <ChevronRight className="h-6 w-6" />
         </button>
@@ -192,7 +192,7 @@ export default function Home() {
 
       {/* TRUST BAR */}
       <section className="bg-white border-y border-dark-100 py-8">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <div className="shell">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {benefits.map((b, i) => (
               <motion.div
@@ -224,7 +224,7 @@ export default function Home() {
 
       {/* BESTSELLERS */}
       <section className="py-20 bg-dark-50">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <div className="shell">
           <div className="flex items-end justify-between flex-wrap gap-4 mb-10">
             <div>
               <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600 mb-3">
@@ -248,7 +248,7 @@ export default function Home() {
               <p className="mt-1 text-sm text-dark-500">Products added in the catalog will appear here.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5">
+            <div className="grid-cards">
               {featured.map((p, i) => (
                 <ProductCard key={p.id} product={p} index={i} />
               ))}
@@ -260,7 +260,7 @@ export default function Home() {
       {/* NEW ARRIVALS */}
       {newArrivals.length > 0 && (
       <section className="py-20 bg-white">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <div className="shell">
           <div className="flex items-end justify-between flex-wrap gap-4 mb-10">
             <div>
               <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600 mb-3">
@@ -275,7 +275,7 @@ export default function Home() {
               View all <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-5">
+          <div className="grid-cards">
             {newArrivals.map((p, i) => (
               <ProductCard key={p.id} product={p} index={i} />
             ))}
@@ -291,7 +291,7 @@ export default function Home() {
       <section className="py-20 bg-dark-950 text-white relative overflow-hidden">
         <div className="absolute inset-0 grid-bg-light opacity-20" />
         <div className="absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full bg-primary-500/20 blur-3xl" />
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
+        <div className="relative shell">
           <div className="text-center max-w-3xl mx-auto mb-14">
             <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary-400 mb-3">
               <span className="inline-block h-1 w-6 rounded-full bg-primary-500 mr-2" />

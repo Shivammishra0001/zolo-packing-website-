@@ -275,7 +275,7 @@ function BuyerChrome() {
 
       <div className="flex min-h-screen flex-col lg:pl-60">
         <Topbar onOpenMobileNav={() => setMobileOpen(true)} />
-        <main className="flex-1 p-4 sm:p-6">
+        <main className="flex-1 p-4 sm:p-6 2xl:p-8">
           <Outlet />
         </main>
       </div>

@@ -7,7 +7,7 @@ import { PageHeader } from "../components/ui";
 // so honestly.
 export default function PackagingTemplates() {
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="shell-admin">
       <PageHeader
         breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Templates" }]}
         title="Packaging Templates"

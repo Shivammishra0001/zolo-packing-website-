@@ -126,7 +126,7 @@ export default function ProductDetail() {
 
   if (!product) {
     return (
-      <div className="mx-auto max-w-[1400px]">
+      <div className="shell-admin">
         <PageHeader
           breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Catalog", to: "/admin/catalog" }, { label: "Not found" }]}
           title="Product not found"
@@ -178,7 +178,7 @@ export default function ProductDetail() {
   const dims = product.dimensions;
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-5">
+    <div className="shell-admin space-y-5">
       <PageHeader
         breadcrumb={[
           { label: "Home", to: "/admin" },

@@ -69,7 +69,7 @@ export default function CMS() {
   };
 
   return (
-    <div className="mx-auto max-w-[1100px]">
+    <div className="shell-form">
       <PageHeader
         breadcrumb={[{ label: "Home", to: "/admin" }, { label: "CMS" }]}
         title="Content Blocks"

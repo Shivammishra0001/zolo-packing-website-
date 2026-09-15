@@ -136,7 +136,7 @@ export default function ImportHistory() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1200px]">
+    <div className="shell-admin">
       <PageHeader
         breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Catalog", to: "/admin/catalog" }, { label: "Import History" }]}
         title="Import History"

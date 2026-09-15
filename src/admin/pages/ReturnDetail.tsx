@@ -257,7 +257,7 @@ export default function ReturnDetail() {
 
   if (error) {
     return (
-      <div className="mx-auto max-w-[900px]">
+      <div className="shell-form">
         <PageHeader breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Returns & Recycling", to: "/admin/returns" }, { label: id }]} title="Request" />
         <Panel>
           {error.kind === "notFound" ? (
@@ -269,13 +269,13 @@ export default function ReturnDetail() {
       </div>
     );
   }
-  if (!r) return <div className="mx-auto max-w-[900px]"><Panel><ListSkeleton rows={6} /></Panel></div>;
+  if (!r) return <div className="shell-form"><Panel><ListSkeleton rows={6} /></Panel></div>;
 
   const inReview = r.status === "UNDER_REVIEW";
   const needsResolution = r.status === "APPROVED";
 
   return (
-    <div className="mx-auto max-w-[1100px]">
+    <div className="shell-form">
       <PageHeader
         breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Returns & Recycling", to: "/admin/returns" }, { label: r.requestNumber }]}
         title={

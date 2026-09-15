@@ -84,7 +84,7 @@ export default function AuditLogs() {
   const topModules = Object.entries(moduleCounts).sort((a, b) => b[1] - a[1]).slice(0, 3);
 
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="shell-admin">
       <PageHeader
         breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Audit Logs" }]}
         title="Audit Logs"

@@ -40,7 +40,7 @@ const typeToMockup: Record<string, "mailer" | "shipping" | "pizza" | "cosmetic" 
 export default function Details() {
   const { slug } = useParams();
   const nav = useNavigate();
-  const { isAuthenticated, openAuthModal } = useAuthSession();
+  const { isAuthenticated, authReady, openAuthModal } = useAuthSession();
 
   // Unified product source: the shared catalog store (admin + bulk-imported).
   const storeProduct = useBuyerProductBySlug(slug);
@@ -57,6 +57,10 @@ export default function Details() {
   // the product automatically without clicking it again. Then we bounce to the
   // listing so the guarded page never renders for a guest.
   useEffect(() => {
+    // Wait for the session restore: a signed-in customer refreshing or
+    // opening a shared product link must not be bounced to the listing (and
+    // shown the login modal) while their token is still being refreshed.
+    if (!authReady) return;
     if (!isAuthenticated && slug) {
       const target = `/product/${slug}`;
       openAuthModal({
@@ -66,7 +70,7 @@ export default function Details() {
       nav("/products", { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, slug]);
+  }, [authReady, isAuthenticated, slug]);
 
   // NOTE: every hook must be declared BEFORE any conditional return. The guest
   // early-return used to sit above the hooks below, so the moment a guest
@@ -227,7 +231,7 @@ export default function Details() {
 
   return (
     <main className="py-8">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+      <div className="shell">
         {/* Breadcrumb */}
         <div className="mb-6 text-xs text-dark-500 flex items-center gap-1.5">
           <Link to="/" className="hover:text-dark-900">Home</Link>
@@ -601,7 +605,7 @@ export default function Details() {
         {related.length > 0 && (
           <div className="mt-20">
             <SectionHeader eyebrow="You may also like" title="Related products" />
-            <div className="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="mt-8 grid-cards">
               {related.map((p, i) => (
                 <ProductCard key={p.id} product={p} index={i} />
               ))}

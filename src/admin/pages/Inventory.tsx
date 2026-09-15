@@ -475,7 +475,7 @@ export default function Inventory() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-5">
+    <div className="shell-admin space-y-5">
       <PageHeader
         breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Inventory" }]}
         title="Inventory"

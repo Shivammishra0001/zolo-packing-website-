@@ -80,7 +80,7 @@ export default function TrustedCustomers() {
       }}
     >
       {/* Heading — constrained to the readable column */}
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
+      <div className="relative shell">
         <div className="mx-auto max-w-2xl text-center">
           <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600">
             <span className="mr-2 inline-block h-1 w-6 rounded-full bg-primary-500" />
@@ -112,7 +112,7 @@ export default function TrustedCustomers() {
       </div>
 
       {/* Trust indicators — back inside the readable column */}
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
+      <div className="relative shell">
         <div className="mx-auto mt-10 grid max-w-2xl grid-cols-3 gap-4 sm:mt-12 sm:gap-8">
           {TRUST_POINTS.map(({ icon: Icon, label }) => (
             <div key={label} className="flex flex-col items-center gap-2 text-center sm:flex-row sm:justify-center sm:gap-2.5">

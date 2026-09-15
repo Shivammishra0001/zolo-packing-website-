@@ -553,7 +553,7 @@ export default function DashboardHome() {
     year: "numeric",
   });
   return (
-    <div className="mx-auto max-w-[1400px] space-y-4 sm:space-y-5">
+    <div className="shell-admin space-y-4 sm:space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-500/10 text-primary-600 dark:text-primary-400">

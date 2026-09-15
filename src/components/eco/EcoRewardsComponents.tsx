@@ -496,7 +496,7 @@ export function EcoLandingSection() {
     <section className="py-20 bg-dark-950 text-white relative overflow-hidden">
       <div className="absolute inset-0 grid-bg-light opacity-15" />
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary-400/50 to-transparent" />
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
+      <div className="relative shell">
         <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-1.5 text-xs font-bold text-primary-200 mb-6">
@@ -552,7 +552,7 @@ export function PageShell({ eyebrow, title, subtitle, children }: { eyebrow: str
   return (
     <main className="bg-white dark:bg-dark-950">
       <section className="py-16 sm:py-20 bg-dark-50 dark:bg-dark-900">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <div className="shell">
           <SectionHeader eyebrow={eyebrow} title={title} subtitle={subtitle} align="center" />
         </div>
       </section>

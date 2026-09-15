@@ -240,7 +240,7 @@ export default function EcoRewards() {
         ====================================================== */}
 
 <section className="pb-20">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="shell">
 
             <motion.div
               initial={{
@@ -351,7 +351,7 @@ export default function EcoRewards() {
         ====================================================== */}
 
         <section className="relative py-16 lg:py-20">
-          <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2">
+          <div className="shell grid items-center gap-12 lg:grid-cols-2">
 
             {/* Content */}
 
@@ -425,7 +425,7 @@ export default function EcoRewards() {
                 <img
                   src="/images/recycle.jpg"
                   alt="Sustainable recyclable packaging"
-                  className="h-[780px] w-full object-cover"
+                  className="aspect-[4/5] max-h-[780px] w-full object-cover"
                 />
 
               </div>
@@ -441,7 +441,7 @@ export default function EcoRewards() {
           id="recycling"
           className="relative border-y border-green-100 bg-gradient-to-b from-green-50/70 via-white to-white py-20 dark:border-dark-800 dark:from-green-950/10 dark:via-dark-950 dark:to-dark-950"
         >
-          <div className="mx-auto max-w-[1450px] px-4 sm:px-6">
+          <div className="shell">
 
             <SectionHeading
               eyebrow="Our Loop"
@@ -555,7 +555,7 @@ export default function EcoRewards() {
         ====================================================== */}
 
         <section className="flex justify-center bg-slate-50 py-20 dark:bg-dark-900/40">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="shell">
 
             <SectionHeading
               eyebrow="Earn"
@@ -617,7 +617,7 @@ export default function EcoRewards() {
         ====================================================== */}
 
         <section className="border-y border-slate-100 bg-slate-50 py-20 dark:border-dark-800 dark:bg-dark-900/40">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="shell">
 
             <SectionHeading
               eyebrow="Membership"

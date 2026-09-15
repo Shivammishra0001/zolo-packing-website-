@@ -54,6 +54,72 @@
   --color-accent-500: #06b6d4;
 }
 
+/* ---------------------------------------------------------------------------
+   Responsive layout system (single source of truth for page width)
+   ---------------------------------------------------------------------------
+   The old shells were `mx-auto max-w-7xl` (1280px) on the storefront and
+   `mx-auto max-w-[1400px]` in the admin/buyer portals, which left a narrow
+   column floating in the middle of 1920px+ monitors. These utilities replace
+   them everywhere:
+
+   .shell        commerce/page shell — fluid width with viewport-proportional
+                 side padding, capped only at ultra-wide (2560px) so a 32"
+                 monitor is used edge to edge with balanced margins.
+   .shell-admin  ERP/dashboard shell — same idea, no side padding (the layout
+                 already pads), so tables and grids breathe on large screens.
+   .shell-form   form/reading-heavy pages — a generous but bounded width.
+   .grid-cards / .grid-cards-lg / .grid-tiles
+                 auto-fill grids whose column count is derived from the
+                 available width (min card size per breakpoint below), so
+                 2 columns on a phone become 6–8 on a 2560px display without
+                 per-page breakpoint lists. */
+:root {
+  --shell-max: 2560px;
+  --shell-pad: clamp(1rem, 3vw, 4rem);
+  --card-min: 138px;   /* phones: 2 columns at 320px */
+  --tile-min: 118px;
+}
+@media (min-width: 640px)  { :root { --card-min: 200px; --tile-min: 150px; } }
+@media (min-width: 1024px) { :root { --card-min: 230px; --tile-min: 170px; } }
+@media (min-width: 1920px) { :root { --card-min: 260px; --tile-min: 190px; } }
+
+@utility shell {
+  width: 100%;
+  max-width: var(--shell-max);
+  margin-inline: auto;
+  padding-inline: var(--shell-pad);
+}
+@utility shell-admin {
+  width: 100%;
+  max-width: 2400px;
+  margin-inline: auto;
+}
+@utility shell-form {
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
+}
+@utility grid-cards {
+  display: grid;
+  gap: clamp(0.75rem, 1.25vw, 1.5rem);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--card-min)), 1fr));
+}
+@utility grid-cards-lg {
+  display: grid;
+  gap: clamp(0.75rem, 1.25vw, 1.5rem);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--card-min) * 1.2)), 1fr));
+}
+@utility grid-tiles {
+  display: grid;
+  gap: clamp(0.5rem, 1vw, 1.25rem);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--tile-min)), 1fr));
+}
+/* Carousel item width: 2–3 visible on phones → 12+ on ultra-wide. */
+@utility carousel-item {
+  width: clamp(140px, 9vw, 210px);
+  flex-shrink: 0;
+}
+
 html,
 body {
   background: #ffffff;
