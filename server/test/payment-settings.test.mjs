@@ -8,7 +8,7 @@
 //   notification dispatch → NotificationDelivery rows honouring admin + customer prefs
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { startServer, stopServer, api, apiRaw, registerBuyer, adminToken, makeProduct, makeAddress } from "./helpers.mjs";
+import { startServer, stopServer, api, apiRaw, registerBuyer, adminToken, makeProduct, makeAddress, fetchUpload } from "./helpers.mjs";
 import { prisma } from "../src/lib/prisma.mjs";
 import { decryptField } from "../src/lib/crypto.mjs";
 
@@ -139,12 +139,12 @@ test("UPI QR upload/replace/remove is validated, public, and audited", async () 
   assert.equal(up.status, 201, JSON.stringify(up.body));
   const url1 = up.body.data.config.qrUrl;
   assert.match(url1, /\/uploads\//);
-  const img = await fetch(url1);
+  const img = await fetchUpload(url1);
   assert.equal(img.status, 200, "QR image is publicly served");
 
   const rep = await api("/admin/settings/payments/upi/qr", { method: "POST", token: admin, body: { name: "qr2.png", mime: "image/png", dataBase64: PNG_B64 } });
   assert.notEqual(rep.body.data.config.qrUrl, url1, "replace yields a new file");
-  assert.equal((await fetch(url1)).status, 404, "old file removed");
+  assert.equal((await fetchUpload(url1)).status, 404, "old file removed");
 
   // Partial config update must not wipe the QR url.
   const upd = await api("/admin/settings/payments/upi", { method: "PUT", token: admin, body: { config: { upiId: "zolo@okaxis" } } });

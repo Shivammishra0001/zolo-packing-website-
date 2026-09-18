@@ -6,7 +6,7 @@ import { MetricCard } from "../components/MetricCard";
 import { EmptyState, QueryState } from "../components/Panel";
 import { TableSkeleton } from "../components/DataTable";
 import { formatDateTime, relativeTime } from "../format";
-import { useAdminActivity, asMockQuery } from "../dashboard-api";
+import { useAdminActivity, asQueryState } from "../dashboard-api";
 import type { AuditEvent } from "../types";
 
 const MODULE_TONE: Record<string, "primary" | "info" | "success" | "warning" | "danger" | "neutral"> = {
@@ -22,7 +22,7 @@ const MODULE_TONE: Record<string, "primary" | "info" | "success" | "warning" | "
 export default function AuditLogs() {
   // Real events from the AuditLog table (GET /admin/activity).
   const live = useAdminActivity(200);
-  const q = asMockQuery(live);
+  const q = asQueryState(live);
   const auditEvents: AuditEvent[] = useMemo(
     () =>
       (live.data?.activity ?? []).map((a) => ({

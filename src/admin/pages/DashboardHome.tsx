@@ -22,7 +22,7 @@ import { MetricCard, MetricCardSkeleton } from "../components/MetricCard";
 import { EmptyState, ListSkeleton, Panel, QueryState, Skeleton } from "../components/Panel";
 import { Badge, Button } from "../components/ui";
 import { inr, inrMinor } from "../format";
-import { asMockQuery, useAdminAnalytics, useAdminDashboard, useAdminShipping } from "../dashboard-api";
+import { asQueryState, useAdminAnalytics, useAdminDashboard, useAdminShipping } from "../dashboard-api";
 
 // ---------- 1. KPI row ----------
 
@@ -164,7 +164,7 @@ function fillDays(series: { day: string; revenueMinor: number }[], days: number)
 }
 
 function SalesChart() {
-  const q = asMockQuery(useAdminAnalytics(14));
+  const q = asQueryState(useAdminAnalytics(14));
   const [hover, setHover] = useState<number | null>(null);
   const total = q.data ? q.data.series.reduce((s, d) => s + d.revenueMinor, 0) : 0;
   return (
@@ -284,7 +284,7 @@ const PIPELINE: { status: string; label: string; dot: string }[] = [
 ];
 
 function OrderPipeline() {
-  const q = asMockQuery(useAdminDashboard());
+  const q = asQueryState(useAdminDashboard());
   return (
     <Panel title="Order Pipeline">
       <QueryState
@@ -340,7 +340,7 @@ function OrderPipeline() {
 
 function TopProducts() {
   // Best sellers aggregated from order_items server-side (GET /admin/analytics).
-  const q = asMockQuery(useAdminAnalytics(30));
+  const q = asQueryState(useAdminAnalytics(30));
   return (
     <Panel title="Top Products" bodyClassName="p-0">
       <QueryState query={q} skeleton={<div className="p-4"><ListSkeleton rows={5} /></div>}>
@@ -424,7 +424,7 @@ function QuickActions() {
 function InventoryAlerts() {
   // Low-stock products come from the same polled dashboard query as the KPIs,
   // so the "Low stock" tile and this list can never disagree.
-  const q = asMockQuery(useAdminDashboard());
+  const q = asQueryState(useAdminDashboard());
   return (
     <Panel
       title="Inventory Alerts"
@@ -479,7 +479,7 @@ function InventoryAlerts() {
 
 function DispatchPanel() {
   // Real shipments (GET /admin/shipping); anything not yet delivered is pending.
-  const q = asMockQuery(useAdminShipping());
+  const q = asQueryState(useAdminShipping());
   return (
     <Panel
       title="Dispatch Pending"

@@ -2,7 +2,6 @@
 // generate unique identifiers so runs don't collide on unique constraints.
 import { createApp } from "../src/app.mjs";
 import { prisma } from "../src/lib/prisma.mjs";
-import { hashPassword } from "../src/lib/crypto.mjs";
 
 let server, base;
 
@@ -12,6 +11,17 @@ export async function startServer() {
   await new Promise((resolve) => { server = app.listen(0, resolve); });
   base = `http://127.0.0.1:${server.address().port}/api/v1`;
   return base;
+}
+
+/**
+ * Fetch a stored upload THROUGH THE TEST SERVER. Stored URLs are minted with
+ * UPLOADS_BASE_URL (the dev API on :5001); the test app serves the same
+ * /uploads directory on its own ephemeral port, so tests never depend on the
+ * dev server being up.
+ */
+export async function fetchUpload(url) {
+  const key = String(url).split("/").pop();
+  return fetch(`${base.replace(/\/api\/v1$/, "")}/uploads/${key}`);
 }
 
 export async function stopServer() {
@@ -73,12 +83,21 @@ export async function completeMinimum(token) {
   await api("/sellers/me/documents", { method: "POST", token, body: { type: "GST_CERTIFICATE", fileName: "gst.pdf", mime: "application/pdf", dataBase64: Buffer.from("%PDF-1.4 test").toString("base64") } });
 }
 
-// Ensure an admin exists and return its access token.
+// Sign in as THE admin (the same canonical account the server seeds on boot,
+// from ADMIN_EMAIL / ADMIN_PASSWORD) and return an access token. The old
+// version minted a fresh `admin_<rand>@zolo.com` admin per call, which left
+// hundreds of admin accounts behind and broke the single-admin invariant.
+let adminTokenCache = null;
 export async function adminToken() {
-  const email = `admin_${rnd()}@zolo.com`;
-  await prisma.user.create({ data: { email, passwordHash: await hashPassword("Admin@1234"), firstName: "Admin", role: "admin" } });
-  const login = await api("/auth/login", { method: "POST", body: { email, password: "Admin@1234" } });
-  return login.body.data.accessToken;
+  if (adminTokenCache) return adminTokenCache;
+  const { ensureAdmin, adminEmail } = await import("../src/lib/ensure-admin.mjs");
+  await ensureAdmin();
+  const password = process.env.ADMIN_PASSWORD;
+  if (!password) throw new Error("ADMIN_PASSWORD must be set in server/.env for the test suite");
+  const login = await api("/auth/login", { method: "POST", body: { email: adminEmail(), password } });
+  if (!login.body?.data?.accessToken) throw new Error(`admin login failed: ${JSON.stringify(login.body)}`);
+  adminTokenCache = login.body.data.accessToken;
+  return adminTokenCache;
 }
 
 // ---- Commerce fixtures ----

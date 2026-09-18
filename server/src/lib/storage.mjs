@@ -9,7 +9,9 @@ import { randomBytes } from "node:crypto";
 import { env } from "./env.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const UPLOADS_DIR = join(__dirname, "..", "..", "uploads");
+// Overridable so the test suite writes to its own tree (see test/setup-db.mjs)
+// and never shares files with the development database.
+const UPLOADS_DIR = process.env.UPLOADS_DIR ? resolve(process.env.UPLOADS_DIR) : join(__dirname, "..", "..", "uploads");
 
 // Two classes of file, with different access rules:
 //

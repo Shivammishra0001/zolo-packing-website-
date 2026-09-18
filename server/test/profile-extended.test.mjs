@@ -6,7 +6,7 @@
 //     -> GET /auth/me (customer) -> GET /admin/customers/:id (admin)
 import test from "node:test";
 import assert from "node:assert/strict";
-import { startServer, stopServer, api, apiRaw, registerBuyer, adminToken, unique } from "./helpers.mjs";
+import { startServer, stopServer, api, apiRaw, registerBuyer, adminToken, unique, fetchUpload } from "./helpers.mjs";
 
 test.before(async () => { await startServer(); });
 test.after(async () => { await stopServer(); });
@@ -100,7 +100,7 @@ test("profile photo: upload stores a public URL, is served, replaces, and can be
   assert.ok(url && url.includes("/uploads/"), `expected a public upload URL, got ${url}`);
 
   // The file is really there and served as an image.
-  const served = await fetch(url);
+  const served = await fetchUpload(url);
   assert.equal(served.status, 200);
   assert.match(served.headers.get("content-type") || "", /^image\/png/);
 
@@ -115,7 +115,7 @@ test("profile photo: upload stores a public URL, is served, replaces, and can be
   const up2 = await api("/auth/me/photo", { method: "POST", token: buyer.token, body: { name: "me2.png", mime: "image/png", dataBase64: PNG_B64 } });
   assert.equal(up2.status, 201);
   assert.notEqual(up2.body.data.user.avatarUrl, url);
-  assert.equal((await fetch(url)).status, 404, "old photo file should be deleted after replace");
+  assert.equal((await fetchUpload(url)).status, 404, "old photo file should be deleted after replace");
 
   // Bad type / not-an-image are rejected; nothing is stored.
   const bad = await api("/auth/me/photo", { method: "POST", token: buyer.token, body: { name: "x.gif", mime: "image/gif", dataBase64: PNG_B64 } });

@@ -5,7 +5,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { startServer, stopServer, api, apiRaw, adminToken, registerBuyer } from "./helpers.mjs";
+import { startServer, stopServer, api, apiRaw, adminToken, registerBuyer, fetchUpload } from "./helpers.mjs";
 import { prisma } from "../src/lib/prisma.mjs";
 import { UPLOADS_PATH } from "../src/lib/storage.mjs";
 
@@ -75,7 +75,7 @@ test("the spec product: fields, category FK, three real images, ledger, audit â€
   for (const url of p.images) {
     assert.match(url, /^https?:\/\/.*\/uploads\//, "persistent URL, not a blob");
     assert.ok(existsSync(fileOf(url)), "file exists on disk");
-    assert.equal((await fetch(url)).status, 200, "image is served");
+    assert.equal((await fetchUpload(url)).status, 200, "image is served");
   }
   assert.equal(p.imageEmoji, p.images[0], "primary = first image");
 

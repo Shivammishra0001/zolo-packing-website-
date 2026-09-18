@@ -12,7 +12,7 @@ import {
   Toolbar,
 } from "../components/ui";
 import { inr } from "../format";
-import { useAdminCustomers, asMockQuery } from "../dashboard-api";
+import { useAdminCustomers, asQueryState } from "../dashboard-api";
 import { SEGMENT_LABEL } from "../statuses";
 import type { Customer, CustomerSegment } from "../types";
 
@@ -42,7 +42,7 @@ export default function Customers() {
   // Polls, so a customer who registers now shows up here without a reload.
   const live = useAdminCustomers();
   // Existing panel JSX consumes the MockQuery shape; adapt rather than rewrite.
-  const q = asMockQuery(live);
+  const q = asQueryState(live);
 
   // Company comes from the buyer's own profile (falling back to their
   // organisation) and city from their address book (falling back to the latest

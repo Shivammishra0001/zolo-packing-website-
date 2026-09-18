@@ -245,7 +245,7 @@ export const useAdminMarketing = () =>
  * that existing admin panels already handle. Lets a page switch to real data
  * without rewriting its loading/error/empty JSX.
  */
-export function asMockQuery<T>(q: QueryState<T> & { refetch: () => void }): {
+export function asQueryState<T>(q: QueryState<T> & { refetch: () => void }): {
   data: T | null; loading: boolean; error: string | null; retry: () => void;
 } {
   return { data: q.data, loading: q.status === "loading", error: q.error, retry: q.refetch };

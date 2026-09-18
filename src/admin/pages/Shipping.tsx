@@ -6,7 +6,7 @@ import { MetricCard } from "../components/MetricCard";
 import { EmptyState, QueryState } from "../components/Panel";
 import { TableSkeleton } from "../components/DataTable";
 import { dueLabel, formatDateTime } from "../format";
-import { useAdminShipping, asMockQuery } from "../dashboard-api";
+import { useAdminShipping, asQueryState } from "../dashboard-api";
 import { SHIPMENT_STATUS } from "../statuses-ext";
 import type { Shipment, ShipmentStatus } from "../types";
 
@@ -73,7 +73,7 @@ const TABS = [{ key: "all", label: "All" }, ...STATUS_ORDER.map((s) => ({ key: s
 
 export default function Shipping() {
   const live = useAdminShipping();
-  const q = asMockQuery(live);
+  const q = asQueryState(live);
   // Real shipments from PostgreSQL, mapped onto the page's Shipment shape.
   // Carton/weight/destination are not modelled on the Shipment row, so they
   // show as 0/"—" rather than being invented.

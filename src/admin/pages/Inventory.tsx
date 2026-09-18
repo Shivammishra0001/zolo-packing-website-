@@ -26,7 +26,7 @@ import {
 } from "../components/ui";
 import { inrMinor, formatDate } from "../format";
 import { useMockQuery } from "../hooks";
-import { useAdminInventory, useAdminStockMovements, asMockQuery, type StockMovementRow } from "../dashboard-api";
+import { useAdminInventory, useAdminStockMovements, asQueryState, type StockMovementRow } from "../dashboard-api";
 import { useCatalog } from "../catalog-store";
 import type { ProductStatus } from "../types";
 import { PRODUCT_STATUS } from "../statuses-ext";
@@ -66,7 +66,7 @@ function RawMaterials() {
       })),
     [live.data],
   );
-  const q = { ...asMockQuery(live), data: live.data ? inventory : null };
+  const q = { ...asQueryState(live), data: live.data ? inventory : null };
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
 
@@ -253,7 +253,7 @@ const MOVEMENT_TONE_BY_TYPE: Record<string, "success" | "danger" | "info" | "war
  */
 function StockMovementTab() {
   const live = useAdminStockMovements(null, 100);
-  const q = asMockQuery(live);
+  const q = asQueryState(live);
 
   const columns: Column<StockMovementRow>[] = [
     {

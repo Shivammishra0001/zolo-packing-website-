@@ -25,3 +25,4 @@ server/uploads/*
 # applies nothing, and every query fails with P2021 ("table does not exist")
 # against a database that is reachable and empty.
 !server/prisma/migrations/**/*.sql
+server/uploads-test/

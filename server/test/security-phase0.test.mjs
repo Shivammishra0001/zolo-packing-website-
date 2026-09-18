@@ -62,7 +62,7 @@ test("KYC documents are written to the private tree, never the public one", asyn
 });
 
 test("a KYC document is not reachable over the static /uploads mount", async () => {
-  const doc = await prisma.supplierDocument.findFirst({ select: { storageKey: true } });
+  const doc = await prisma.supplierDocument.findFirst({ orderBy: { createdAt: "desc" }, select: { storageKey: true } });
   if (!doc) return;
 
   // These all returned 200 with the PDF body before the fix.
@@ -76,7 +76,7 @@ test("a KYC document is not reachable over the static /uploads mount", async () 
 });
 
 test("reading a document requires authentication", async () => {
-  const doc = await prisma.supplierDocument.findFirst({ select: { id: true } });
+  const doc = await prisma.supplierDocument.findFirst({ orderBy: { createdAt: "desc" }, select: { id: true } });
   if (!doc) return;
 
   // The endpoint streams bytes, so use the raw helper rather than the JSON one.
@@ -89,7 +89,7 @@ test("reading a document requires authentication", async () => {
 });
 
 test("a buyer cannot read supplier documents", async () => {
-  const doc = await prisma.supplierDocument.findFirst({ select: { id: true } });
+  const doc = await prisma.supplierDocument.findFirst({ orderBy: { createdAt: "desc" }, select: { id: true } });
   if (!doc) return;
 
   const email = unique.email();

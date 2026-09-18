@@ -1,6 +1,6 @@
 // ---------- Entity types for the Zolo Packaging admin dashboard ----------
-// Mock data lives in ./mock-data.ts and can be swapped for real API calls
-// that resolve to these same shapes.
+// Types for the admin ERP. Every screen reads live data from /api/v1 (see
+// dashboard-api.ts); these are the shapes those endpoints resolve to.
 
 export type OrderStatus =
   | "confirmed"
