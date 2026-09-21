@@ -13,6 +13,8 @@ import {
   PackageCheck,
   Pencil,
   Plus,
+  Sparkles,
+  Star,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -34,7 +36,7 @@ import {
 // Canonical categories from PostgreSQL (NOT the empty mock array, which is
 // why this page used to report "Categories = 0").
 import { useCategories, hydrateCategories, createCategory, archiveCategory, type AdminCategory } from "../categories-store";
-import { addProduct, hydrateCatalog, onCatalogPersistError, useCatalog } from "../catalog-store";
+import { addProduct, hydrateCatalog, onCatalogPersistError, saveProduct, useCatalog } from "../catalog-store";
 import { catalogApi } from "@/lib/catalog-api";
 import { PRODUCT_STATUS, STOCK_STATUS } from "../statuses-ext";
 import type { CatalogProduct, ProductStatus, StockStatus } from "../types";
@@ -89,12 +91,16 @@ function RowMenu({
   onMarkOOS,
   onDuplicate,
   onArchive,
+  onToggleFeatured,
+  onToggleNewArrival,
 }: {
   product: CatalogProduct;
   onUpdateStock: () => void;
   onMarkOOS: () => void;
   onDuplicate: () => void;
   onArchive: () => void;
+  onToggleFeatured: () => void;
+  onToggleNewArrival: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -121,7 +127,7 @@ function RowMenu({
         <MoreHorizontal className="h-4 w-4" aria-hidden />
       </button>
       {open && (
-        <div role="menu" className="absolute right-0 top-full z-10 mt-1 w-48 overflow-hidden rounded-lg border erp-border erp-surface py-1 shadow-lg">
+        <div role="menu" className="absolute right-0 top-full z-10 mt-1 w-60 overflow-hidden rounded-lg border erp-border erp-surface py-1 shadow-lg">
           {archived ? (
             <button role="menuitem" className={item} onClick={() => { setOpen(false); onArchive(); }}>
               <ArchiveRestore className="h-4 w-4 erp-text-faint" aria-hidden /> Unarchive
@@ -136,6 +142,16 @@ function RowMenu({
               </button>
               <button role="menuitem" className={item} onClick={() => { setOpen(false); onDuplicate(); }}>
                 <Copy className="h-4 w-4 erp-text-faint" aria-hidden /> Duplicate
+              </button>
+              <div className="my-1 border-t erp-border-soft" />
+              {/* Homepage rails — persisted through the product API */}
+              <button role="menuitemcheckbox" aria-checked={product.isFeatured === true} className={item} onClick={() => { setOpen(false); onToggleFeatured(); }}>
+                <Star className={cn("h-4 w-4", product.isFeatured ? "fill-primary-500 text-primary-500" : "erp-text-faint")} aria-hidden />
+                {product.isFeatured ? "Remove from Featured" : "Mark as Featured"}
+              </button>
+              <button role="menuitemcheckbox" aria-checked={product.isNewArrival === true} className={item} onClick={() => { setOpen(false); onToggleNewArrival(); }}>
+                <Sparkles className={cn("h-4 w-4", product.isNewArrival ? "text-emerald-600" : "erp-text-faint")} aria-hidden />
+                {product.isNewArrival ? "Remove from New Arrivals" : "Mark as New Arrival"}
               </button>
               <div className="my-1 border-t erp-border-soft" />
               <button role="menuitem" className={item} onClick={() => { setOpen(false); onArchive(); }}>
@@ -315,6 +331,21 @@ function ProductsTab() {
     setSearch(""); setCategory("all"); setStockStatus("all"); setProductStatus("all"); setSummary("all"); resetPage();
   };
 
+  // Quick homepage toggles from the row menu. Partial update through the same
+  // product API the form uses; turning a rail off also clears its order
+  // (enforced server-side too). Waits for PostgreSQL before confirming.
+  const toggleRail = async (p: CatalogProduct, rail: "featured" | "newArrival") => {
+    const on = rail === "featured" ? !p.isFeatured : !p.isNewArrival;
+    const label = rail === "featured" ? "Featured Products" : "Fresh on the Market";
+    try {
+      await saveProduct(p.id, rail === "featured" ? { isFeatured: on, ...(on ? {} : { featuredOrder: null }) } : { isNewArrival: on, ...(on ? {} : { newArrivalOrder: null }) });
+      toast.success(on ? `Added to ${label}` : `Removed from ${label}`, on && p.status !== "active" ? `${p.name} will show on the homepage once it is Active.` : p.name);
+    } catch (e) {
+      const { describeCatalogError } = await import("@/lib/catalog-api");
+      toast.error("Couldn't update homepage visibility", describeCatalogError(e));
+    }
+  };
+
   // Duplicate = a real create on the server (new server-generated id, draft,
   // zero stock). Awaited so a failure (e.g. the copy SKU already exists) is
   // reported instead of leaving a phantom row in the list.
@@ -325,6 +356,10 @@ function ProductsTab() {
         name: `${p.name} (Copy)`,
         sku: `${p.sku}-C`,
         status: "draft",
+        isFeatured: false,
+        featuredOrder: null,
+        isNewArrival: false,
+        newArrivalOrder: null,
         stock: 0,
         stockStatus: "out_of_stock",
         updatedAt: new Date().toISOString(),
@@ -479,6 +514,20 @@ function ProductsTab() {
                           {p.name}
                         </button>
                         <div className="text-[11px] erp-text-faint">{p.category}</div>
+                        {(p.isFeatured || p.isNewArrival) && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {p.isFeatured && (
+                              <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-[10px] font-bold text-primary-700 dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-primary-300" title={p.featuredOrder != null ? `Featured · order ${p.featuredOrder}` : "Featured · no explicit order"}>
+                                <Star className="h-3 w-3 fill-current" aria-hidden /> Featured{p.featuredOrder != null ? ` #${p.featuredOrder}` : ""}
+                              </span>
+                            )}
+                            {p.isNewArrival && (
+                              <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" title={p.newArrivalOrder != null ? `New arrival · order ${p.newArrivalOrder}` : "New arrival · no explicit order"}>
+                                <Sparkles className="h-3 w-3" aria-hidden /> New Arrival{p.newArrivalOrder != null ? ` #${p.newArrivalOrder}` : ""}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       {/* Dimensions */}
                       <td className="hidden px-3 py-2 erp-text-muted lg:table-cell">{dimsLabel(p)}</td>
@@ -530,6 +579,8 @@ function ProductsTab() {
                             onMarkOOS={() => setOosProduct(p)}
                             onDuplicate={() => duplicate(p)}
                             onArchive={() => setArchiveProduct(p)}
+                            onToggleFeatured={() => void toggleRail(p, "featured")}
+                            onToggleNewArrival={() => void toggleRail(p, "newArrival")}
                           />
                         </div>
                       </td>

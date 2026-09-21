@@ -53,6 +53,12 @@ export const productWriteSchema = z.object({
   stock: z.number().int().min(0, "Stock cannot be negative").max(1_000_000_000).optional(),
   lowStockLevel: optInt(0, 1_000_000_000),
   status: z.enum(["draft", "active", "archived"]).optional(),
+  // Homepage merchandising (admin-controlled; see schema.prisma). Order is an
+  // optional positive integer; it is forced to null whenever its flag is off.
+  isFeatured: z.boolean().optional(),
+  featuredOrder: optInt(1, 999_999),
+  isNewArrival: z.boolean().optional(),
+  newArrivalOrder: optInt(1, 999_999),
   // Ordered gallery: existing URLs and/or "upload:N" tokens into imageUploads.
   images: z.array(z.string().max(1000)).max(MAX_IMAGES).optional(),
   imageUploads: z.array(uploadSchema).max(MAX_IMAGES).optional(),
@@ -192,12 +198,16 @@ const SCALARS = [
   "name", "description", "length", "width", "height", "dimUnit", "gsm", "color", "material",
   "productType", "thickness", "sizeLabel", "basePriceMinor", "salePriceMinor", "moq", "stock",
   "lowStockLevel", "status", "variants",
+  "isFeatured", "featuredOrder", "isNewArrival", "newArrivalOrder",
 ];
 
 function scalarData(p) {
   const data = {};
   for (const k of SCALARS) if (p[k] !== undefined) data[k] = p[k];
   if (data.description === "") data.description = null;
+  // A rail's order only means something while its flag is on.
+  if (data.isFeatured === false) data.featuredOrder = null;
+  if (data.isNewArrival === false) data.newArrivalOrder = null;
   if (p.length == null && p.width == null && p.height == null && (p.length !== undefined || p.width !== undefined || p.height !== undefined)) {
     data.length = null; data.width = null; data.height = null; data.dimUnit = null;
   }
@@ -272,6 +282,8 @@ export async function updateProduct(id, input, { actorId = null } = {}) {
   try {
     const product = await prisma.$transaction(async (tx) => {
       const data = scalarData(p);
+      if ((p.isFeatured ?? existing.isFeatured) === false) data.featuredOrder = null;
+      if ((p.isNewArrival ?? existing.isNewArrival) === false) data.newArrivalOrder = null;
       if (p.sku && p.sku !== existing.sku) data.sku = p.sku;
       if (p.name && p.name !== existing.name) data.slug = await uniqueSlug(p.name, p.sku ?? existing.sku, tx, id);
       if (category) {

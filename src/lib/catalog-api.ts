@@ -44,6 +44,10 @@ interface DbProduct {
   imageEmoji: string;
   images: string[];
   variants: unknown;
+  isFeatured?: boolean;
+  featuredOrder?: number | null;
+  isNewArrival?: boolean;
+  newArrivalOrder?: number | null;
   createdAt?: string;
   updatedAt: string;
 }
@@ -77,6 +81,10 @@ export function fromDb(row: DbProduct): CatalogProduct {
     imageEmoji: row.imageEmoji,
     images: row.images.length ? row.images : [row.imageEmoji],
     variants: (Array.isArray(row.variants) ? row.variants : []) as ProductVariant[],
+    isFeatured: row.isFeatured ?? false,
+    featuredOrder: row.featuredOrder ?? null,
+    isNewArrival: row.isNewArrival ?? false,
+    newArrivalOrder: row.newArrivalOrder ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -112,6 +120,10 @@ export interface ProductWriteInput {
   stock?: number;
   lowStockLevel?: number | null;
   status?: ProductStatus;
+  isFeatured?: boolean;
+  featuredOrder?: number | null;
+  isNewArrival?: boolean;
+  newArrivalOrder?: number | null;
   images?: string[];
   imageUploads?: { name: string; mime: string; dataBase64: string }[];
   variants?: ProductVariant[];
@@ -139,6 +151,10 @@ export function toDb(p: CatalogProduct): ProductWriteInput {
     moq: p.moq,
     stock: p.stock ?? 0,
     lowStockLevel: p.lowStockLevel ?? null,
+    isFeatured: p.isFeatured ?? false,
+    featuredOrder: p.isFeatured ? (p.featuredOrder ?? null) : null,
+    isNewArrival: p.isNewArrival ?? false,
+    newArrivalOrder: p.isNewArrival ? (p.newArrivalOrder ?? null) : null,
     images,
     variants: p.variants ?? [],
   };

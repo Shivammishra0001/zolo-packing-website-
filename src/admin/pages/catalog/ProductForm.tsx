@@ -7,7 +7,7 @@
 // reload. Images are real files (JPG/PNG/WebP), previewed locally and uploaded
 // as part of the save; a browser preview URL is never stored.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, GripVertical, ImagePlus, Star, Trash2, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, GripVertical, ImagePlus, Sparkles, Star, Trash2, Upload } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useToast } from "@/components/ui/Toast";
 import { Button, Drawer, Select } from "../../components/ui";
@@ -57,7 +57,26 @@ function FieldError({ msg }: { msg?: string }) {
   return msg ? <span role="alert" className="mt-1 block text-[11px] font-medium text-red-600 dark:text-red-400">{msg}</span> : null;
 }
 
-type Errors = Partial<Record<"name" | "sku" | "category" | "price" | "moq" | "stock" | "dims" | "gsm" | "images" | "form", string>>;
+type Errors = Partial<Record<"name" | "sku" | "category" | "price" | "moq" | "stock" | "dims" | "gsm" | "images" | "featuredOrder" | "newArrivalOrder" | "form", string>>;
+
+/** On/off switch in the admin style (role=switch, keyboard operable). */
+function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={cn("relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2", checked ? "bg-primary-500" : "bg-dark-300 dark:bg-dark-600")}
+    >
+      <span className={cn("inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform", checked ? "translate-x-[22px]" : "translate-x-0.5")} />
+    </button>
+  );
+}
+
+/** Empty = "no explicit order"; otherwise a positive whole number. */
+const orderError = (v: string) => (v.trim() === "" || (/^\d+$/.test(v.trim()) && Number(v) >= 1 && Number(v) <= 999999) ? undefined : "Display order must be a positive whole number.");
 
 export function ProductFormDrawer({
   product,
@@ -95,6 +114,10 @@ export function ProductFormDrawer({
   const [stock, setStock] = useState("");
   const [lowLevel, setLowLevel] = useState("");
   const [status, setStatus] = useState<Extract<ProductStatus, "draft" | "active">>("draft");
+  const [isFeatured, setIsFeatured] = useState(false);
+  const [featuredOrder, setFeaturedOrder] = useState("");
+  const [isNewArrival, setIsNewArrival] = useState(false);
+  const [newArrivalOrder, setNewArrivalOrder] = useState("");
   const [imgs, setImgs] = useState<DraftImage[]>([]);
   const [primary, setPrimary] = useState(0);
   const [errors, setErrors] = useState<Errors>({});
@@ -132,12 +155,17 @@ export function ProductFormDrawer({
       setStock(String(product.stock ?? 0));
       setLowLevel(product.lowStockLevel != null ? String(product.lowStockLevel) : "");
       setStatus(product.status === "active" ? "active" : "draft");
+      setIsFeatured(product.isFeatured === true);
+      setFeaturedOrder(product.featuredOrder != null ? String(product.featuredOrder) : "");
+      setIsNewArrival(product.isNewArrival === true);
+      setNewArrivalOrder(product.newArrivalOrder != null ? String(product.newArrivalOrder) : "");
       setImgs((product.images ?? []).filter(isStoredUrl).map((url, i) => ({ key: `u${i}-${url}`, url, preview: url })));
       setPrimary(0);
     } else {
       setName(""); setSku(""); setCategoryId(""); setSubcategoryId(""); setDescription("");
       setLen(""); setWid(""); setHei(""); setUnit("cm"); setGsm(""); setMaterial(""); setProductType(""); setColor("");
       setPrice(""); setMoq(""); setStock(""); setLowLevel(""); setStatus("draft");
+      setIsFeatured(false); setFeaturedOrder(""); setIsNewArrival(false); setNewArrivalOrder("");
       setImgs([]); setPrimary(0);
     }
     // categories may arrive after the drawer opens; re-run then so the edit
@@ -204,6 +232,8 @@ export function ProductFormDrawer({
     if (filled > 0 && filled < 3) e.dims = "Enter length, width and height together (or leave all blank).";
     else if (filled === 3 && dims.some((v) => !(Number(v) > 0))) e.dims = "Dimensions must be numbers greater than 0.";
     if (gsm.trim() && (!Number.isInteger(Number(gsm)) || Number(gsm) < 0)) e.gsm = "GSM must be a whole number.";
+    if (isFeatured && orderError(featuredOrder)) e.featuredOrder = orderError(featuredOrder);
+    if (isNewArrival && orderError(newArrivalOrder)) e.newArrivalOrder = orderError(newArrivalOrder);
     return e;
   };
 
@@ -221,7 +251,7 @@ export function ProductFormDrawer({
       return changed ? next : cur;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, sku, categoryId, price, moq, stock, len, wid, hei, gsm]);
+  }, [name, sku, categoryId, price, moq, stock, len, wid, hei, gsm, isFeatured, featuredOrder, isNewArrival, newArrivalOrder]);
 
   const save = async () => {
     const e = validate();
@@ -261,6 +291,11 @@ export function ProductFormDrawer({
         stock: stock.trim() === "" ? 0 : Number(stock),
         lowStockLevel: lowLevel.trim() ? Number(lowLevel) : null,
         status,
+        // Off ⇒ order is cleared; on with an empty order ⇒ sorted after ordered picks.
+        isFeatured,
+        featuredOrder: isFeatured && featuredOrder.trim() ? Number(featuredOrder) : null,
+        isNewArrival,
+        newArrivalOrder: isNewArrival && newArrivalOrder.trim() ? Number(newArrivalOrder) : null,
         images,
         imageUploads,
       };
@@ -286,6 +321,8 @@ export function ProductFormDrawer({
             else if (p === "stock") next.stock = i.message;
             else if (["length", "width", "height", "dimUnit"].includes(p)) next.dims = i.message;
             else if (p === "gsm") next.gsm = i.message;
+            else if (p === "featuredOrder") next.featuredOrder = i.message;
+            else if (p === "newArrivalOrder") next.newArrivalOrder = i.message;
             else next.form = `${p || "field"}: ${i.message}`;
           }
           if (!Object.keys(next).length) next.form = describeCatalogError(err);
@@ -476,6 +513,48 @@ export function ProductFormDrawer({
             ))}
           </div>
           {editing && product?.status === "archived" && <p className="text-[11px] text-amber-600">This product is archived — saving as Draft or Active will unarchive it.</p>}
+        </Section>
+
+        {/* Homepage visibility — stored in PostgreSQL, read by the storefront rails */}
+        <Section title="Homepage visibility">
+          <div className="space-y-3">
+            <div className={cn("rounded-xl border p-4 transition-colors", isFeatured ? "border-primary-300 bg-primary-50/50 dark:border-primary-500/40 dark:bg-primary-500/5" : "erp-border")}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-sm font-bold erp-text"><Star className={cn("h-4 w-4", isFeatured ? "fill-primary-500 text-primary-500" : "erp-text-faint")} aria-hidden /> Featured Product</p>
+                  <p className="mt-0.5 text-xs erp-text-muted">Show this product in the homepage Featured Products section.</p>
+                </div>
+                <Switch checked={isFeatured} onChange={(v) => { setIsFeatured(v); if (!v) setFeaturedOrder(""); }} label="Featured Product" />
+              </div>
+              {isFeatured && (
+                <label className="mt-3 block max-w-[220px]">
+                  <span className={LABEL}>Featured display order</span>
+                  <input type="number" min={1} step={1} inputMode="numeric" value={featuredOrder} onChange={(e) => setFeaturedOrder(e.target.value)} placeholder="e.g. 1" className={cn(FIELD, errors.featuredOrder && FIELD_ERR)} aria-invalid={!!errors.featuredOrder} />
+                  <FieldError msg={errors.featuredOrder} />
+                  <span className="mt-1 block text-[11px] erp-text-faint">Optional. Lower numbers show first; blank goes after ordered products.</span>
+                </label>
+              )}
+            </div>
+
+            <div className={cn("rounded-xl border p-4 transition-colors", isNewArrival ? "border-emerald-300 bg-emerald-50/50 dark:border-emerald-500/40 dark:bg-emerald-500/5" : "erp-border")}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-sm font-bold erp-text"><Sparkles className={cn("h-4 w-4", isNewArrival ? "text-emerald-600" : "erp-text-faint")} aria-hidden /> Fresh on the Market</p>
+                  <p className="mt-0.5 text-xs erp-text-muted">Show this product in the homepage Fresh on the Market section.</p>
+                </div>
+                <Switch checked={isNewArrival} onChange={(v) => { setIsNewArrival(v); if (!v) setNewArrivalOrder(""); }} label="Fresh on the Market" />
+              </div>
+              {isNewArrival && (
+                <label className="mt-3 block max-w-[220px]">
+                  <span className={LABEL}>New arrival display order</span>
+                  <input type="number" min={1} step={1} inputMode="numeric" value={newArrivalOrder} onChange={(e) => setNewArrivalOrder(e.target.value)} placeholder="e.g. 1" className={cn(FIELD, errors.newArrivalOrder && FIELD_ERR)} aria-invalid={!!errors.newArrivalOrder} />
+                  <FieldError msg={errors.newArrivalOrder} />
+                  <span className="mt-1 block text-[11px] erp-text-faint">Optional. Lower numbers show first; blank goes after ordered products.</span>
+                </label>
+              )}
+            </div>
+            {status !== "active" && (isFeatured || isNewArrival) && <p className="text-[11px] text-amber-600">Only Active products are shown on the storefront — this one will appear once its status is Active.</p>}
+          </div>
         </Section>
       </div>
     </Drawer>

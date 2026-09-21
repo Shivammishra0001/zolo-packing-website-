@@ -302,6 +302,11 @@ export interface CatalogProduct {
   categoryId?: string | null;
   subcategoryId?: string | null;
   createdAt?: string;
+  /** Homepage rails — chosen by the admin, stored in PostgreSQL. */
+  isFeatured?: boolean;
+  featuredOrder?: number | null;
+  isNewArrival?: boolean;
+  newArrivalOrder?: number | null;
 }
 
 export interface Category {

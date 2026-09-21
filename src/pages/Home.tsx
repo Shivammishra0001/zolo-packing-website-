@@ -51,13 +51,21 @@ export default function Home() {
   // reachable). No hardcoded demo array fallback: an empty catalog shows an
   // empty state rather than fake products.
   const source = useBuyerProducts();
-  // "Bestseller" used to be invented from the price — there is no sales-rank
-  // data yet, so this rail simply features the catalog.
-  // Pools, not fixed counts — ProductGrid trims each to complete rows for
-  // the column count the viewport resolves to.
-  const featured = source.slice(0, 16);
-  const newArrivalPool = source.filter((p) => p.newArrival);
-  const newArrivals = (newArrivalPool.length > 0 ? newArrivalPool : source).slice(0, 12);
+  // Both rails are chosen by the admin (Add/Edit product → Homepage
+  // visibility) and stored in PostgreSQL. `source` is already active-only.
+  // Nothing here depends on API order, createdAt or position, and there is NO
+  // fallback that promotes other products: an unselected rail is simply empty.
+  // Unordered picks sort after explicitly ordered ones; ProductGrid trims each
+  // pool to complete rows for the column count the viewport resolves to.
+  const UNORDERED = 999_999;
+  const featured = source
+    .filter((p) => p.isFeatured)
+    .sort((a, b) => (a.featuredOrder ?? UNORDERED) - (b.featuredOrder ?? UNORDERED) || a.name.localeCompare(b.name))
+    .slice(0, 16);
+  const newArrivals = source
+    .filter((p) => p.isNewArrival)
+    .sort((a, b) => (a.newArrivalOrder ?? UNORDERED) - (b.newArrivalOrder ?? UNORDERED) || a.name.localeCompare(b.name))
+    .slice(0, 12);
 
   const [currentSlide, setCurrentSlide] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -246,8 +254,8 @@ export default function Home() {
           {featured.length === 0 ? (
             <div className="rounded-2xl border border-dark-100 bg-white p-12 text-center">
               <div className="text-5xl mb-3">📦</div>
-              <p className="font-display text-lg font-bold text-dark-900">No products available yet</p>
-              <p className="mt-1 text-sm text-dark-500">Products added in the catalog will appear here.</p>
+              <p className="font-display text-lg font-bold text-dark-900">No featured products yet</p>
+              <p className="mt-1 text-sm text-dark-500">Products marked as Featured in the catalog will appear here.</p>
             </div>
           ) : (
             <ProductGrid products={featured} maxRows={2} />

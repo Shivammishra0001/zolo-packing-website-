@@ -54,6 +54,11 @@ export function toStoreProduct(p: CatalogProduct): Product & {
   priceMinor: number;
   /** ALL real gallery images (deduped), not just the first. */
   images: string[];
+  /** Admin-controlled homepage rails (PostgreSQL is the source of truth). */
+  isFeatured: boolean;
+  featuredOrder: number | null;
+  isNewArrival: boolean;
+  newArrivalOrder: number | null;
 } {
   // Every real image, deduped, order preserved — this is what the gallery needs.
   // The old adapter kept only images[0], so the detail page could NEVER show
@@ -81,7 +86,13 @@ export function toStoreProduct(p: CatalogProduct): Product & {
     // and fabricating "4.6 (24)" for every product misled buyers. The UI hides
     // these elements when the fields are absent.
     tags: [p.category],
-    newArrival: false,
+    // Admin-controlled homepage rails (stored in PostgreSQL). `newArrival`
+    // stays as the card-badge alias of isNewArrival.
+    newArrival: p.isNewArrival === true,
+    isFeatured: p.isFeatured === true,
+    featuredOrder: p.featuredOrder ?? null,
+    isNewArrival: p.isNewArrival === true,
+    newArrivalOrder: p.newArrivalOrder ?? null,
     inStock,
     features: [
       dims ? `Dimensions ${dims.length}×${dims.width}×${dims.height} ${dims.unit}` : "Custom sizing",
