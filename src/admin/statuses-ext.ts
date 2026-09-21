@@ -4,7 +4,6 @@
 
 import type {
   ArtworkStatus,
-  CouponStatus,
   InvoiceStatus,
   MachineState,
   ProductStatus,
@@ -79,8 +78,3 @@ export const MACHINE_STATE: Record<MachineState, Meta> = {
   down: { label: "Down", tone: "danger" },
 };
 
-export const COUPON_STATUS: Record<CouponStatus, Meta> = {
-  active: { label: "Active", tone: "success" },
-  scheduled: { label: "Scheduled", tone: "info" },
-  expired: { label: "Expired", tone: "neutral" },
-};

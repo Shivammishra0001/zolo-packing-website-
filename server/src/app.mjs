@@ -19,6 +19,7 @@ import { returnsRouter, adminReturnsRouter } from "./routes/returns.mjs";
 import { addressRouter } from "./routes/addresses.mjs";
 import { orderRouter } from "./routes/orders.mjs";
 import { adminSettingsRouter } from "./routes/settings.mjs";
+import { adminCouponsRouter, adminCampaignsRouter, publicCampaignsRouter } from "./routes/marketing.mjs";
 import { adminPaymentRequestsRouter, buyerPaymentRequestsRouter, publicPayRouter } from "./routes/payment-requests.mjs";
 
 export function createApp() {
@@ -153,6 +154,10 @@ export function createApp() {
   // Products/catalog — kept OPEN to preserve the existing admin/storefront behavior.
   app.use(API, productsRouter);
 
+  // Live marketing campaigns — public, and mounted BEFORE the buyer-guarded
+  // routers below (orderRouter is mounted at the API root behind authenticate).
+  app.use(`${API}/campaigns`, publicCampaignsRouter);
+
   // Authenticated areas
   app.use(`${API}/notifications`, authenticate, notificationsRouter);
   // Buyer commerce (cart, addresses, checkout, orders) — any authenticated user.
@@ -174,6 +179,8 @@ export function createApp() {
   // Admin settings (payment methods, notifications) + payment requests.
   app.use(`${API}/admin/settings`, authenticate, requireAdmin, adminSettingsRouter);
   app.use(`${API}/admin/payment-requests`, authenticate, requireAdmin, adminPaymentRequestsRouter);
+  app.use(`${API}/admin/coupons`, authenticate, requireAdmin, adminCouponsRouter);
+  app.use(`${API}/admin/campaigns`, authenticate, requireAdmin, adminCampaignsRouter);
   app.use(`${API}/admin`, authenticate, requireAdmin, adminRouter);
 
   // 404 for unknown API routes

@@ -32,24 +32,87 @@ export const effectiveUnitPriceMinor = (product) =>
     ? product.salePriceMinor
     : product.basePriceMinor;
 
+/**
+ * Effective status of anything scheduled with isDraft / isActive / start / end
+ * (coupons and campaigns). ALWAYS derived here, on the server — the admin never
+ * sets "expired" or "scheduled" by hand and the storefront never decides it.
+ *
+ *   draft      saved, never published
+ *   expired    end is in the past (wins over paused: re-activating cannot help)
+ *   paused     isActive = false
+ *   scheduled  start is in the future
+ *   active     live right now
+ */
+export function scheduleStatus({ isDraft, isActive, startAt, endAt }, now = new Date()) {
+  if (isDraft) return "draft";
+  if (endAt && now > endAt) return "expired";
+  if (!isActive) return "paused";
+  if (startAt && now < startAt) return "scheduled";
+  return "active";
+}
+
+/** Coupon status = schedule status + the usage counter. */
+export function couponStatus(coupon, now = new Date()) {
+  if (coupon.deletedAt) return "archived";
+  const base = scheduleStatus(
+    { isDraft: coupon.isDraft, isActive: coupon.isActive, startAt: coupon.validFrom, endAt: coupon.validUntil },
+    now,
+  );
+  if (base === "draft" || base === "expired" || base === "paused") return base;
+  if (coupon.usageLimit != null && coupon.usedCount >= coupon.usageLimit) return "usage_limit_reached";
+  return base;
+}
+
+const COUPON_STATUS_REASON = {
+  archived: "Coupon is not active",
+  draft: "Coupon is not active",
+  paused: "Coupon is not active",
+  scheduled: "Coupon is not yet valid",
+  expired: "Coupon has expired",
+  usage_limit_reached: "Coupon usage limit reached",
+};
+
+/**
+ * The part of a cart a coupon may discount. `items` are server-priced lines
+ * (see orders.buildPricedItems) carrying the product row. A coupon scoped to
+ * categories also covers their subcategories, because a product carries both
+ * its categoryId and its subcategoryId.
+ */
+export function couponEligibleSubtotal(coupon, items) {
+  const productIds = new Set((coupon.products ?? []).map((r) => r.productId));
+  const categoryIds = new Set((coupon.categories ?? []).map((r) => r.categoryId));
+  let eligible = 0;
+  for (const it of items) {
+    const p = it.product ?? {};
+    if (coupon.appliesTo === "products" && !productIds.has(it.productId)) continue;
+    if (coupon.appliesTo === "categories" && !categoryIds.has(p.categoryId) && !categoryIds.has(p.subcategoryId)) continue;
+    if (coupon.allowSaleItems === false && it.isSaleItem) continue;
+    if (coupon.allowOtherDiscounts === false && it.isTierDiscounted) continue;
+    eligible += it.lineTotalMinor;
+  }
+  return eligible;
+}
+
 // Compute the discount a coupon yields on a given (pre-tax) subtotal. Returns
 // { ok, discountMinor, reason } — reason is set only when the coupon is invalid.
-export function evaluateCoupon(coupon, subtotalMinor, now = new Date()) {
-  if (!coupon) return { ok: false, discountMinor: 0, reason: "Coupon not found" };
-  if (!coupon.isActive || coupon.deletedAt) return { ok: false, discountMinor: 0, reason: "Coupon is not active" };
-  if (coupon.validFrom && now < coupon.validFrom) return { ok: false, discountMinor: 0, reason: "Coupon is not yet valid" };
-  if (coupon.validUntil && now > coupon.validUntil) return { ok: false, discountMinor: 0, reason: "Coupon has expired" };
-  if (coupon.usageLimit != null && coupon.usedCount >= coupon.usageLimit)
-    return { ok: false, discountMinor: 0, reason: "Coupon usage limit reached" };
+// `eligibleSubtotalMinor` is the slice of the cart the coupon may discount
+// (defaults to the whole subtotal); the minimum-order rule always looks at the
+// whole cart.
+export function evaluateCoupon(coupon, subtotalMinor, now = new Date(), { eligibleSubtotalMinor = subtotalMinor } = {}) {
+  const fail = (reason) => ({ ok: false, discountMinor: 0, reason });
+  if (!coupon) return fail("Coupon not found");
+  const status = couponStatus(coupon, now);
+  if (status !== "active") return fail(COUPON_STATUS_REASON[status]);
   if (coupon.minOrderMinor != null && subtotalMinor < coupon.minOrderMinor)
-    return { ok: false, discountMinor: 0, reason: "Order does not meet the coupon minimum" };
+    return fail("Order does not meet the coupon minimum");
+  if (eligibleSubtotalMinor <= 0) return fail("Coupon does not apply to the items in your cart");
 
   let discount =
     coupon.discountType === "percent"
-      ? Math.round((subtotalMinor * coupon.discountValue) / 10000) // discountValue is basis points (e.g. 1000 = 10%)
+      ? Math.round((eligibleSubtotalMinor * coupon.discountValue) / 10000) // discountValue is basis points (e.g. 1000 = 10%)
       : coupon.discountValue; // flat, already in minor units
   if (coupon.maxDiscountMinor != null) discount = Math.min(discount, coupon.maxDiscountMinor);
-  discount = Math.min(discount, subtotalMinor); // never discount below zero
+  discount = Math.min(discount, eligibleSubtotalMinor); // never discount below zero
   return { ok: true, discountMinor: Math.max(0, discount), reason: null };
 }
 

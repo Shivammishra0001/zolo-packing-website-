@@ -1,3 +1,4 @@
+import { CampaignPopup, HomepageCampaignBanner, PromotionCards } from "@/components/marketing/campaigns";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -97,6 +98,7 @@ export default function Home() {
 
   return (
     <main>
+      <CampaignPopup />
       {/* HERO */}
       <section className="relative w-full aspect-[16/10] sm:aspect-[16/8] lg:aspect-[21/9] max-h-[88vh] flex items-center overflow-hidden bg-dark-950">
         {/* Background slides */}
@@ -200,6 +202,10 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Admin-managed campaigns (Marketing → Campaigns). Each renders nothing
+          when no campaign is live for its placement. */}
+      <HomepageCampaignBanner />
+
       {/* TRUST BAR */}
       <section className="bg-white border-y border-dark-100 py-8">
         <div className="shell">
@@ -227,6 +233,8 @@ export default function Home() {
       </section>
 
     
+
+      <PromotionCards />
 
       {/* CATEGORIES — premium circular showcase, API-driven (see
           components/packaging/PackagingCategorySection). */}

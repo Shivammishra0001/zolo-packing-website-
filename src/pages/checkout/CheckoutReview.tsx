@@ -1,3 +1,4 @@
+import { CampaignStrip } from "@/components/marketing/campaigns";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, Tag, X } from "lucide-react";
@@ -61,6 +62,8 @@ export default function CheckoutReview() {
       <div className="mx-auto max-w-4xl px-4 sm:px-6">
         <CheckoutSteps current={2} />
         <h1 className="font-display text-2xl font-extrabold text-dark-900">Review your order</h1>
+        {/* Admin-managed promotion (Marketing → Campaigns → Checkout). */}
+        <CampaignStrip placement="checkout" className="mt-5" />
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_340px]">
           <div className="space-y-5">

@@ -81,14 +81,20 @@ export const useAuth = () => useContext(AuthCtx);
 function TopBar() {
   return (
     <div className="bg-dark-950 text-white text-xs">
-      <div className="shell py-2 flex items-center justify-between gap-4">
-        {/* Promo hidden on small phones so the right-side links never clip. */}
-        <div className="hidden min-w-0 sm:flex items-center gap-4">
-          <span className="flex items-center gap-1.5 truncate">
-            <Truck className="h-3.5 w-3.5 shrink-0 text-primary-400" /> Free shipping on orders over ₹10000
-          </span>
+      <div className="shell py-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 sm:flex-nowrap sm:justify-between">
+        {/* Announcement bar: the live "Announcement Bar" campaign (Admin →
+            Marketing → Campaigns). With no live campaign the standing shipping
+            note shows instead — hidden on small phones so the links never clip. */}
+        <div className="min-w-0 max-w-full sm:flex-1">
+          <AnnouncementCampaign
+            fallback={
+              <span className="hidden sm:flex items-center gap-1.5 truncate">
+                <Truck className="h-3.5 w-3.5 shrink-0 text-primary-400" /> Free shipping on orders over ₹10000
+              </span>
+            }
+          />
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex shrink-0 items-center gap-4">
           <Link to="/order-tracking" className="hover:text-primary-400 transition-colors">Track Order</Link>
           <span className="hidden md:inline text-dark-600">|</span>
           <Link to="/rfq" className="hidden md:inline hover:text-primary-400 transition-colors">Get Quote</Link>
@@ -821,6 +827,7 @@ function AnimatedRoutes() {
   );
 }
 
+import { AnnouncementCampaign } from "./components/marketing/campaigns";
 import Home from "./pages/Home";
 import Listing from "./pages/Listing";
 import Details from "./pages/Details";

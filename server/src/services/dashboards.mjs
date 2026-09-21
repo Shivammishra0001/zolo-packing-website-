@@ -712,25 +712,16 @@ export async function shippingOverview({ limit = 50 } = {}) {
   };
 }
 
-/** Marketing module: coupons with real redemption counts. */
-export async function marketingOverview({ limit = 100 } = {}) {
-  const take = Math.min(Math.max(Number(limit) || 100, 1), 200);
-  const coupons = await prisma.coupon.findMany({
-    where: { deletedAt: null },
-    orderBy: { createdAt: "desc" }, take,
-    include: { _count: { select: { redemptions: true } } },
-  });
-  const now = new Date();
+/** Marketing overview: status counts + the most recent coupons and campaigns. */
+export async function marketingOverview({ limit = 5 } = {}) {
+  const take = Math.min(Math.max(Number(limit) || 5, 1), 20);
+  const { listCoupons } = await import("./coupons.mjs");
+  const { listCampaigns } = await import("./campaigns.mjs");
+  const [c, k] = await Promise.all([listCoupons({ limit: 500 }), listCampaigns({ limit: 500 })]);
+  const recent = (rows) => [...rows].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, take);
   return {
-    coupons: coupons.map((c) => ({
-      id: c.id, code: c.code, discountType: c.discountType, discountValue: c.discountValue,
-      minOrderMinor: c.minOrderMinor, maxDiscountMinor: c.maxDiscountMinor,
-      usageLimit: c.usageLimit, usedCount: c.usedCount,
-      validFrom: c.validFrom, validUntil: c.validUntil, isActive: c.isActive,
-      redemptions: c._count.redemptions,
-      state: !c.isActive ? "inactive" : c.validUntil && c.validUntil < now ? "expired" : "active",
-    })),
-    total: coupons.length,
+    coupons: { counts: c.counts, recent: recent(c.coupons) },
+    campaigns: { counts: k.counts, recent: recent(k.campaigns) },
   };
 }
 

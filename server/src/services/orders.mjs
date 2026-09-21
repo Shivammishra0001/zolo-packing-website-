@@ -16,6 +16,7 @@ import { badRequest, conflict, forbidden, notFound } from "../lib/http.mjs";
 import {
   priceOrder,
   evaluateCoupon,
+  couponEligibleSubtotal,
   effectiveUnitPriceMinor,
   newOrderNumber,
   newPaymentNumber,
@@ -60,6 +61,9 @@ async function buildPricedItems(userId, tx = prisma) {
     const tierPrice = p.priceTiers?.length ? resolveUnitPriceMinor(p, it.quantity) : null;
     const unitPriceMinor = tierPrice ?? effectiveUnitPriceMinor(p);
     const lineTotalMinor = unitPriceMinor * it.quantity;
+    // Coupon restrictions need to know how the line was priced.
+    const isSaleItem = Boolean(p.salePriceMinor && p.salePriceMinor > 0 && p.salePriceMinor < p.basePriceMinor);
+    const isTierDiscounted = tierPrice != null && tierPrice < effectiveUnitPriceMinor(p);
     // Commission SNAPSHOT: rate and amount are frozen onto the line at order
     // time, so an admin repricing the product later cannot restate payouts.
     const commissionBps = commissionBpsFor(p);
@@ -74,6 +78,8 @@ async function buildPricedItems(userId, tx = prisma) {
       quantity: it.quantity,
       unitPriceMinor,
       lineTotalMinor,
+      isSaleItem,
+      isTierDiscounted,
       specs: {
         dimensions:
           p.length || p.width || p.height
@@ -89,16 +95,61 @@ async function buildPricedItems(userId, tx = prisma) {
   return priced;
 }
 
-// Look up + evaluate a coupon against a subtotal. Returns { coupon, discountMinor }.
-async function resolveCoupon(couponCode, subtotalMinor, userId, tx = prisma) {
-  if (!couponCode) return { coupon: null, discountMinor: 0 };
-  const coupon = await tx.coupon.findUnique({ where: { code: couponCode.trim().toUpperCase() } });
-  const evalResult = evaluateCoupon(coupon, subtotalMinor);
-  if (!evalResult.ok) throw badRequest(evalResult.reason, "COUPON_INVALID");
-  // Per-user single use.
-  const priorUse = await tx.couponRedemption.findFirst({ where: { couponId: coupon.id, userId } });
-  if (priorUse) throw badRequest("You have already used this coupon", "COUPON_ALREADY_USED");
-  return { coupon, discountMinor: evalResult.discountMinor };
+const couponInclude = { products: { select: { productId: true } }, categories: { select: { categoryId: true } } };
+
+/**
+ * The ONE coupon check, shared by the quote preview, POST /coupons/validate and
+ * order placement. Everything is read fresh from the database and computed
+ * here: status, dates, usage limits, per-customer limit, minimum order, product
+ * / category / sale-item restrictions, percentage vs fixed, and the discount
+ * cap. Returns { coupon, discountMinor, error, code } — never throws for an
+ * invalid coupon, so callers choose between surfacing and rejecting.
+ */
+export async function checkCoupon(couponCode, priced, userId, tx = prisma) {
+  const none = { coupon: null, discountMinor: 0, error: null, code: null };
+  const normalized = String(couponCode ?? "").trim().toUpperCase();
+  if (!normalized) return none;
+  const coupon = await tx.coupon.findUnique({ where: { code: normalized }, include: couponInclude });
+  const subtotalMinor = priced.reduce((s, it) => s + it.lineTotalMinor, 0);
+  const evalResult = evaluateCoupon(coupon, subtotalMinor, new Date(), {
+    eligibleSubtotalMinor: coupon ? couponEligibleSubtotal(coupon, priced) : 0,
+  });
+  if (!evalResult.ok) return { ...none, error: evalResult.reason, code: "COUPON_INVALID" };
+  if (coupon.usageLimitPerCustomer != null) {
+    const used = await tx.couponRedemption.count({ where: { couponId: coupon.id, userId } });
+    if (used >= coupon.usageLimitPerCustomer) {
+      return {
+        ...none,
+        error: coupon.usageLimitPerCustomer === 1
+          ? "You have already used this coupon"
+          : `You have already used this coupon ${used} times`,
+        code: "COUPON_ALREADY_USED",
+      };
+    }
+  }
+  return { coupon, discountMinor: evalResult.discountMinor, error: null, code: null };
+}
+
+/** POST /coupons/validate — a coupon check against the caller's current cart. */
+export async function validateCoupon(userId, couponCode) {
+  if (!couponCode) return { valid: false, code: null, discountMinor: 0, message: "Enter a coupon code" };
+  const priced = await buildPricedItems(userId).catch((e) => {
+    if (e.code === "CART_EMPTY") return [];
+    throw e;
+  });
+  if (!priced.length) return { valid: false, code: null, discountMinor: 0, message: "Your cart is empty" };
+  const checked = await checkCoupon(couponCode, priced, userId);
+  if (!checked.coupon) return { valid: false, code: null, discountMinor: 0, message: checked.error };
+  const totals = priceOrder({ items: priced, discountMinor: checked.discountMinor });
+  return {
+    valid: true,
+    code: checked.coupon.code,
+    name: checked.coupon.name,
+    discountMinor: totals.discountMinor,
+    subtotalMinor: totals.subtotalMinor,
+    grandTotalMinor: totals.grandTotalMinor,
+    message: null,
+  };
 }
 
 // Preview pricing for the cart (no order created). Used by cart + review pages.
@@ -113,15 +164,9 @@ export async function quote(userId, { couponCode, paymentMethod } = {}) {
   let couponError = null;
   let appliedCode = null;
   if (couponCode && priced.length) {
-    const coupon = await prisma.coupon.findUnique({ where: { code: couponCode.trim().toUpperCase() } });
-    const evalResult = evaluateCoupon(coupon, subtotalMinor);
-    if (evalResult.ok) {
-      const priorUse = coupon ? await prisma.couponRedemption.findFirst({ where: { couponId: coupon.id, userId } }) : null;
-      if (priorUse) couponError = "You have already used this coupon";
-      else { discountMinor = evalResult.discountMinor; appliedCode = coupon.code; }
-    } else {
-      couponError = evalResult.reason;
-    }
+    const checked = await checkCoupon(couponCode, priced, userId);
+    if (checked.coupon) { discountMinor = checked.discountMinor; appliedCode = checked.coupon.code; }
+    else couponError = checked.error;
   }
 
   // COD surcharge (admin-configured) shows in the preview when COD is chosen;
@@ -186,7 +231,9 @@ export async function placeOrder(user, input) {
   const order = await prisma.$transaction(async (tx) => {
     const priced = await buildPricedItems(user.id, tx);
     const subtotalMinor = priced.reduce((s, it) => s + it.lineTotalMinor, 0);
-    const { coupon, discountMinor } = await resolveCoupon(couponCode, subtotalMinor, user.id, tx);
+    const checked = await checkCoupon(couponCode, priced, user.id, tx);
+    if (checked.error) throw badRequest(checked.error, checked.code);
+    const { coupon, discountMinor } = checked;
     // Payment method must be enabled by the admin (and within COD limits).
     await assertMethodAllowed(paymentMethod, { subtotalMinor });
     const codChargeMinor = await codChargeFor(paymentMethod);
@@ -285,7 +332,13 @@ export async function placeOrder(user, input) {
       await tx.couponRedemption.create({
         data: { couponId: coupon.id, userId: user.id, orderId: created.id, discountMinor: totals.discountMinor },
       });
-      await tx.coupon.update({ where: { id: coupon.id }, data: { usedCount: { increment: 1 } } });
+      // Conditional increment = the race guard: two checkouts competing for the
+      // last redemption cannot both pass, because the limit is re-checked by
+      // the UPDATE itself rather than by the read made earlier.
+      const bumped = await tx.$executeRaw`
+        UPDATE "Coupon" SET "usedCount" = "usedCount" + 1
+        WHERE "id" = ${coupon.id} AND ("usageLimit" IS NULL OR "usedCount" < "usageLimit")`;
+      if (bumped === 0) throw badRequest("Coupon usage limit reached", "COUPON_INVALID");
     }
 
     // Invoice with a gapless, race-safe number (single-row counter locked in-txn).

@@ -93,6 +93,8 @@ export default function AdminRoutes() {
         {/* Growth */}
         <Route path="cms" element={<CMS />} />
         <Route path="marketing" element={<Marketing />} />
+        {/* /admin/marketing/coupons · /admin/marketing/campaigns */}
+        <Route path="marketing/:tab" element={<Marketing />} />
 
         {/* System */}
         <Route path="audit" element={<AuditLogs />} />

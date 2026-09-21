@@ -234,11 +234,7 @@ export const useAdminShipping = () =>
     total: number; pendingDispatch: number;
   }>("/admin/shipping");
 
-export const useAdminMarketing = () =>
-  useAdminQuery<{
-    coupons: { id: string; code: string; discountType: string; discountValue: number; minOrderMinor: number | null; maxDiscountMinor: number | null; usageLimit: number | null; usedCount: number; validFrom: string | null; validUntil: string | null; isActive: boolean; redemptions: number; state: string }[];
-    total: number;
-  }>("/admin/marketing");
+// Marketing (coupons + campaigns) has its own typed client: lib/api/marketing.ts.
 
 /**
  * Adapt a QueryState to the `MockQuery` shape ({data, loading, error, retry})

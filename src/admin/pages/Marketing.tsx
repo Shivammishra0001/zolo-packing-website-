@@ -1,103 +1,124 @@
-import { Gift, Mail, MessageCircle, Percent, Users } from "lucide-react";
-import { useState } from "react";
-import { Badge, PageHeader, Tabs } from "../components/ui";
-import { DataTable, type Column } from "../components/DataTable";
-import { EmptyState } from "../components/Panel";
-import { formatDate } from "../format";
-import { useAdminMarketing } from "../dashboard-api";
-import { COUPON_STATUS } from "../statuses-ext";
-import type { Coupon } from "../types";
+import { CalendarClock, CheckCircle2, LayoutDashboard, Megaphone, Plus, Tag, TimerOff } from "lucide-react";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { Button, PageHeader, Tabs } from "../components/ui";
+import { EmptyState, ErrorState, ListSkeleton, Panel } from "../components/Panel";
+import { useAdminQuery } from "../dashboard-api";
+import type { MarketingOverview } from "@/lib/api/marketing";
+import { formatStoreDate } from "@/lib/store-time";
+import CouponsPage, { discountLabel } from "./marketing/CouponsPage";
+import CampaignsPage, { CONTENT_TYPE_LABEL } from "./marketing/CampaignsPage";
+import { PLACEMENT_LABEL } from "./marketing/CampaignPreview";
+import { StatusBadge, SummaryCards } from "./marketing/shared";
 
-// Marketing.
-//
-// The coupons tab is REAL (PostgreSQL via /admin/marketing, live redemption
-// counts). Everything that used to surround it was fabricated — an invented
-// referral leaderboard with fake company names and payouts, made-up campaign
-// open/click rates, offer cards with no backing, and a "New Coupon" dialog
-// that only toasted success. Those now state honestly that the feature is not
-// built yet.
+// Marketing = two independent, database-backed systems:
+//   Coupons    discount rules, validated and priced by the server at checkout
+//   Campaigns  structured promotional content the storefront fetches and renders
+// Everything here is live data from /admin/marketing, /admin/coupons and
+// /admin/campaigns — there is no sample data and nothing is hard-coded.
 
-function CouponsTab() {
-  const live = useAdminMarketing();
-  const coupons: Coupon[] = (live.data?.coupons ?? []).map((c) => ({
-    id: c.id,
-    code: c.code,
-    description: c.discountType === "percent" ? `${c.discountValue / 100}% off` : `Flat discount`,
-    discount: c.discountType === "percent" ? `${c.discountValue / 100}%` : `₹${(c.discountValue / 100).toLocaleString("en-IN")}`,
-    status: c.state as Coupon["status"],
-    used: c.redemptions,
-    limit: c.usageLimit ?? 0,
-    expiresAt: c.validUntil ?? "",
-  }));
+const TABS = [
+  { key: "overview", label: "Overview", icon: LayoutDashboard },
+  { key: "coupons", label: "Coupons", icon: Tag },
+  { key: "campaigns", label: "Campaigns", icon: Megaphone },
+];
 
-  const columns: Column<Coupon>[] = [
-    { key: "code", header: "Code", render: (c) => <span className="font-mono font-bold erp-text">{c.code}</span> },
-    { key: "description", header: "Description", render: (c) => <span className="erp-text-muted">{c.description}</span>, hideBelow: "md" },
-    { key: "discount", header: "Discount", render: (c) => <Badge tone="primary">{c.discount}</Badge> },
-    { key: "status", header: "Status", render: (c) => <Badge tone={COUPON_STATUS[c.status].tone}>{COUPON_STATUS[c.status].label}</Badge> },
-    {
-      key: "usage", header: "Usage", render: (c) => (
-        <div className="min-w-[120px]">
-          <div className="flex justify-between text-xs erp-text-muted"><span>{c.used}</span><span>{c.limit || "∞"}</span></div>
-          {c.limit > 0 && (
-            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full erp-surface-2">
-              <div className="h-full rounded-full bg-primary-500" style={{ width: `${Math.min((c.used / c.limit) * 100, 100)}%` }} />
-            </div>
-          )}
-        </div>
-      ),
-    },
-    { key: "expires", header: "Expires", render: (c) => <span className="erp-text-muted">{c.expiresAt ? formatDate(c.expiresAt) : "—"}</span>, hideBelow: "sm" },
-  ];
+function Overview() {
+  const q = useAdminQuery<MarketingOverview>("/admin/marketing", 60_000);
+  if (q.status === "loading") return <div className="erp-card card-shadow p-5"><ListSkeleton rows={6} /></div>;
+  if (q.status === "error" || !q.data) return <div className="erp-card card-shadow"><ErrorState message={q.error ?? "Could not load marketing data."} onRetry={q.refetch} /></div>;
+  const { coupons, campaigns } = q.data;
 
   return (
-    <div className="erp-card card-shadow p-4 sm:p-5">
-      {coupons.length === 0 && live.status === "success" ? (
-        <EmptyState icon={Percent} title="No coupons yet" message="Coupons created for the storefront will appear here with live redemption counts." />
-      ) : (
-        <DataTable caption="Coupons" columns={columns} rows={coupons} rowKey={(c) => c.id} />
-      )}
+    <div className="space-y-6">
+      <div className="flex flex-wrap gap-2">
+        <Link to="/admin/marketing/coupons?new=1"><Button variant="primary" icon={Plus}>Create Coupon</Button></Link>
+        <Link to="/admin/marketing/campaigns?new=1"><Button variant="primary" icon={Plus}>Create Campaign</Button></Link>
+      </div>
+
+      <section className="space-y-3" aria-labelledby="mk-coupons">
+        <h2 id="mk-coupons" className="text-xs font-bold uppercase tracking-wide erp-text-faint">Coupons</h2>
+        <SummaryCards
+          items={[
+            { label: "Total coupons", value: coupons.counts.total, icon: Tag },
+            { label: "Active", value: coupons.counts.active, icon: CheckCircle2, tone: "success" },
+            { label: "Scheduled", value: coupons.counts.scheduled, icon: CalendarClock, tone: "info" },
+            { label: "Expired", value: coupons.counts.expired + coupons.counts.usage_limit_reached, icon: TimerOff, tone: "danger" },
+          ]}
+        />
+      </section>
+
+      <section className="space-y-3" aria-labelledby="mk-campaigns">
+        <h2 id="mk-campaigns" className="text-xs font-bold uppercase tracking-wide erp-text-faint">Campaigns</h2>
+        <SummaryCards
+          items={[
+            { label: "Total campaigns", value: campaigns.counts.total, icon: Megaphone },
+            { label: "Active", value: campaigns.counts.active, icon: CheckCircle2, tone: "success" },
+            { label: "Scheduled", value: campaigns.counts.scheduled, icon: CalendarClock, tone: "info" },
+            { label: "Expired", value: campaigns.counts.expired, icon: TimerOff, tone: "danger" },
+          ]}
+        />
+      </section>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Panel title="Recent coupons" action={<Link to="/admin/marketing/coupons" className="text-xs font-bold text-primary-600 hover:underline dark:text-primary-400">View all</Link>}>
+          {coupons.recent.length === 0 ? (
+            <EmptyState icon={Tag} title="No coupons yet" message="Create a coupon and it will be redeemable at checkout as soon as its schedule starts." />
+          ) : (
+            <ul className="divide-y erp-border">
+              {coupons.recent.map((c) => (
+                <li key={c.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    <div className="truncate font-mono text-sm font-bold erp-text">{c.code}</div>
+                    <div className="truncate text-xs erp-text-muted">{discountLabel(c)} · {c.usageCount}/{c.usageLimit ?? "∞"} used · ends {formatStoreDate(c.endAt)}</div>
+                  </div>
+                  <StatusBadge status={c.status} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+        <Panel title="Recent campaigns" action={<Link to="/admin/marketing/campaigns" className="text-xs font-bold text-primary-600 hover:underline dark:text-primary-400">View all</Link>}>
+          {campaigns.recent.length === 0 ? (
+            <EmptyState icon={Megaphone} title="No campaigns yet" message="Create a campaign to publish a banner, card, popup or announcement to the storefront." />
+          ) : (
+            <ul className="divide-y erp-border">
+              {campaigns.recent.map((c) => (
+                <li key={c.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold erp-text">{c.name}</div>
+                    <div className="truncate text-xs erp-text-muted">
+                      {CONTENT_TYPE_LABEL[c.contentType]} · {c.placements.map((p) => PLACEMENT_LABEL[p]).join(", ") || "No placement"} · priority {c.priority}
+                    </div>
+                  </div>
+                  <StatusBadge status={c.status} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      </div>
     </div>
   );
 }
 
-const TABS = [
-  { key: "coupons", label: "Coupons", icon: Percent },
-  { key: "campaigns", label: "Campaigns", icon: Mail },
-  { key: "referrals", label: "Referrals", icon: Users },
-];
-
 export default function Marketing() {
-  const [tab, setTab] = useState("coupons");
+  const { tab = "overview" } = useParams<{ tab?: string }>();
+  const navigate = useNavigate();
+  if (!TABS.some((t) => t.key === tab)) return <Navigate to="/admin/marketing" replace />;
+
   return (
     <div className="shell-admin">
       <PageHeader
-        breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Marketing" }]}
+        breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Marketing", to: tab === "overview" ? undefined : "/admin/marketing" }, ...(tab === "overview" ? [] : [{ label: tab === "coupons" ? "Coupons" : "Campaigns" }])]}
         title="Marketing"
-        subtitle="Coupons, campaigns and referral programs."
+        subtitle="Coupons and campaigns — created, scheduled and published from here, no code changes."
       />
       <div className="mb-5">
-        <Tabs tabs={TABS} active={tab} onChange={setTab} />
+        <Tabs tabs={TABS} active={tab} onChange={(k) => navigate(k === "overview" ? "/admin/marketing" : `/admin/marketing/${k}`)} />
       </div>
-      {tab === "coupons" && <CouponsTab />}
-      {tab === "campaigns" && (
-        <div className="erp-card card-shadow">
-          <EmptyState
-            icon={MessageCircle}
-            title="Campaigns are not connected yet"
-            message="Email and WhatsApp campaign delivery has no backend yet. The previous stats shown here were illustrative, not real sends."
-          />
-        </div>
-      )}
-      {tab === "referrals" && (
-        <div className="erp-card card-shadow">
-          <EmptyState
-            icon={Gift}
-            title="Referral program is not connected yet"
-            message="No referral tracking exists yet. The leaderboard previously shown here was invented sample data, not real customers."
-          />
-        </div>
-      )}
+      {tab === "overview" && <Overview />}
+      {tab === "coupons" && <CouponsPage />}
+      {tab === "campaigns" && <CampaignsPage />}
     </div>
   );
 }

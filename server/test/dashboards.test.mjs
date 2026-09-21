@@ -271,12 +271,13 @@ test("finance totals come from Invoice and Payment rows", async () => {
   assert.equal(typeof body.data.summary.receivableMinor, "number");
 });
 
-test("marketing lists coupons with live redemption counts", async () => {
+test("marketing overview reports coupon and campaign status counts from real rows", async () => {
   const { status, body } = await api("/admin/marketing", { token: adminToken });
   assert.equal(status, 200);
-  assert.equal(body.data.coupons.length, await prisma.coupon.count({ where: { deletedAt: null } }));
-  for (const c of body.data.coupons) {
-    assert.ok(["active", "expired", "inactive"].includes(c.state));
+  assert.equal(body.data.coupons.counts.total, await prisma.coupon.count({ where: { deletedAt: null } }));
+  assert.equal(body.data.campaigns.counts.total, await prisma.campaign.count({ where: { deletedAt: null } }));
+  for (const c of body.data.coupons.recent) {
+    assert.ok(["draft", "scheduled", "active", "paused", "expired", "usage_limit_reached"].includes(c.status));
     assert.equal(typeof c.redemptions, "number");
   }
 });

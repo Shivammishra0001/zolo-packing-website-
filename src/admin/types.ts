@@ -461,16 +461,4 @@ export interface Machine {
   utilizationPct: number;
 }
 
-// ---------- Marketing ----------
-export type CouponStatus = "active" | "scheduled" | "expired";
-
-export interface Coupon {
-  id: string;
-  code: string;
-  description: string;
-  discount: string;
-  status: CouponStatus;
-  used: number;
-  limit: number;
-  expiresAt: string;
-}
+// Marketing (coupons + campaigns): see src/lib/api/marketing.ts for the types.

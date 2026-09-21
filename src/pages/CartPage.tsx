@@ -1,3 +1,4 @@
+import { CampaignStrip } from "@/components/marketing/campaigns";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, FileText, Minus, Plus, ShoppingBag, X } from "lucide-react";
@@ -72,6 +73,8 @@ export default function CartPage() {
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         {/* Progress: Cart → Address → Review → Payment → Confirmation */}
         <CheckoutSteps current={0} />
+        {/* Admin-managed promotion (Marketing → Campaigns → Cart). */}
+        <CampaignStrip placement="cart" className="mb-6" />
 
         <div className="mb-6 flex items-end justify-between">
           <div>

@@ -1,5 +1,6 @@
 // Checkout + order routes (authenticated buyer): /api/v1/*
 //   POST /checkout/quote   — server-priced preview (cart + optional coupon)
+//   POST /coupons/validate — is this code valid for MY cart, and worth how much?
 //   POST /checkout/place   — place an order from the cart (COD), idempotent
 //   GET  /orders           — my orders
 //   GET  /orders/:id       — one of my orders
@@ -23,6 +24,13 @@ orderRouter.get("/checkout/payment-methods", wrap(async (_req, res) => {
 orderRouter.post("/checkout/quote", wrap(async (req, res) => {
   const input = quoteSchema.parse(req.body ?? {});
   ok(res, await orders.quote(req.user.id, input));
+}));
+
+// Validate a coupon against the caller's cart. The body carries ONLY the code:
+// the cart, prices, eligibility and the discount are all resolved server-side.
+orderRouter.post("/coupons/validate", wrap(async (req, res) => {
+  const code = String(req.body?.code ?? req.body?.couponCode ?? "").trim().slice(0, 40);
+  ok(res, await orders.validateCoupon(req.user.id, code));
 }));
 
 orderRouter.post("/checkout/place", wrap(async (req, res) => {

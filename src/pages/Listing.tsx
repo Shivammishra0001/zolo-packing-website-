@@ -1,3 +1,4 @@
+import { CampaignStrip } from "@/components/marketing/campaigns";
 import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -139,6 +140,8 @@ export default function Listing() {
   return (
     <main className="py-10">
       <div className="shell">
+        {/* Admin-managed promotion (Marketing → Campaigns → Product Listing). */}
+        <CampaignStrip placement="product_listing" className="mb-6" />
         {/* Breadcrumb */}
         <div className="mb-6 text-xs text-dark-500">
           <span>Home</span> <span className="mx-2">/</span>

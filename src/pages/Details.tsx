@@ -1,3 +1,4 @@
+import { CampaignStrip } from "@/components/marketing/campaigns";
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -232,6 +233,8 @@ export default function Details() {
   return (
     <main className="py-8">
       <div className="shell">
+        {/* Admin-managed promotion (Marketing → Campaigns → Product Detail). */}
+        <CampaignStrip placement="product_detail" className="mb-6" />
         {/* Breadcrumb */}
         <div className="mb-6 text-xs text-dark-500 flex items-center gap-1.5">
           <Link to="/" className="hover:text-dark-900">Home</Link>

@@ -36,17 +36,17 @@ enum UserRole {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
+  id             String    @id @default(cuid())
+  email          String    @unique
   // Stored normalized (digits only, last 10). Unique+sparse so it can be used
   // as a login identifier; null phones don't collide.
-  phone        String?   @unique
-  passwordHash String
-  firstName    String
-  lastName     String?
-  role         UserRole  @default(buyer)
-  isActive     Boolean   @default(true)
-  lastLoginAt  DateTime?
+  phone          String?   @unique
+  passwordHash   String
+  firstName      String
+  lastName       String?
+  role           UserRole  @default(buyer)
+  isActive       Boolean   @default(true)
+  lastLoginAt    DateTime?
   // ---- Customer profile (User is the single source of truth; the legacy
   // `Customer` table is unused). All optional so existing rows are untouched.
   avatarUrl      String? // public upload URL of the profile photo (null = default avatar)
@@ -62,36 +62,36 @@ model User {
   // Notification / communication opt-ins, e.g. { orderUpdates, rfqUpdates,
   // marketingEmail, whatsapp, sms }. Absent keys mean "default (on)".
   preferences    Json      @default("{}")
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  memberships        OrganizationMember[]
-  sessions           Session[]
+  memberships            OrganizationMember[]
+  sessions               Session[]
   // audit/notification back-references
-  auditLogs          AuditLog[]           @relation("AuditActor")
-  notifications      Notification[]
+  auditLogs              AuditLog[]             @relation("AuditActor")
+  notifications          Notification[]
   // commerce back-references
-  customer           Customer?
-  addresses          Address[]
-  orders             Order[]
-  reviews            Review[]
-  wishlist           Wishlist?
-  cart               Cart?
-  sellerProducts     Product[]            @relation("ProductSeller")
-  stockMovements     StockMovement[]      @relation("StockMovementActor")
-  rfqs               Rfq[]
-  quotations         Quotation[]
-  authoredQuotations Quotation[]          @relation("QuotationAuthor")
+  customer               Customer?
+  addresses              Address[]
+  orders                 Order[]
+  reviews                Review[]
+  wishlist               Wishlist?
+  cart                   Cart?
+  sellerProducts         Product[]              @relation("ProductSeller")
+  stockMovements         StockMovement[]        @relation("StockMovementActor")
+  rfqs                   Rfq[]
+  quotations             Quotation[]
+  authoredQuotations     Quotation[]            @relation("QuotationAuthor")
   // payment requests (custom payment links)
-  paymentRequests        PaymentRequest[] @relation("PaymentRequestCustomer")
-  createdPaymentRequests PaymentRequest[] @relation("PaymentRequestCreator")
+  paymentRequests        PaymentRequest[]       @relation("PaymentRequestCustomer")
+  createdPaymentRequests PaymentRequest[]       @relation("PaymentRequestCreator")
   notificationDeliveries NotificationDelivery[]
-  sentMessages       Message[]            @relation("MessageSender")
-  savedRequirements  SavedRequirement[]
-  rfqFiles           RfqFile[]            @relation("RfqFileUploader")
-  returnRequests     ReturnRequest[]
-  pointsLedger       PointsLedger[]
-  catalogImports     CatalogImport[]      @relation("CatalogImporter")
+  sentMessages           Message[]              @relation("MessageSender")
+  savedRequirements      SavedRequirement[]
+  rfqFiles               RfqFile[]              @relation("RfqFileUploader")
+  returnRequests         ReturnRequest[]
+  pointsLedger           PointsLedger[]
+  catalogImports         CatalogImport[]        @relation("CatalogImporter")
 
   @@index([role])
 }
@@ -564,71 +564,71 @@ enum ProductStatus {
 }
 
 model Product {
-  id             String        @id // PRD-xxxx (app-generated, stable across UI)
-  sku            String        @unique
-  slug           String        @unique
-  name           String
+  id              String        @id // PRD-xxxx (app-generated, stable across UI)
+  sku             String        @unique
+  slug            String        @unique
+  name            String
   // `category`/`subcategory` remain as denormalized taxonomy strings (used by
   // SupplierCapability matching and legacy queries); categoryId is the
   // normalized relation to the Category table.
-  category       String
-  subcategory    String        @default("General")
-  categoryId     String?
-  categoryRef    Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  category        String
+  subcategory     String        @default("General")
+  categoryId      String?
+  categoryRef     Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   // Normalized subcategory relation. The denormalized `subcategory` string
   // above is kept in sync (legacy queries + SupplierCapability matching read
   // it); this is the FK used for real taxonomy navigation.
-  subcategoryId  String?
-  subcategoryRef Category?     @relation("ProductSubcategory", fields: [subcategoryId], references: [id], onDelete: SetNull)
-  sellerId       String? // owning supplier user (null = house catalog)
-  seller         User?         @relation("ProductSeller", fields: [sellerId], references: [id], onDelete: SetNull)
-  status         ProductStatus @default(draft)
-  description    String?
+  subcategoryId   String?
+  subcategoryRef  Category?     @relation("ProductSubcategory", fields: [subcategoryId], references: [id], onDelete: SetNull)
+  sellerId        String? // owning supplier user (null = house catalog)
+  seller          User?         @relation("ProductSeller", fields: [sellerId], references: [id], onDelete: SetNull)
+  status          ProductStatus @default(draft)
+  description     String?
   // dimensions
-  length         Float?
-  width          Float?
-  height         Float?
-  dimUnit        String? // in | cm | mm
-  weightGrams    Int?
-  gsm            Int?
-  color          String?
-  material       String?
+  length          Float?
+  width           Float?
+  height          Float?
+  dimUnit         String? // in | cm | mm
+  weightGrams     Int?
+  gsm             Int?
+  color           String?
+  material        String?
   // Catalog "Type" column (e.g. "Packaging Box", "Cup") — a descriptor, not a
   // taxonomy node.
-  productType    String?
+  productType     String?
   // Catalog "Thickness" column; free text because sources mix units.
-  thickness      String?
+  thickness       String?
   // The Size cell VERBATIM ("12 oz", "500 ml", "A4", "12 x 4 x 4 inch").
   // Only true 3D sizes populate length/width/height; capacities and sheet
   // sizes would be meaningless as dimensions, so they are preserved here
   // instead of being discarded.
-  sizeLabel      String?
-  printing       String? // printing method (offset, flexo, digital…)
-  finishing      String? // lamination / foil / spot-UV / emboss…
-  customizable   Boolean       @default(false)
+  sizeLabel       String?
+  printing        String? // printing method (offset, flexo, digital…)
+  finishing       String? // lamination / foil / spot-UV / emboss…
+  customizable    Boolean       @default(false)
   // money — integer minor units (paise); base 0 = quotation-based
-  basePriceMinor Int           @default(0)
-  salePriceMinor Int? // optional promotional price
-  costMinor      Int? // internal unit cost (never exposed to buyers)
-  moq            Int           @default(500)
-  stock          Int           @default(0) // on-hand quantity
-  reservedStock  Int           @default(0) // held for in-flight orders (available = stock - reserved)
-  lowStockLevel  Int?
-  imageEmoji     String        @default("📦") // primary image (emoji or URL)
-  images         String[]      @default([]) // ordered; [0] = primary
-  variants       Json          @default("[]")
+  basePriceMinor  Int           @default(0)
+  salePriceMinor  Int? // optional promotional price
+  costMinor       Int? // internal unit cost (never exposed to buyers)
+  moq             Int           @default(500)
+  stock           Int           @default(0) // on-hand quantity
+  reservedStock   Int           @default(0) // held for in-flight orders (available = stock - reserved)
+  lowStockLevel   Int?
+  imageEmoji      String        @default("📦") // primary image (emoji or URL)
+  images          String[]      @default([]) // ordered; [0] = primary
+  variants        Json          @default("[]")
   // Homepage merchandising — set ONLY by an admin in the Add/Edit product form
   // (or the catalog row actions). The storefront rails read these flags; they
   // are never inferred from createdAt, API order or position. The two rails
   // are independent: a product may be in both, each with its own order
   // (null order = after every explicitly ordered product).
-  isFeatured      Boolean      @default(false)
+  isFeatured      Boolean       @default(false)
   featuredOrder   Int?
-  isNewArrival    Boolean      @default(false)
+  isNewArrival    Boolean       @default(false)
   newArrivalOrder Int?
-  deletedAt      DateTime? // soft-delete; archived products keep order snapshots intact
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  deletedAt       DateTime? // soft-delete; archived products keep order snapshots intact
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   reviews        Review[]
   wishlistItems  WishlistItem[]
@@ -641,6 +641,8 @@ model Product {
   // drift. Admin-set per product; null falls back to the platform default.
   commissionBps  Int?
   priceTiers     PriceTier[]
+  coupons        CouponProduct[]
+  campaigns      Campaign[]
 
   @@index([status])
   @@index([isFeatured, featuredOrder])
@@ -734,7 +736,9 @@ model Category {
   updatedAt   DateTime   @updatedAt
 
   products    Product[]
-  subProducts Product[] @relation("ProductSubcategory")
+  subProducts Product[]        @relation("ProductSubcategory")
+  coupons     CouponCategory[]
+  campaigns   Campaign[]
 
   @@index([parentId])
   @@index([isActive])
@@ -841,22 +845,22 @@ model OrderItem {
   id              String          @id @default(cuid())
   returnRequests  ReturnRequest[]
   orderId         String
-  order           Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId       String? // reference only; snapshot below is the source of truth
   productName     String
   sku             String?
   variant         String?
-  specs           Json    @default("{}") // dimensions/gsm/material/printing/finishes
+  specs           Json            @default("{}") // dimensions/gsm/material/printing/finishes
   quantity        Int
   unitPriceMinor  Int
-  discountMinor   Int     @default(0)
-  taxMinor        Int     @default(0)
+  discountMinor   Int             @default(0)
+  taxMinor        Int             @default(0)
   lineTotalMinor  Int
   // Commission SNAPSHOT. Both the rate and the resolved amount are frozen
   // here at order creation, so changing a product's rate later never
   // restates historical payouts.
-  commissionBps   Int     @default(0)
-  commissionMinor Int     @default(0)
+  commissionBps   Int             @default(0)
+  commissionMinor Int             @default(0)
 
   @@index([orderId])
 }
@@ -1034,19 +1038,19 @@ enum PaymentStatus {
 }
 
 model Refund {
-  id           String       @id @default(cuid())
-  refundNumber String       @unique
-  paymentId    String
-  payment      Payment      @relation(fields: [paymentId], references: [id])
-  amountMinor  Int
-  reason       String?
-  status       RefundStatus @default(requested)
+  id              String         @id @default(cuid())
+  refundNumber    String         @unique
+  paymentId       String
+  payment         Payment        @relation(fields: [paymentId], references: [id])
+  amountMinor     Int
+  reason          String?
+  status          RefundStatus   @default(requested)
   // Manual-settlement proof (UTR / transaction id) — a refund is only marked
   // processed against a real reference, never on a button click alone.
-  reference     String?
-  processedById String?
-  processedAt   DateTime?
-  createdAt     DateTime     @default(now())
+  reference       String?
+  processedById   String?
+  processedAt     DateTime?
+  createdAt       DateTime       @default(now())
   // Set when the refund resolves a customer return request.
   returnRequestId String?        @unique
   returnRequest   ReturnRequest? @relation(fields: [returnRequestId], references: [id])
@@ -1104,25 +1108,172 @@ enum ShipmentStatus {
 }
 
 model Coupon {
-  id               String       @id @default(cuid())
-  code             String       @unique // stored uppercased
-  discountType     DiscountType
-  discountValue    Int // percent (basis) OR flat minor units, per type
-  minOrderMinor    Int?
-  maxDiscountMinor Int?
-  usageLimit       Int?
-  usedCount        Int          @default(0)
-  validFrom        DateTime?
-  validUntil       DateTime? // NEVER auto-deleted (no TTL) — history is preserved
-  isActive         Boolean      @default(true)
-  deletedAt        DateTime?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id                    String       @id @default(cuid())
+  code                  String       @unique // normalized: trimmed + uppercased (WELCOME10 == welcome10)
+  name                  String?
+  description           String?
+  discountType          DiscountType
+  discountValue         Int // percent (basis) OR flat minor units, per type
+  minOrderMinor         Int?
+  maxDiscountMinor      Int?
+  usageLimit            Int?
+  usedCount             Int          @default(0)
+  // Redemptions allowed per customer. NULL = unlimited. Defaults to 1, which
+  // is the single-use-per-customer rule every coupon had before this field.
+  usageLimitPerCustomer Int?         @default(1)
+  validFrom             DateTime?
+  validUntil            DateTime? // NEVER auto-deleted (no TTL) — history is preserved
+  isActive              Boolean      @default(true)
+  // Draft = saved but never published. The effective status (draft / scheduled
+  // / active / paused / expired / usage_limit_reached) is always DERIVED on the
+  // server from isDraft + isActive + the dates + the usage counter.
+  isDraft               Boolean      @default(false)
+  appliesTo             CouponScope  @default(all)
+  allowSaleItems        Boolean      @default(true)
+  allowOtherDiscounts   Boolean      @default(true)
+  deletedAt             DateTime? // archived
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
   orders      Order[]
   redemptions CouponRedemption[]
+  products    CouponProduct[]
+  categories  CouponCategory[]
 
   @@index([isActive])
+  @@index([validFrom, validUntil])
+}
+
+// What a coupon discounts: the whole cart, or only lines for chosen products /
+// categories (a category also covers its subcategories).
+enum CouponScope {
+  all
+  products
+  categories
+}
+
+model CouponProduct {
+  couponId  String
+  coupon    Coupon  @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([couponId, productId])
+  @@index([productId])
+}
+
+model CouponCategory {
+  couponId   String
+  coupon     Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([couponId, categoryId])
+  @@index([categoryId])
+}
+
+// ---------------------------------------------------------------------------
+// Campaigns — admin-authored promotional content rendered by the storefront.
+// Content is STRUCTURED fields only (never HTML/JS). Whether a campaign is live
+// is derived on the server from isDraft + isActive + startAt/endAt.
+// ---------------------------------------------------------------------------
+enum CampaignContentType {
+  text
+  image
+  quote
+  text_image
+  promo_card
+}
+
+enum CampaignPlacementKey {
+  announcement_bar
+  homepage_hero
+  homepage_promo_card
+  homepage_popup
+  product_listing
+  product_detail
+  cart
+  checkout
+}
+
+enum CampaignCtaType {
+  none
+  product
+  category
+  shop
+  cart
+  external
+}
+
+enum CampaignPopupPosition {
+  center
+  bottom_right
+  bottom_left
+}
+
+enum CampaignPopupFrequency {
+  every_visit
+  once_per_session
+  once_per_day
+  once_per_campaign
+  always
+}
+
+model Campaign {
+  id             String              @id @default(cuid())
+  name           String // internal name, never shown to customers
+  contentType    CampaignContentType
+  title          String?
+  subtitle       String?
+  description    String?
+  quote          String?
+  quoteAuthor    String?
+  imageUrl       String? // storage URL (uploads pipeline) — never binary data
+  mobileImageUrl String? // optional; storefront falls back to imageUrl
+  imageAlt       String?
+  badgeText      String?
+  buttonText     String?
+  // Structured CTA: the link is resolved on the server from these, so admins
+  // pick a product/category instead of typing internal URLs.
+  ctaType        CampaignCtaType     @default(none)
+  ctaProductId   String?
+  ctaProduct     Product?            @relation(fields: [ctaProductId], references: [id], onDelete: SetNull)
+  ctaCategoryId  String?
+  ctaCategory    Category?           @relation(fields: [ctaCategoryId], references: [id], onDelete: SetNull)
+  ctaUrl         String? // external only; http(s) validated on write
+
+  isActive Boolean  @default(true)
+  isDraft  Boolean  @default(false)
+  startAt  DateTime
+  endAt    DateTime
+  priority Int      @default(1) // lower = shown first
+
+  // Homepage popup behaviour (ignored by other placements).
+  popupPosition     CampaignPopupPosition  @default(center)
+  popupFrequency    CampaignPopupFrequency @default(once_per_session)
+  popupDelaySeconds Int                    @default(3)
+  popupAllowClose   Boolean                @default(true)
+  popupOverlay      Boolean                @default(true)
+
+  createdById String?
+  deletedAt   DateTime? // archived
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  placements CampaignPlacement[]
+
+  @@index([isActive, startAt, endAt])
+  @@index([priority])
+}
+
+model CampaignPlacement {
+  id         String               @id @default(cuid())
+  campaignId String
+  campaign   Campaign             @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  placement  CampaignPlacementKey
+
+  @@unique([campaignId, placement])
+  @@index([placement])
 }
 
 // Per-user coupon usage ledger — enforces per-customer usage limits and gives
@@ -1450,13 +1601,13 @@ model Quotation {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  items      QuotationItem[]
+  items           QuotationItem[]
   orders          Order[]
   versions        QuoteVersion[]
   paymentRequests PaymentRequest[]
   // Null = quoted by admin (house). Set = quoted by a competing seller.
-  supplierId String?
-  supplier   SupplierProfile? @relation("QuotationSupplier", fields: [supplierId], references: [id])
+  supplierId      String?
+  supplier        SupplierProfile? @relation("QuotationSupplier", fields: [supplierId], references: [id])
 
   @@index([rfqId])
   @@index([userId])
@@ -1570,20 +1721,20 @@ model QuoteVersion {
 // negotiation is private to that pair — a seller must never read a rival's
 // conversation.
 model Message {
-  id         String    @id @default(cuid())
-  rfqId      String
-  rfq        Rfq       @relation(fields: [rfqId], references: [id], onDelete: Cascade)
-  supplierId String? // which negotiation thread; null = buyer <-> admin
-  senderId   String
-  sender     User      @relation("MessageSender", fields: [senderId], references: [id])
-  body       String
+  id          String    @id @default(cuid())
+  rfqId       String
+  rfq         Rfq       @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  supplierId  String? // which negotiation thread; null = buyer <-> admin
+  senderId    String
+  sender      User      @relation("MessageSender", fields: [senderId], references: [id])
+  body        String
   // Timeline kind: TEXT (default), FILE (attachment via fileId → RfqFile),
   // QUOTE (a revised quotation card via quotationId → Quotation), SYSTEM.
-  type       String    @default("TEXT")
-  fileId     String? // → RfqFile.id when type = FILE (scalar ref, resolved in service)
+  type        String    @default("TEXT")
+  fileId      String? // → RfqFile.id when type = FILE (scalar ref, resolved in service)
   quotationId String? // → Quotation.id when type = QUOTE
-  readAt     DateTime?
-  createdAt  DateTime  @default(now())
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
 
   @@index([rfqId, supplierId, createdAt])
 }
@@ -1712,17 +1863,17 @@ enum ReturnStatus {
 // partial quantities. Pickup address is a SNAPSHOT — editing the address book
 // later must not change an in-flight request.
 model ReturnRequest {
-  id            String           @id @default(cuid())
-  requestNumber String           @unique // RET-2026-000125 / REC-2026-000045
+  id            String            @id @default(cuid())
+  requestNumber String            @unique // RET-2026-000125 / REC-2026-000045
   userId        String
-  user          User             @relation(fields: [userId], references: [id])
+  user          User              @relation(fields: [userId], references: [id])
   orderId       String
-  order         Order            @relation(fields: [orderId], references: [id])
+  order         Order             @relation(fields: [orderId], references: [id])
   orderItemId   String
-  orderItem     OrderItem        @relation(fields: [orderItemId], references: [id])
+  orderItem     OrderItem         @relation(fields: [orderItemId], references: [id])
   sellerId      String? // product's seller at request time (marketplace attribution)
   type          ReturnType
-  status        ReturnStatus     @default(SUBMITTED)
+  status        ReturnStatus      @default(SUBMITTED)
   resolution    ReturnResolution?
   quantity      Int
   reason        String
@@ -1737,7 +1888,7 @@ model ReturnRequest {
   pickupCity       String?
   pickupState      String?
   pickupPostalCode String?
-  pickupCountry    String?  @default("India")
+  pickupCountry    String? @default("India")
 
   // Admin decision
   adminNotes      String?
@@ -1745,9 +1896,9 @@ model ReturnRequest {
   reviewedById    String?
 
   // Replacement branch
-  replacementQuantity Int?
-  replacementCourier  String?
-  replacementTracking String?
+  replacementQuantity    Int?
+  replacementCourier     String?
+  replacementTracking    String?
   replacementShippedAt   DateTime?
   replacementDeliveredAt DateTime?
 

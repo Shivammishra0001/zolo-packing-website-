@@ -26,6 +26,8 @@ interface NavItem {
   icon: LucideIcon;
   end?: boolean;
   badge?: number;
+  /** Sub-pages, shown indented under the item while the sidebar is expanded. */
+  children?: { to: string; label: string }[];
 }
 
 interface NavGroup {
@@ -53,7 +55,13 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/shipping", label: "Shipping", icon: Truck },
       { to: "/admin/finance", label: "Finance", icon: Wallet },
       { to: "/admin/reports", label: "Reports", icon: ReceiptText },
-      { to: "/admin/marketing", label: "Marketing", icon: Megaphone },
+      {
+        to: "/admin/marketing", label: "Marketing", icon: Megaphone, end: true,
+        children: [
+          { to: "/admin/marketing/coupons", label: "Coupons" },
+          { to: "/admin/marketing/campaigns", label: "Campaigns" },
+        ],
+      },
     ],
   },
   {
@@ -126,6 +134,28 @@ function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate:
                     </>
                   )}
                 </NavLink>
+                {item.children && (
+                  <ul className={cn("mt-0.5 space-y-0.5", collapsed && "lg:hidden")}>
+                    {item.children.map((child) => (
+                      <li key={child.to}>
+                        <NavLink
+                          to={child.to}
+                          onClick={onNavigate}
+                          className={({ isActive }) =>
+                            cn(
+                              "ml-[30px] flex min-h-9 items-center rounded-lg border-l erp-border px-3 py-1.5 text-[13px] font-semibold transition-colors",
+                              isActive
+                                ? "border-primary-500 text-primary-700 dark:text-primary-300"
+                                : "erp-text-muted hover:erp-surface-2 hover:erp-text",
+                            )
+                          }
+                        >
+                          {child.label}
+                        </NavLink>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>
