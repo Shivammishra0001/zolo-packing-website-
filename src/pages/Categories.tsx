@@ -26,7 +26,7 @@ const catImages: Record<string, string> = {
   "flexible-packaging": catPouches,
   containers: catContainers,
   tubes: catTubes,
-  drinkware: catContainers,
+  drinkware: catCans,
   bags: catApparel,
   "packaging-accessories": catOthers,
   packaging: catOthers,

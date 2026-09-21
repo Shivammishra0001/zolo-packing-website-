@@ -34,18 +34,18 @@ export const isHiddenCategory = (nameOrSlug: string): boolean =>
  * unlisted category simply falls back to the generic package icon.
  */
 const CATEGORY_ICON: Record<string, string> = {
-  boxes: "📦",
-  containers: "🫙",
-  "food packaging": "🍱",
-  tapes: "🎗️",
-  tubes: "🧴",
-  mailers: "✉️",
-  bags: "🛍️",
-  "flexible packaging": "🧃",
-  "packaging accessories": "🏷️",
-  drinkware: "☕",
-  packaging: "📦",
-  "digital files": "🖼️",
+  boxes: "",
+  containers: "",
+  "food packaging": "",
+  tapes: "",
+  tubes: "",
+  mailers: "",
+  bags: "",
+  "flexible packaging": "",
+  "packaging accessories": "",
+  drinkware: "",
+  packaging: "",
+  "digital files": "",
 };
 
 const iconFor = (name: string): string => CATEGORY_ICON[name.trim().toLowerCase()] ?? "📦";
