@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Clock, Leaf, RotateCcw, Wallet } from "lucide-react";
-import { MetricCard } from "../components/MetricCard";
-import { DataTable, TableSkeleton, type Column } from "../components/DataTable";
-import { EmptyState, ErrorState, Panel } from "../components/Panel";
-import { Badge, PageHeader, SearchInput, Select, Tabs, Toolbar } from "../components/ui";
-import { relativeTime } from "../format";
-import { useNow } from "../hooks";
+import { MetricCard } from "../../components/MetricCard";
+import { DataTable, TableSkeleton, type Column } from "../../components/DataTable";
+import { EmptyState, ErrorState, Panel } from "../../components/Panel";
+import { Badge, SearchInput, Select, Toolbar } from "../../components/ui";
+import { relativeTime } from "../../format";
+import { useNow } from "../../hooks";
 import { describeApiError } from "@/lib/api/client";
 import { adminReturnsApi, prettyReturnStatus, type AdminReturnRow, type ReturnStatus } from "@/lib/api/returns";
 
 // ============================================================
-// Admin Returns & Recycling — VIEW and PROCESS customer-created requests.
-// There is deliberately no "create" action here: a request exists only
+// PRODUCT RETURNS (refund / replacement) — view and process customer-created
+// requests. Deliberately separate from Recycling Requests: a product return
+// never awards Eco Credits. There is no "create" action: a request exists only
 // because a customer submitted it from their order.
 // ============================================================
 
@@ -29,9 +30,11 @@ const STATUS_TONE: Partial<Record<ReturnStatus, "warning" | "info" | "success" |
 
 const PROCESSING = ["PICKUP_SCHEDULED", "RECEIVED", "INSPECTED", "REFUND_PROCESSING", "REPLACEMENT_PROCESSING", "REPLACEMENT_SHIPPED", "RECYCLE_PROCESSING", "RECYCLED"];
 
-export default function Returns() {
+export default function ProductReturnsSection() {
   const now = useNow();
-  const [tab, setTab] = useState<"all" | "RETURN" | "RECYCLE">("all");
+  // "RECYCLE" here = legacy order-item recycle rows created before Recycling
+  // Requests existed. Read-only history; no new ones can be created.
+  const [tab, setTab] = useState<"RETURN" | "RECYCLE">("RETURN");
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
   const [data, setData] = useState<{ requests: AdminReturnRow[]; total: number; counts: Record<string, number> } | null>(null);
@@ -41,7 +44,7 @@ export default function Returns() {
     try {
       setError(null);
       setData(await adminReturnsApi.list({
-        type: tab === "all" ? undefined : tab,
+        type: tab,
         status: statusFilter || undefined,
         q: search.trim() || undefined,
       }));
@@ -64,7 +67,7 @@ export default function Returns() {
     { key: "type", header: "Type", render: (r) => (
       <span className="inline-flex items-center gap-1.5 text-xs font-semibold erp-text-muted">
         {r.type === "RECYCLE" ? <Leaf className="h-3.5 w-3.5 text-emerald-500" aria-hidden /> : <RotateCcw className="h-3.5 w-3.5 text-primary-500" aria-hidden />}
-        {r.type === "RECYCLE" ? "Recycle" : "Return"}
+        {r.type === "RECYCLE" ? "Legacy recycle" : "Return"}
       </span>
     ) },
     { key: "customer", header: "Customer", render: (r) => <span className="block max-w-40 truncate erp-text-muted">{r.customer}</span>, hideBelow: "md" },
@@ -76,36 +79,22 @@ export default function Returns() {
   ];
 
   return (
-    <div className="shell-admin">
-      <PageHeader
-        breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Returns & Recycling" }]}
-        title="Returns & Recycling"
-        subtitle="Customer-created return and recycling requests. Review, choose a resolution, and process."
-      />
-
+    <div>
       <div className="mb-5 grid grid-cols-2 gap-4 xl:grid-cols-4">
-        <MetricCard label="Pending review" value={sum(["SUBMITTED", "UNDER_REVIEW"])} icon={Clock} tone={sum(["SUBMITTED", "UNDER_REVIEW"]) > 0 ? "warn" : "default"} to="/admin/returns" />
-        <MetricCard label="In processing" value={sum(PROCESSING) + (counts.APPROVED ?? 0)} icon={Wallet} to="/admin/returns" />
-        <MetricCard label="Completed" value={sum(["REFUNDED", "REPLACEMENT_DELIVERED", "POINTS_CREDITED", "CLOSED"])} icon={CheckCircle2} to="/admin/returns" />
-        <MetricCard label="Rejected / cancelled" value={sum(["REJECTED", "CANCELLED"])} icon={RotateCcw} to="/admin/returns" />
-      </div>
-
-      <div className="mb-4">
-        <Tabs
-          tabs={[
-            { key: "all", label: "All" },
-            { key: "RETURN", label: "Returns" },
-            { key: "RECYCLE", label: "Recycling" },
-          ]}
-          active={tab}
-          onChange={(k) => setTab(k as typeof tab)}
-        />
+        <MetricCard label="Requested / under review" value={sum(["SUBMITTED", "UNDER_REVIEW"])} icon={Clock} tone={sum(["SUBMITTED", "UNDER_REVIEW"]) > 0 ? "warn" : "default"} to="/admin/returns/product" />
+        <MetricCard label="In processing" value={sum(PROCESSING) + (counts.APPROVED ?? 0)} icon={Wallet} to="/admin/returns/product" />
+        <MetricCard label="Completed" value={sum(["REFUNDED", "REPLACEMENT_DELIVERED", "CLOSED"])} icon={CheckCircle2} to="/admin/returns/product" />
+        <MetricCard label="Rejected / cancelled" value={sum(["REJECTED", "CANCELLED"])} icon={RotateCcw} to="/admin/returns/product" />
       </div>
 
       <div className="space-y-4">
         <Toolbar>
           <SearchInput value={search} onChange={setSearch} placeholder="Search request, order, customer…" className="w-full sm:w-72" />
-          <Select value={statusFilter} onChange={setStatusFilter} aria-label="Status filter" className="sm:ml-auto">
+          <Select value={tab} onChange={(v) => setTab(v as typeof tab)} aria-label="Request type" className="sm:ml-auto">
+            <option value="RETURN">Product returns</option>
+            <option value="RECYCLE">Legacy recycle requests</option>
+          </Select>
+          <Select value={statusFilter} onChange={setStatusFilter} aria-label="Status filter">
             <option value="">All statuses</option>
             {Object.keys(STATUS_TONE).concat(PROCESSING).filter((v, i, a) => a.indexOf(v) === i).map((s) => (
               <option key={s} value={s}>{prettyReturnStatus(s as ReturnStatus)}</option>
@@ -118,11 +107,11 @@ export default function Returns() {
         {data !== null && (
           <Panel bodyClassName="p-0">
             {data.requests.length === 0 ? (
-              <EmptyState title="No requests" message="Customer return and recycling requests will appear here as they are submitted." />
+              <EmptyState title="No product returns" message="Customer return requests appear here as they are submitted. Recycling has its own tab." />
             ) : (
               <div className="px-4 py-4 sm:px-5">
                 <DataTable
-                  caption="Return and recycling requests"
+                  caption="Product return requests"
                   columns={columns}
                   rows={data.requests}
                   rowKey={(r) => r.id}

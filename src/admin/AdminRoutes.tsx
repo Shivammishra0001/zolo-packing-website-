@@ -11,7 +11,8 @@ import ChatInbox from "./pages/ChatInbox";
 import Orders from "./pages/OrdersReal";
 import OrderDetail from "./pages/OrderDetailReal";
 import OrderInvoice from "./pages/OrderInvoice";
-import Returns from "./pages/Returns";
+import ReturnsRecycling from "./pages/returns/ReturnsRecycling";
+import RecyclingRequestDetail from "./pages/returns/RecyclingRequestDetail";
 import ReturnDetail from "./pages/ReturnDetail";
 
 // Catalog
@@ -63,7 +64,14 @@ export default function AdminRoutes() {
         <Route path="orders" element={<Orders />} />
         <Route path="orders/:id" element={<OrderDetail />} />
         <Route path="orders/:id/invoice" element={<OrderInvoice />} />
-        <Route path="returns" element={<Returns />} />
+        {/* Returns & Recycling: two separate workflows under one menu. */}
+        <Route path="returns" element={<ReturnsRecycling section="overview" />} />
+        <Route path="returns/product" element={<ReturnsRecycling section="product" />} />
+        <Route path="returns/recycling" element={<ReturnsRecycling section="recycling" />} />
+        <Route path="returns/recycling/:id" element={<RecyclingRequestDetail />} />
+        <Route path="returns/rules" element={<ReturnsRecycling section="rules" />} />
+        <Route path="returns/eco-credits" element={<ReturnsRecycling section="eco-credits" />} />
+        <Route path="returns/eco-settings" element={<ReturnsRecycling section="eco-settings" />} />
         <Route path="returns/:id" element={<ReturnDetail />} />
 
         {/* Sellers / Suppliers (real DB-backed onboarding review) */}

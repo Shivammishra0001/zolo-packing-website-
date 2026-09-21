@@ -90,15 +90,6 @@ export interface AdminReturnRow {
   createdAt: string;
 }
 
-export interface PointsLedgerRow {
-  id: string;
-  type: string;
-  points: number;
-  balanceAfter: number;
-  note: string | null;
-  createdAt: string;
-}
-
 export const returnsApi = {
   list: (type?: ReturnKind) => request<{ requests: ReturnRequest[] }>(`/returns${type ? `?type=${type}` : ""}`),
   get: (id: string) => request<ReturnRequest>(`/returns/${id}`),
@@ -112,11 +103,11 @@ export const returnsApi = {
     pickupAddressId: string;
   }) => request<ReturnRequest>("/returns", { method: "POST", body: input }),
   cancel: (id: string) => request<ReturnRequest>(`/returns/${id}/cancel`, { method: "POST" }),
-  estimate: (orderItemId: string, quantity: number) =>
-    request<{ quantity: number; remaining: number; estimatedPoints: number; note: string }>(
-      `/returns/estimate?orderItemId=${encodeURIComponent(orderItemId)}&quantity=${quantity}`,
+  /** How many units of an order item can still be returned. */
+  remaining: (orderItemId: string, quantity: number) =>
+    request<{ quantity: number; remaining: number }>(
+      `/returns/remaining?orderItemId=${encodeURIComponent(orderItemId)}&quantity=${quantity}`,
     ),
-  points: () => request<{ balance: number; ledger: PointsLedgerRow[] }>("/returns/points"),
   attachFile: (id: string, payload: { fileName: string; mime: string; dataBase64: string }) =>
     request<ReturnFileMeta>(`/returns/${id}/files`, { method: "POST", body: payload }),
   downloadFile: (id: string, fileId: string) => requestBlob(`/returns/${id}/files/${fileId}/download`),
@@ -142,16 +133,17 @@ export const adminReturnsApi = {
   shipReplacement: (id: string, body: { courier?: string; trackingNumber?: string }) =>
     request<AdminReturnDetail>(`/admin/returns/${id}/replacement/ship`, { method: "POST", body }),
   deliverReplacement: (id: string) => request<AdminReturnDetail>(`/admin/returns/${id}/replacement/deliver`, { method: "POST" }),
-  schedulePickup: (id: string, date: string) => request<AdminReturnDetail>(`/admin/returns/${id}/recycle/pickup`, { method: "POST", body: { date } }),
-  markReceived: (id: string) => request<AdminReturnDetail>(`/admin/returns/${id}/recycle/received`, { method: "POST" }),
+  schedulePickup: (id: string, date: string) => request<AdminReturnDetail>(`/admin/returns/${id}/pickup`, { method: "POST", body: { date } }),
+  markReceived: (id: string) => request<AdminReturnDetail>(`/admin/returns/${id}/received`, { method: "POST" }),
   inspect: (id: string, body: { receivedQuantity: number; acceptedQuantity: number; rejectedQuantity?: number; notes?: string }) =>
-    request<AdminReturnDetail>(`/admin/returns/${id}/recycle/inspection`, { method: "POST", body }),
+    request<AdminReturnDetail>(`/admin/returns/${id}/inspection`, { method: "POST", body }),
   startRecycle: (id: string) => request<AdminReturnDetail>(`/admin/returns/${id}/recycle/start`, { method: "POST" }),
   completeRecycle: (id: string) => request<AdminReturnDetail>(`/admin/returns/${id}/recycle/complete`, { method: "POST" }),
-  creditPoints: (id: string) => request<AdminReturnDetail>(`/admin/returns/${id}/recycle/credit-points`, { method: "POST" }),
   close: (id: string) => request<AdminReturnDetail>(`/admin/returns/${id}/close`, { method: "POST" }),
   downloadFile: (id: string, fileId: string) => requestBlob(`/admin/returns/${id}/files/${fileId}/download`),
 };
 
+// Product-return vocabulary shown to people (the enum names are internal).
+const RETURN_STATUS_LABEL: Partial<Record<ReturnStatus, string>> = { SUBMITTED: "Requested", INSPECTED: "Inspecting", REFUND_PROCESSING: "Refund processing" };
 export const prettyReturnStatus = (s: ReturnStatus) =>
-  s.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase());
+  RETURN_STATUS_LABEL[s] ?? s.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase());

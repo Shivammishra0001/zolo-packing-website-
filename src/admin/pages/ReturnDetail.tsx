@@ -140,38 +140,46 @@ function ReplacementPanel({ r, act }: { r: AdminReturnDetail; act: Act }) {
   );
 }
 
-function RecyclePanel({ r, act }: { r: AdminReturnDetail; act: Act }) {
+/**
+ * Physical flow of a PRODUCT RETURN: the goods come back and are inspected
+ * before the admin picks Refund or Replacement. Optional — an approved request
+ * can also go straight to a resolution when nothing needs collecting.
+ */
+function CollectionPanel({ r, act }: { r: AdminReturnDetail; act: Act }) {
   const [pickupDate, setPickupDate] = useState("");
   const [received, setReceived] = useState(String(r.quantity));
   const [accepted, setAccepted] = useState(String(r.quantity));
   const [notes, setNotes] = useState("");
   const rec = r.recycle;
+  const legacyRecycle = r.type === "RECYCLE" || r.resolution === "RECYCLE";
 
   return (
-    <Panel title="Recycling">
+    <Panel title={legacyRecycle ? "Recycling (legacy request)" : "Collect & inspect the returned goods"}>
       <KeyValue
         items={[
           { label: "Pickup scheduled", value: rec?.pickupScheduledFor ? formatDateTime(rec.pickupScheduledFor) : "—" },
           { label: "Received", value: rec?.receivedQuantity ?? "—" },
           { label: "Accepted", value: rec?.acceptedQuantity ?? "—" },
           { label: "Rejected", value: rec?.rejectedQuantity ?? "—" },
-          { label: "Points credited", value: r.pointsAwarded ?? "—" },
+          ...(legacyRecycle ? [{ label: "Points credited (legacy)", value: r.pointsAwarded ?? "—" }] : []),
         ]}
       />
       {rec?.inspectionNotes && <p className="mt-2 text-xs erp-text-muted">Inspection: {rec.inspectionNotes}</p>}
 
-      {r.status === "PICKUP_SCHEDULED" && (
+      {(r.status === "APPROVED" || r.status === "PICKUP_SCHEDULED") && (
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="block">
-            <span className="text-xs font-semibold erp-text-muted">Reschedule pickup</span>
+            <span className="text-xs font-semibold erp-text-muted">{r.status === "APPROVED" ? "Pickup date" : "Reschedule pickup"}</span>
             <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} className={`mt-1 ${INPUT}`} />
           </label>
-          <Button variant="secondary" disabled={!pickupDate} onClick={() => void act(() => adminReturnsApi.schedulePickup(r.id, pickupDate), "Pickup rescheduled")}>
-            Update pickup
+          <Button variant={r.status === "APPROVED" ? "primary" : "secondary"} disabled={!pickupDate} onClick={() => void act(() => adminReturnsApi.schedulePickup(r.id, pickupDate), r.status === "APPROVED" ? "Pickup scheduled" : "Pickup rescheduled")}>
+            {r.status === "APPROVED" ? "Schedule pickup" : "Update pickup"}
           </Button>
-          <Button variant="primary" onClick={() => void act(() => adminReturnsApi.markReceived(r.id), "Marked received")}>
-            Mark received
-          </Button>
+          {r.status === "PICKUP_SCHEDULED" && (
+            <Button variant="primary" onClick={() => void act(() => adminReturnsApi.markReceived(r.id), "Marked received")}>
+              Mark received
+            </Button>
+          )}
         </div>
       )}
 
@@ -203,25 +211,23 @@ function RecyclePanel({ r, act }: { r: AdminReturnDetail; act: Act }) {
         </div>
       )}
 
-      {r.status === "INSPECTED" && (
+      {/* Legacy order-item recycle rows can still be finished and closed. They no
+          longer credit anything: Eco Credits come from Recycling Requests. */}
+      {legacyRecycle && r.status === "INSPECTED" && (
         <div className="mt-4 flex justify-end">
           <Button variant="primary" onClick={() => void act(() => adminReturnsApi.startRecycle(r.id), "Recycling started")}>Start recycling</Button>
         </div>
       )}
-      {r.status === "RECYCLE_PROCESSING" && (
+      {legacyRecycle && r.status === "RECYCLE_PROCESSING" && (
         <div className="mt-4 flex justify-end">
           <Button variant="primary" onClick={() => void act(() => adminReturnsApi.completeRecycle(r.id), "Recycling completed")}>Mark recycled</Button>
         </div>
       )}
-      {r.status === "RECYCLED" && (
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <p className="text-xs erp-text-muted">
-            Points are computed by the backend from the configured rules on the ACCEPTED quantity ({rec?.acceptedQuantity ?? 0} unit(s)) and credited to the ledger exactly once.
-          </p>
-          <Button variant="primary" icon={Leaf} onClick={() => void act(() => adminReturnsApi.creditPoints(r.id), "Points credited")}>
-            Credit points
-          </Button>
-        </div>
+      {!legacyRecycle && (
+        <p className="mt-3 flex items-start gap-1.5 text-xs erp-text-faint">
+          <Leaf className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          A product return never awards Eco Credits. Credits come only from verified Recycling Requests, or an explicit Eco Credits → Manual adjustment.
+        </p>
       )}
     </Panel>
   );
@@ -272,7 +278,8 @@ export default function ReturnDetail() {
   if (!r) return <div className="shell-form"><Panel><ListSkeleton rows={6} /></Panel></div>;
 
   const inReview = r.status === "UNDER_REVIEW";
-  const needsResolution = r.status === "APPROVED";
+  // After approval, or after the returned goods were inspected.
+  const needsResolution = (r.status === "APPROVED" || r.status === "INSPECTED") && r.type !== "RECYCLE" && r.resolution !== "RECYCLE";
 
   return (
     <div className="shell-form">
@@ -348,10 +355,10 @@ export default function ReturnDetail() {
           {needsResolution && (
             <Panel title="Select resolution">
               <div className="flex flex-wrap gap-4">
-                {(["REFUND", "REPLACEMENT", "RECYCLE"] as const).map((opt) => (
+                {(["REFUND", "REPLACEMENT"] as const).map((opt) => (
                   <label key={opt} className="flex items-center gap-2 text-sm font-semibold erp-text">
                     <input type="radio" name="resolution" checked={resolution === opt} onChange={() => setResolution(opt)} className="accent-primary-600" />
-                    {opt === "REFUND" ? "Refund" : opt === "REPLACEMENT" ? "Damage / Replacement" : "Recycle"}
+                    {opt === "REFUND" ? "Refund" : "Damage / Replacement"}
                   </label>
                 ))}
                 <Button
@@ -369,11 +376,11 @@ export default function ReturnDetail() {
           {/* Step 3 — ONLY the selected branch */}
           {r.resolution === "REFUND" && ["REFUND_PROCESSING", "REFUNDED"].includes(r.status) && <RefundPanel r={r} act={act} />}
           {r.resolution === "REPLACEMENT" && r.status.startsWith("REPLACEMENT") && <ReplacementPanel r={r} act={act} />}
-          {r.resolution === "RECYCLE" && ["PICKUP_SCHEDULED", "RECEIVED", "INSPECTED", "RECYCLE_PROCESSING", "RECYCLED", "POINTS_CREDITED"].includes(r.status) && (
-            <RecyclePanel r={r} act={act} />
+          {(["PICKUP_SCHEDULED", "RECEIVED", "INSPECTED", "RECYCLE_PROCESSING", "RECYCLED", "POINTS_CREDITED"].includes(r.status) || (r.status === "APPROVED" && !r.resolution) || r.recycle?.receivedQuantity != null) && (
+            <CollectionPanel r={r} act={act} />
           )}
 
-          {["REFUNDED", "REPLACEMENT_DELIVERED", "POINTS_CREDITED"].includes(r.status) && (
+          {["REFUNDED", "REPLACEMENT_DELIVERED", "POINTS_CREDITED", "RECYCLED"].includes(r.status) && (
             <div className="flex justify-end">
               <Button variant="secondary" disabled={busy} onClick={() => void act(() => adminReturnsApi.close(r.id), "Request closed")}>
                 Close request

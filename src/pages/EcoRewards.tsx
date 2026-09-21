@@ -30,7 +30,7 @@ import ctaScene from "../../images/herobg-2.png";
 import { tiers } from "../components/eco/EcoRewardsComponents";
 import { useAuthSession } from "../components/auth/AuthContext";
 import { useAuthGuard } from "../components/auth/AuthGuard";
-import { returnsApi } from "../lib/api/returns";
+import { ecoCreditsApi, fmtQty, recyclingApi, type RecyclingProgram } from "../lib/api/recycling";
 
 /* =========================================================
    ECO REWARDS — the one sustainability / circular-economy page.
@@ -41,7 +41,7 @@ import { returnsApi } from "../lib/api/returns";
    header and footer are the site-wide components and are reused as-is).
    Data: the impact statistics, five-step loop and membership tiers are the
    page's existing content. The Eco Wallet reads the customer's REAL balance
-   from GET /returns/points.
+   from GET /eco-credits (the Eco Credit ledger).
 
    Actions:
      Recycle → the existing flow: a recycling request starts from an order
@@ -121,6 +121,41 @@ function Eyebrow({ children, tone = "green" }: { children: React.ReactNode; tone
   return <p className={`text-[12px] font-bold uppercase tracking-[0.18em] ${tone === "orange" ? "text-[var(--zolo-orange)]" : "text-[var(--zolo-green)]"}`}>{children}</p>;
 }
 
+/* ---------- Live recycling rates (admin rules + reward settings) ----------
+   Renders NOTHING until the admin has an active recycling rule, so the page is
+   unchanged when the programme isn't configured. No figure is written in code:
+   every number comes from GET /recycling/program. */
+function LiveRates() {
+  const [program, setProgram] = useState<RecyclingProgram | null>(null);
+  useEffect(() => {
+    let alive = true;
+    recyclingApi.program().then((p) => { if (alive) setProgram(p); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  if (!program || program.materials.length === 0) return null;
+  const { reward } = program;
+  return (
+    <div className="mx-auto mt-7 max-w-5xl rounded-[12px] border border-[var(--zolo-border)] bg-white px-5 py-5 shadow-[0_6px_18px_rgba(15,23,42,0.05)]" aria-label="Current recycling rewards">
+      <p className="text-center text-[12px] font-extrabold uppercase tracking-[0.14em] text-[var(--zolo-green)]">Today&rsquo;s recycling rewards</p>
+      <ul className="mt-3 flex flex-wrap justify-center gap-2.5">
+        {program.materials.map((m) => (
+          <li key={m.ruleId} className="rounded-full bg-[#e8f5ec] px-4 py-1.5 text-[14px] font-bold text-[#14532d]">
+            1 {m.unit} {m.material} → {fmtQty(m.creditsPerUnit)} Eco Credits
+          </li>
+        ))}
+        {reward.enabled && reward.creditsRequired && reward.couponValueMinor ? (
+          <li className="rounded-full bg-[#fff1e6] px-4 py-1.5 text-[14px] font-bold text-[var(--zolo-orange-dark)]">
+            {reward.creditsRequired.toLocaleString("en-IN")} Eco Credits → ₹{(reward.couponValueMinor / 100).toLocaleString("en-IN")} coupon
+          </li>
+        ) : null}
+      </ul>
+      <p className="mt-3 text-center text-[13px] text-[var(--zolo-muted)]">
+        Credits are calculated on the quantity we verify, at the rate in force when your request is approved. <Link to="/account/recycle" className="font-bold text-[var(--zolo-green)] hover:underline">Recycle &amp; earn</Link>
+      </p>
+    </div>
+  );
+}
+
 /* ---------- Eco Wallet (real balance from the points ledger) ---------- */
 
 function EcoWalletMini() {
@@ -132,7 +167,7 @@ function EcoWalletMini() {
     if (!isAuthenticated) { setState({ status: "idle", balance: 0 }); return; }
     let alive = true;
     setState((s) => ({ ...s, status: "loading" }));
-    returnsApi.points()
+    ecoCreditsApi.wallet()
       .then((r) => { if (alive) setState({ status: "ready", balance: r.balance }); })
       .catch(() => { if (alive) setState({ status: "error", balance: 0 }); });
     return () => { alive = false; };
@@ -334,6 +369,7 @@ export default function EcoRewards() {
               </motion.li>
             ))}
           </motion.ol>
+          <LiveRates />
         </div>
       </section>
 

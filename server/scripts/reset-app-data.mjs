@@ -122,8 +122,9 @@ async function main() {
       await tx.returnStatusHistory.deleteMany({});
       await tx.refund.deleteMany({});
       await tx.returnRequest.deleteMany({});
-      await tx.pointsLedger.deleteMany({});
-      // RecycleRule rows are business configuration — kept, like the catalog.
+      await tx.ecoCreditTransaction.deleteMany({});
+      await tx.recyclingRequest.deleteMany({}); // files/history cascade
+      // RecyclingRule + EcoRewardSetting rows are business configuration — kept, like the catalog.
 
       // --- Commerce -------------------------------------------------------
       await tx.shipmentEvent.deleteMany({});

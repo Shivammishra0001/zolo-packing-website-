@@ -1,4 +1,11 @@
-// Returns, recycling & reward points.
+// PRODUCT RETURNS (refund / replacement).
+//
+// Recycling is a SEPARATE workflow — services/recycling.mjs — with its own
+// requests, admin-owned rules and the Eco Credit ledger. A product return never
+// awards Eco Credits: the old order-item "recycle" branch (and its hard-coded
+// fallback rate) is retired; rows it already created stay readable. If a
+// returned item should earn credits, an admin records that explicitly through
+// Eco Credits -> Manual adjustment.
 //
 // CUSTOMER-INITIATED ONLY: a request is created by the buyer against their own
 // delivered order item. Admin reviews, approves/rejects, selects ONE
@@ -6,9 +13,7 @@
 // create requests, and no caller can jump the state machine — every transition
 // is validated server-side against TRANSITIONS.
 //
-// Money stays in paise. Points are integers, credited exactly once per request
-// through the append-only PointsLedger (unique [type, referenceType,
-// referenceId] makes double-credit a database error, not a code-review hope).
+// Money stays in paise.
 import { z } from "zod";
 import { prisma } from "../lib/prisma.mjs";
 import { badRequest, notFound, conflict, forbidden } from "../lib/http.mjs";
@@ -20,9 +25,6 @@ import { putPrivate, readPrivate, supportedPrivateMime } from "../lib/storage.mj
 export const RETURN_WINDOW_DAYS = Number(process.env.RETURN_WINDOW_DAYS) || 30;
 const MAX_FILES = 5;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
-
-// Fallback reward rate when no RecycleRule covers the category: 0.5 pt/unit.
-const DEFAULT_RATE_X100 = 50;
 
 export const RETURN_REASONS = [
   "damaged", "wrong_product", "defective", "incorrect_quantity", "not_as_expected", "recycle", "other",
@@ -38,15 +40,19 @@ const ELIGIBLE_ORDER_STATUSES = ["DELIVERED", "RETURN_REQUESTED"];
 const TRANSITIONS = {
   SUBMITTED: ["UNDER_REVIEW", "CANCELLED"],
   UNDER_REVIEW: ["APPROVED", "REJECTED", "CANCELLED"],
-  // APPROVED branches when the admin selects a resolution.
+  // APPROVED: either collect the goods first (pickup -> received -> inspection)
+  // or go straight to a resolution when nothing needs to come back.
   APPROVED: ["REFUND_PROCESSING", "REPLACEMENT_PROCESSING", "PICKUP_SCHEDULED"],
   REJECTED: [],
-  // Physical flow (recycle)
+  // Physical flow: the returned goods come back and are inspected, THEN the
+  // admin picks the resolution.
   PICKUP_SCHEDULED: ["RECEIVED"],
   RECEIVED: ["INSPECTED"],
-  INSPECTED: ["RECYCLE_PROCESSING"],
+  INSPECTED: ["REFUND_PROCESSING", "REPLACEMENT_PROCESSING", "RECYCLE_PROCESSING"],
+  // Legacy order-item recycle rows only (no new request can enter these). They
+  // can be finished and closed; they no longer credit anything.
   RECYCLE_PROCESSING: ["RECYCLED"],
-  RECYCLED: ["POINTS_CREDITED"],
+  RECYCLED: ["CLOSED"],
   POINTS_CREDITED: ["CLOSED"],
   // Refund branch
   REFUND_PROCESSING: ["REFUNDED"],
@@ -134,25 +140,6 @@ async function nextRequestNumber(tx, type) {
   return `${head}${String((Number.isFinite(n) ? n : 0) + 1).padStart(6, "0")}`;
 }
 
-// ---- Reward rules ----------------------------------------------------------
-
-/** Resolve the reward rate for a product category. Backend-only — the
- *  frontend never computes points. */
-async function rateFor(category, quantity) {
-  const rule = category
-    ? await prisma.recycleRule.findFirst({ where: { category, isActive: true } })
-    : null;
-  if (rule && quantity < rule.minQuantity) {
-    return { rateX100: 0, maxPoints: null, reason: `Minimum ${rule.minQuantity} units for this category` };
-  }
-  return { rateX100: rule?.pointsPerUnitX100 ?? DEFAULT_RATE_X100, maxPoints: rule?.maxPoints ?? null, reason: null };
-}
-
-function computePoints(rateX100, quantity, maxPoints) {
-  const raw = Math.floor((quantity * rateX100) / 100);
-  return maxPoints != null ? Math.min(raw, maxPoints) : raw;
-}
-
 // ---- Eligibility -----------------------------------------------------------
 
 /**
@@ -208,6 +195,10 @@ const createSchema = z.object({
 
 export async function createRequest(userId, body) {
   const input = createSchema.parse(body);
+  // Recycling is not a kind of product return any more.
+  if (input.type === "RECYCLE") {
+    throw badRequest("Recycling has its own request now — submit it from Recycle & Earn", "USE_RECYCLING_REQUEST");
+  }
 
   const address = await prisma.address.findFirst({ where: { id: input.pickupAddressId, userId } });
   if (!address) throw notFound("Pickup address not found");
@@ -285,19 +276,10 @@ export async function createRequest(userId, body) {
   return getMine(userId, created.id);
 }
 
-/** Estimated recycle points — an ESTIMATE only; final points come from the
- *  post-inspection accepted quantity. */
-export async function estimatePoints(userId, { orderItemId, quantity }) {
-  const qty = Number(quantity);
-  if (!Number.isInteger(qty) || qty <= 0) throw badRequest("Quantity must be a positive whole number");
-  const { item, remaining } = await eligibleItem(userId, orderItemId);
-  const { rateX100, maxPoints, reason } = await rateFor(item.product?.category ?? null, qty);
-  return {
-    quantity: qty,
-    remaining,
-    estimatedPoints: computePoints(rateX100, qty, maxPoints),
-    note: reason ?? "Final points are calculated on the accepted quantity after inspection.",
-  };
+/** How many units of this order item the caller may still return. */
+export async function remainingFor(userId, { orderItemId, quantity }) {
+  const { remaining } = await eligibleItem(userId, String(orderItemId ?? ""));
+  return { quantity: Number(quantity) || 0, remaining };
 }
 
 const shapeFile = (f) => ({ id: f.id, fileName: f.fileName, mimeType: f.mimeType, size: f.size, createdAt: f.createdAt });
@@ -533,21 +515,20 @@ export async function adminReject(adminId, id, { reason } = {}) {
  * here; the UI then shows only that branch's workflow.
  */
 export async function adminSetResolution(adminId, id, { resolution, replacementQuantity, notes } = {}) {
-  if (!["REFUND", "REPLACEMENT", "RECYCLE"].includes(resolution)) throw badRequest("Unknown resolution", "BAD_RESOLUTION");
-  const first = { REFUND: "REFUND_PROCESSING", REPLACEMENT: "REPLACEMENT_PROCESSING", RECYCLE: "PICKUP_SCHEDULED" }[resolution];
+  if (resolution === "RECYCLE") {
+    throw badRequest("Recycling is handled through Recycling Requests, not as a return resolution", "USE_RECYCLING_REQUEST");
+  }
+  if (!["REFUND", "REPLACEMENT"].includes(resolution)) throw badRequest("Unknown resolution", "BAD_RESOLUTION");
+  const first = { REFUND: "REFUND_PROCESSING", REPLACEMENT: "REPLACEMENT_PROCESSING" }[resolution];
 
   const after = await prisma.$transaction(async (tx) => {
     const r = await forAdmin(tx, id);
-    if (r.status !== "APPROVED") throw conflict("Select a resolution after approving the request", "NOT_APPROVED");
+    if (!["APPROVED", "INSPECTED"].includes(r.status)) throw conflict("Select a resolution after approving (or inspecting) the request", "NOT_APPROVED");
     const data = { resolution, adminNotes: notes ?? r.adminNotes };
     if (resolution === "REPLACEMENT") {
       const qty = Number(replacementQuantity ?? r.quantity);
       if (!Number.isInteger(qty) || qty <= 0 || qty > r.quantity) throw badRequest("Replacement quantity must be between 1 and the requested quantity");
       data.replacementQuantity = qty;
-    }
-    if (resolution === "RECYCLE") {
-      // Pickup date can be set/adjusted via the pickup endpoint; default +2 days.
-      data.pickupScheduledFor = new Date(Date.now() + 2 * 86400_000);
     }
     return transition(tx, r, first, { actorId: adminId, note: `Resolution: ${resolution}`, data });
   });
@@ -622,11 +603,15 @@ export const adminDeliverReplacement = (adminId, id) =>
 export async function adminSchedulePickup(adminId, id, { date } = {}) {
   const when = date ? new Date(date) : null;
   if (!when || Number.isNaN(when.getTime())) throw badRequest("A valid pickup date is required");
-  // Rescheduling an already-scheduled pickup updates the date without a
-  // transition; scheduling from APPROVED is done via setResolution(RECYCLE).
+  // From APPROVED this starts the physical flow (goods come back before the
+  // resolution); on an already-scheduled pickup it just moves the date.
   const r = await prisma.returnRequest.findFirst({ where: { OR: [{ id }, { requestNumber: id }] } });
   if (!r) throw notFound("Request not found");
-  if (r.status !== "PICKUP_SCHEDULED") throw conflict("Pickup can only be (re)scheduled while in pickup-scheduled", "INVALID_TRANSITION");
+  if (r.status === "APPROVED") {
+    const after = await adminTransition(r.id, adminId, "PICKUP_SCHEDULED", { note: `Pickup on ${when.toISOString().slice(0, 10)}`, data: { pickupScheduledFor: when } });
+    return after;
+  }
+  if (r.status !== "PICKUP_SCHEDULED") throw conflict("Pickup can only be scheduled for an approved request", "INVALID_TRANSITION");
   const updated = await prisma.returnRequest.update({ where: { id: r.id }, data: { pickupScheduledFor: when } });
   await notifyCustomer(updated, "PICKUP_SCHEDULED");
   return adminGet(r.id);
@@ -655,51 +640,4 @@ export async function adminInspect(adminId, id, { receivedQuantity, acceptedQuan
 export const adminStartRecycleProcessing = (adminId, id) => adminTransition(id, adminId, "RECYCLE_PROCESSING");
 export const adminCompleteRecycle = (adminId, id) => adminTransition(id, adminId, "RECYCLED");
 
-/**
- * Credit recycling points — ONLY after the recycle completed, ONLY on the
- * accepted quantity, exactly once (DB-unique ledger reference), through the
- * append-only PointsLedger. Never `points += n` on a user row.
- */
-export async function adminCreditPoints(adminId, id) {
-  const after = await prisma.$transaction(async (tx) => {
-    const r = await forAdmin(tx, id);
-    if (r.status !== "RECYCLED") throw conflict("Points are credited only after recycling is completed", "INVALID_TRANSITION");
-    const accepted = r.acceptedQuantity ?? 0;
-    if (accepted <= 0) throw badRequest("No accepted quantity to reward", "NOTHING_ACCEPTED");
-
-    const item = await tx.orderItem.findUnique({ where: { id: r.orderItemId }, select: { productId: true } });
-    const product = item?.productId
-      ? await tx.product.findUnique({ where: { id: item.productId }, select: { category: true } })
-      : null;
-    const { rateX100, maxPoints } = await rateFor(product?.category ?? null, accepted);
-    const points = computePoints(rateX100, accepted, maxPoints);
-
-    const last = await tx.pointsLedger.findFirst({ where: { userId: r.userId }, orderBy: { createdAt: "desc" }, select: { balanceAfter: true } });
-    await tx.pointsLedger.create({
-      data: {
-        userId: r.userId,
-        type: "RECYCLE_REWARD",
-        points,
-        referenceType: "ReturnRequest",
-        referenceId: r.id, // unique with type — double-credit is a DB error
-        balanceAfter: (last?.balanceAfter ?? 0) + points,
-        note: `${r.requestNumber}: ${accepted} unit(s) × ${(rateX100 / 100).toFixed(2)} pt`,
-      },
-    });
-    return transition(tx, r, "POINTS_CREDITED", {
-      actorId: adminId,
-      note: `${points} points credited on ${accepted} accepted unit(s)`,
-      data: { pointsAwarded: points, pointsRateX100: rateX100 },
-    });
-  });
-  await notifyCustomer(after, "POINTS_CREDITED");
-  return adminGet(after.id);
-}
-
 export const adminClose = (adminId, id) => adminTransition(id, adminId, "CLOSED");
-
-/** Customer's points balance + ledger (append-only history). */
-export async function pointsForUser(userId) {
-  const rows = await prisma.pointsLedger.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 100 });
-  return { balance: rows[0]?.balanceAfter ?? 0, ledger: rows };
-}

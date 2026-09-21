@@ -115,6 +115,7 @@ async function main() {
   const privateKeys = [
     ...(await prisma.rfqFile.findMany({ where: { OR: [{ rfqId: { in: rfqIds } }, { uploadedById: { in: userIds } }] }, select: { storageKey: true } })).map((f) => f.storageKey),
     ...(await prisma.returnFile.findMany({ where: { returnRequestId: { in: returnIds } }, select: { storageKey: true } })).map((f) => f.storageKey),
+    ...(await prisma.recyclingFile.findMany({ where: { recyclingRequest: { userId: { in: userIds } } }, select: { storageKey: true } })).map((f) => f.storageKey),
     ...(await prisma.supplierDocument.findMany({ where: { supplierId: { in: supplierIds } }, select: { storageKey: true } })).map((f) => f.storageKey),
     ...(await prisma.paymentRequest.findMany({ where: { id: { in: paymentRequestIds }, proofFileKey: { not: null } }, select: { proofFileKey: true } })).map((p) => p.proofFileKey),
   ].filter(Boolean);
@@ -177,7 +178,11 @@ async function main() {
     await tx.quotationItem.deleteMany({ where: { productId: { in: productIds } } });
     await tx.rfq.deleteMany({ where: { id: { in: rfqIds } } }); // matches cascade
 
-    await tx.pointsLedger.deleteMany({ where: { userId: inUsers } });
+    await tx.ecoCreditTransaction.deleteMany({ where: { userId: inUsers } });
+    await tx.recyclingRequest.deleteMany({ where: { userId: inUsers } }); // files/history cascade
+    // Eco Reward coupons generated for the purged users.
+    await tx.couponRedemption.deleteMany({ where: { coupon: { assignedUserId: inUsers } } });
+    await tx.coupon.deleteMany({ where: { assignedUserId: inUsers } });
     await tx.payout.deleteMany({ where: { supplierId: { in: supplierIds } } });
     await tx.catalogImport.deleteMany({ where: { id: { in: importIds } } }); // errors cascade
     await tx.couponRedemption.deleteMany({ where: { couponId: { in: couponIds } } });

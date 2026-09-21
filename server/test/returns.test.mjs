@@ -161,70 +161,42 @@ test("TEST 3 — replacement path shows only its own workflow", async () => {
   assert.equal(del.body.data.status, "REPLACEMENT_DELIVERED");
 });
 
-test("TEST 4 — recycle path: inspection decides points; ledger is append-only and idempotent", async () => {
+test("TEST 4 — a product return is NOT recycling: no recycle type, no recycle resolution, no Eco Credits", async () => {
   const buyer = await registerBuyer();
   const admin = await adminToken();
   const { item, addressId } = await deliveredOrder(buyer, { quantity: 500 });
 
-  // Estimate BEFORE submitting (500 × default 0.5 = 250) — never final.
-  const est = await api(`/returns/estimate?orderItemId=${item.id}&quantity=500`, { token: buyer.token });
-  assert.equal(est.status, 200);
-  assert.equal(est.body.data.estimatedPoints, 250);
+  // The old order-item "recycle" request is gone — recycling has its own workflow.
+  const legacy = await createReq(buyer, item, addressId, { type: "RECYCLE", quantity: 500, reason: "recycle", condition: "used" });
+  assert.equal(legacy.status, 400);
+  assert.equal(legacy.body.code, "USE_RECYCLING_REQUEST");
+  assert.equal((await api(`/returns/estimate?orderItemId=${item.id}&quantity=500`, { token: buyer.token })).status, 404, "no points estimate on returns");
 
-  const r = (await createReq(buyer, item, addressId, { type: "RECYCLE", quantity: 500, reason: "recycle", condition: "used" })).body.data;
-  assert.match(r.requestNumber, /^REC-\d{4}-\d{6}$/);
-
-  // NOTHING is credited at submission.
-  const points0 = await api("/returns/points", { token: buyer.token });
-  assert.equal(points0.body.data.balance, 0);
-
+  const r = (await createReq(buyer, item, addressId, { quantity: 10 })).body.data;
+  assert.match(r.requestNumber, /^RET-\d{4}-\d{6}$/);
   await api(`/admin/returns/${r.id}/review`, { method: "POST", token: admin });
   await api(`/admin/returns/${r.id}/approve`, { method: "POST", token: admin });
-  const branch = await api(`/admin/returns/${r.id}/resolution`, { method: "POST", token: admin, body: { resolution: "RECYCLE" } });
-  assert.equal(branch.body.data.status, "PICKUP_SCHEDULED");
 
-  // Crediting before completion is refused at every stage.
-  assert.equal((await api(`/admin/returns/${r.id}/recycle/credit-points`, { method: "POST", token: admin })).status, 409);
+  const recycleRes = await api(`/admin/returns/${r.id}/resolution`, { method: "POST", token: admin, body: { resolution: "RECYCLE" } });
+  assert.equal(recycleRes.status, 400);
+  assert.equal(recycleRes.body.code, "USE_RECYCLING_REQUEST");
+  assert.equal((await api(`/admin/returns/${r.id}/recycle/credit-points`, { method: "POST", token: admin })).status, 404, "the credit-points endpoint no longer exists");
 
-  await api(`/admin/returns/${r.id}/recycle/received`, { method: "POST", token: admin });
-  const insp = await api(`/admin/returns/${r.id}/recycle/inspection`, { method: "POST", token: admin, body: {
-    receivedQuantity: 500, acceptedQuantity: 450, rejectedQuantity: 50, notes: "50 units contaminated",
-  } });
-  assert.equal(insp.status, 200, JSON.stringify(insp.body));
+  // Physical flow: approved -> pickup scheduled -> received -> inspected -> refund.
+  const pickup = await api(`/admin/returns/${r.id}/pickup`, { method: "POST", token: admin, body: { date: new Date(Date.now() + 86400000).toISOString() } });
+  assert.equal(pickup.status, 200, JSON.stringify(pickup.body));
+  assert.equal(pickup.body.data.status, "PICKUP_SCHEDULED");
+  assert.equal((await api(`/admin/returns/${r.id}/received`, { method: "POST", token: admin })).body.data.status, "RECEIVED");
+  const insp = await api(`/admin/returns/${r.id}/inspection`, { method: "POST", token: admin, body: { receivedQuantity: 10, acceptedQuantity: 8, rejectedQuantity: 2, notes: "2 units used" } });
   assert.equal(insp.body.data.status, "INSPECTED");
+  const branch = await api(`/admin/returns/${r.id}/resolution`, { method: "POST", token: admin, body: { resolution: "REFUND" } });
+  assert.equal(branch.body.data.status, "REFUND_PROCESSING");
 
-  await api(`/admin/returns/${r.id}/recycle/start`, { method: "POST", token: admin });
-  await api(`/admin/returns/${r.id}/recycle/complete`, { method: "POST", token: admin });
-
-  // Credit: 450 accepted × 0.5 = 225 — never the 500 requested.
-  const credit = await api(`/admin/returns/${r.id}/recycle/credit-points`, { method: "POST", token: admin });
-  assert.equal(credit.status, 200, JSON.stringify(credit.body));
-  assert.equal(credit.body.data.status, "POINTS_CREDITED");
-  assert.equal(credit.body.data.pointsAwarded, 225);
-
-  // Ledger: one immutable row with a running balance.
-  const points = await api("/returns/points", { token: buyer.token });
-  assert.equal(points.body.data.balance, 225);
-  assert.equal(points.body.data.ledger.length, 1);
-  assert.equal(points.body.data.ledger[0].type, "RECYCLE_REWARD");
-  assert.equal(points.body.data.ledger[0].balanceAfter, 225);
-
-  // Double-credit refused.
-  assert.equal((await api(`/admin/returns/${r.id}/recycle/credit-points`, { method: "POST", token: admin })).status, 409);
-});
-
-test("recycle rules override the default rate", async () => {
-  const buyer = await registerBuyer();
-  const { item, addressId } = await deliveredOrder(buyer, { quantity: 100 });
-  await prisma.recycleRule.upsert({
-    where: { category: "Gift Boxes" },
-    create: { category: "Gift Boxes", pointsPerUnitX100: 100, minQuantity: 1 },
-    update: { pointsPerUnitX100: 100, minQuantity: 1, isActive: true },
-  });
-  const est = await api(`/returns/estimate?orderItemId=${item.id}&quantity=100`, { token: buyer.token });
-  assert.equal(est.body.data.estimatedPoints, 100); // 1 pt/unit from the rule
-  await prisma.recycleRule.delete({ where: { category: "Gift Boxes" } });
-  void addressId;
+  // Through the whole return the customer's Eco Credit wallet never moved.
+  const walletAfter = await api("/eco-credits", { token: buyer.token });
+  assert.equal(walletAfter.status, 200);
+  assert.equal(walletAfter.body.data.balance, 0);
+  assert.equal(walletAfter.body.data.transactions.length, 0);
 });
 
 test("TEST 5 — authorization matrix", async () => {
@@ -241,7 +213,7 @@ test("TEST 5 — authorization matrix", async () => {
   // Customers and sellers cannot reach admin processing.
   for (const tok of [buyer.token, seller.token]) {
     assert.equal((await api(`/admin/returns/${r.id}/approve`, { method: "POST", token: tok })).status, 403);
-    assert.equal((await api(`/admin/returns/${r.id}/recycle/credit-points`, { method: "POST", token: tok })).status, 403);
+    assert.equal((await api(`/admin/returns/${r.id}/pickup`, { method: "POST", token: tok })).status, 403);
   }
   // Anonymous: 401.
   assert.equal((await api("/returns")).status, 401);

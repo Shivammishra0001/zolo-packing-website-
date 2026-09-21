@@ -274,7 +274,9 @@ test("finance totals come from Invoice and Payment rows", async () => {
 test("marketing overview reports coupon and campaign status counts from real rows", async () => {
   const { status, body } = await api("/admin/marketing", { token: adminToken });
   assert.equal(status, 200);
-  assert.equal(body.data.coupons.counts.total, await prisma.coupon.count({ where: { deletedAt: null } }));
+  // Marketing lists admin-authored coupons only; per-customer Eco Reward coupons
+  // live under Returns & Recycling → Eco Credits.
+  assert.equal(body.data.coupons.counts.total, await prisma.coupon.count({ where: { deletedAt: null, source: "admin" } }));
   assert.equal(body.data.campaigns.counts.total, await prisma.campaign.count({ where: { deletedAt: null } }));
   for (const c of body.data.coupons.recent) {
     assert.ok(["draft", "scheduled", "active", "paused", "expired", "usage_limit_reached"].includes(c.status));

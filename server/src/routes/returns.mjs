@@ -1,4 +1,4 @@
-// Returns & recycling routes.
+// PRODUCT RETURN routes. (Recycling + Eco Credits: routes/recycling.mjs.)
 //   /api/v1/returns/*        customer-owned (authenticated; owner-scoped)
 //   /api/v1/admin/returns/*  admin review + processing (requireAdmin at mount)
 //
@@ -22,12 +22,9 @@ returnsRouter.get("/", wrap(async (req, res) => ok(res, { requests: await return
 
 returnsRouter.post("/", wrap(async (req, res) => ok(res, await returns.createRequest(req.user.id, req.body ?? {}), 201)));
 
-// Points estimate for the recycle option — backend-computed, never final.
-returnsRouter.get("/estimate", wrap(async (req, res) =>
-  ok(res, await returns.estimatePoints(req.user.id, { orderItemId: req.query.orderItemId, quantity: req.query.quantity }))));
-
-// Reward-points balance + immutable ledger.
-returnsRouter.get("/points", wrap(async (req, res) => ok(res, await returns.pointsForUser(req.user.id))));
+// Remaining returnable quantity for an order item (drives the dialog's max).
+returnsRouter.get("/remaining", wrap(async (req, res) =>
+  ok(res, await returns.remainingFor(req.user.id, { orderItemId: req.query.orderItemId, quantity: req.query.quantity }))));
 
 returnsRouter.get("/:id", wrap(async (req, res) => ok(res, await returns.getMine(req.user.id, req.params.id))));
 
@@ -64,10 +61,11 @@ adminReturnsRouter.post("/:id/resolution", wrap(async (req, res) => ok(res, awai
 adminReturnsRouter.post("/:id/refund", wrap(async (req, res) => ok(res, await returns.adminCompleteRefund(req.user.id, req.params.id, req.body ?? {}))));
 adminReturnsRouter.post("/:id/replacement/ship", wrap(async (req, res) => ok(res, await returns.adminShipReplacement(req.user.id, req.params.id, req.body ?? {}))));
 adminReturnsRouter.post("/:id/replacement/deliver", wrap(async (req, res) => ok(res, await returns.adminDeliverReplacement(req.user.id, req.params.id))));
-adminReturnsRouter.post("/:id/recycle/pickup", wrap(async (req, res) => ok(res, await returns.adminSchedulePickup(req.user.id, req.params.id, req.body ?? {}))));
-adminReturnsRouter.post("/:id/recycle/received", wrap(async (req, res) => ok(res, await returns.adminMarkReceived(req.user.id, req.params.id))));
-adminReturnsRouter.post("/:id/recycle/inspection", wrap(async (req, res) => ok(res, await returns.adminInspect(req.user.id, req.params.id, req.body ?? {}))));
+// Physical flow of a return: goods come back and are inspected.
+adminReturnsRouter.post("/:id/pickup", wrap(async (req, res) => ok(res, await returns.adminSchedulePickup(req.user.id, req.params.id, req.body ?? {}))));
+adminReturnsRouter.post("/:id/received", wrap(async (req, res) => ok(res, await returns.adminMarkReceived(req.user.id, req.params.id))));
+adminReturnsRouter.post("/:id/inspection", wrap(async (req, res) => ok(res, await returns.adminInspect(req.user.id, req.params.id, req.body ?? {}))));
+// Legacy order-item recycle rows only: let them be finished and closed.
 adminReturnsRouter.post("/:id/recycle/start", wrap(async (req, res) => ok(res, await returns.adminStartRecycleProcessing(req.user.id, req.params.id))));
 adminReturnsRouter.post("/:id/recycle/complete", wrap(async (req, res) => ok(res, await returns.adminCompleteRecycle(req.user.id, req.params.id))));
-adminReturnsRouter.post("/:id/recycle/credit-points", wrap(async (req, res) => ok(res, await returns.adminCreditPoints(req.user.id, req.params.id))));
 adminReturnsRouter.post("/:id/close", wrap(async (req, res) => ok(res, await returns.adminClose(req.user.id, req.params.id))));

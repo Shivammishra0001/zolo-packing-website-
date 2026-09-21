@@ -47,7 +47,6 @@ export function ReturnRequestDialog({
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [addressId, setAddressId] = useState("");
   const [files, setFiles] = useState<File[]>([]);
-  const [estimate, setEstimate] = useState<{ points: number; note: string } | null>(null);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -63,20 +62,15 @@ export function ReturnRequestDialog({
       .catch(() => setAddresses([]));
   }, []);
 
-  // Backend-computed estimate (and remaining returnable quantity).
+  // Remaining returnable quantity — decided by the backend.
   useEffect(() => {
-    if (!quantity || quantity < 1) return;
     let stale = false;
     returnsApi
-      .estimate(item.id, quantity)
-      .then((e) => {
-        if (stale) return;
-        setRemaining(e.remaining);
-        setEstimate({ points: e.estimatedPoints, note: e.note });
-      })
-      .catch(() => setEstimate(null));
+      .remaining(item.id, 1)
+      .then((e) => { if (!stale) setRemaining(e.remaining); })
+      .catch(() => setRemaining(null));
     return () => { stale = true; };
-  }, [item.id, quantity]);
+  }, [item.id]);
 
   const reasons = useMemo(
     () => Object.entries(RETURN_REASON_LABELS).filter(([k]) => (kind === "RECYCLE" ? true : k !== "recycle")),
@@ -154,15 +148,17 @@ export function ReturnRequestDialog({
             <p className="mt-2 text-sm font-bold erp-text">Return Product</p>
             <p className="mt-1 text-xs erp-text-muted">Damaged, defective or wrong item — request a refund or replacement.</p>
           </button>
-          <button
-            type="button"
-            onClick={() => { setKind("RECYCLE"); setReason("recycle"); }}
+          {/* Recycling is its own workflow (material + quantity, verified by our
+              team, rewarded with Eco Credits) — not a kind of product return. */}
+          <Link
+            to="/account/recycle?new=1"
+            onClick={onClose}
             className="rounded-xl border-2 erp-border p-4 text-left transition hover:border-emerald-400"
           >
             <Leaf className="h-6 w-6 text-emerald-500" aria-hidden />
-            <p className="mt-2 text-sm font-bold erp-text">Recycle & Earn Points</p>
-            <p className="mt-1 text-xs erp-text-muted">Send used packaging back for recycling and earn ZP reward points.</p>
-          </button>
+            <p className="mt-2 text-sm font-bold erp-text">Recycle & Earn Eco Credits</p>
+            <p className="mt-1 text-xs erp-text-muted">Send used packaging for recycling. Opens the Recycle &amp; Earn page.</p>
+          </Link>
         </div>
       ) : (
         <div className="space-y-3">
@@ -261,15 +257,6 @@ export function ReturnRequestDialog({
               ))}
             </div>
           </div>
-
-          {kind === "RECYCLE" && estimate && (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm dark:border-emerald-500/30 dark:bg-emerald-500/10">
-              <p className="font-bold text-emerald-700 dark:text-emerald-300">
-                Estimated Recycling Reward: {estimate.points.toLocaleString("en-IN")} ZP points
-              </p>
-              <p className="mt-0.5 text-xs text-emerald-700/80 dark:text-emerald-300/80">{estimate.note}</p>
-            </div>
-          )}
         </div>
       )}
     </Dialog>

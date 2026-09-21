@@ -121,6 +121,7 @@ export function notificationHref(n: AppNotificationRow): string {
   if (n.entityType === "Rfq") return "/admin/quotes";
   if (n.entityType === "Quotation") return "/admin/quotes";
   if (n.entityType === "Order") return "/admin/orders";
+  if (n.entityType === "RecyclingRequest") return n.entityId ? `/admin/returns/recycling/${n.entityId}` : "/admin/returns/recycling";
   if (n.entityType === "SupplierDocument" || n.entityType === "SupplierProfile") return "/admin/sellers";
   return "/admin";
 }

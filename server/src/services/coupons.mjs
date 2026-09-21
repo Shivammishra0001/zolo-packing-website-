@@ -139,6 +139,9 @@ export async function listCoupons({ status, search, limit = 200 } = {}) {
   const rows = await prisma.coupon.findMany({
     where: {
       deletedAt: null,
+      // Eco Reward coupons are generated per customer by a redemption; they are
+      // managed under Returns & Recycling -> Eco Credits, not listed here.
+      source: "admin",
       ...(q ? { OR: [{ code: { contains: q.toUpperCase() } }, { name: { contains: q, mode: "insensitive" } }] } : {}),
     },
     orderBy: { createdAt: "desc" },
@@ -155,7 +158,7 @@ export async function listCoupons({ status, search, limit = 200 } = {}) {
 }
 
 export async function getCoupon(id) {
-  const c = await prisma.coupon.findFirst({ where: { id, deletedAt: null }, include });
+  const c = await prisma.coupon.findFirst({ where: { id, deletedAt: null, source: "admin" }, include });
   if (!c) throw notFound("Coupon not found");
   return shapeCoupon(c);
 }
@@ -188,7 +191,7 @@ export async function createCoupon(adminId, body) {
 export async function updateCoupon(adminId, id, body) {
   const v = updateSchema.parse(body);
   const existing = await prisma.coupon.findFirst({
-    where: { id, deletedAt: null },
+    where: { id, deletedAt: null, source: "admin" },
     include: { products: true, categories: true },
   });
   if (!existing) throw notFound("Coupon not found");
@@ -239,7 +242,7 @@ export async function updateCoupon(adminId, id, body) {
 
 /** Archive (soft delete). The code stays reserved so old orders keep meaning. */
 export async function archiveCoupon(adminId, id) {
-  const existing = await prisma.coupon.findFirst({ where: { id, deletedAt: null } });
+  const existing = await prisma.coupon.findFirst({ where: { id, deletedAt: null, source: "admin" } });
   if (!existing) throw notFound("Coupon not found");
   await prisma.coupon.update({ where: { id }, data: { deletedAt: new Date(), isActive: false } });
   await recordEvent({ eventType: "coupon.archived", actorId: adminId, entityType: "Coupon", entityId: id, metadata: { code: existing.code } });

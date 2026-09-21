@@ -109,7 +109,10 @@ export async function checkCoupon(couponCode, priced, userId, tx = prisma) {
   const none = { coupon: null, discountMinor: 0, error: null, code: null };
   const normalized = String(couponCode ?? "").trim().toUpperCase();
   if (!normalized) return none;
-  const coupon = await tx.coupon.findUnique({ where: { code: normalized }, include: couponInclude });
+  let coupon = await tx.coupon.findUnique({ where: { code: normalized }, include: couponInclude });
+  // A customer-specific coupon (Eco Reward) simply does not exist for anybody
+  // else — same answer as an unknown code, so codes cannot be probed.
+  if (coupon?.assignedUserId && coupon.assignedUserId !== userId) coupon = null;
   const subtotalMinor = priced.reduce((s, it) => s + it.lineTotalMinor, 0);
   const evalResult = evaluateCoupon(coupon, subtotalMinor, new Date(), {
     eligibleSubtotalMinor: coupon ? couponEligibleSubtotal(coupon, priced) : 0,

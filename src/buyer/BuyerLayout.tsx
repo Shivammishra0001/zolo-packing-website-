@@ -36,7 +36,9 @@ function buyerNotificationHref(n: AppNotificationRow): string {
   if (n.entityType === "PaymentRequest") return "/account/payment-requests";
   if (n.entityType === "Order") return n.entityId ? `/account/orders/${n.entityId}` : "/account/orders";
   if (n.entityType === "Quotation" || n.entityType === "Rfq") return "/account/quotations";
-  if (n.entityType === "ReturnRequest") return "/account/recycle";
+  if (n.entityType === "ReturnRequest") return "/account/recycle?tab=returns";
+  if (n.entityType === "RecyclingRequest") return "/account/recycle?tab=requests";
+  if (n.entityType === "Coupon" || n.type?.startsWith("eco_credits.")) return "/account/recycle?tab=wallet";
   return "/account/dashboard";
 }
 

@@ -20,6 +20,7 @@ import { addressRouter } from "./routes/addresses.mjs";
 import { orderRouter } from "./routes/orders.mjs";
 import { adminSettingsRouter } from "./routes/settings.mjs";
 import { adminCouponsRouter, adminCampaignsRouter, publicCampaignsRouter } from "./routes/marketing.mjs";
+import { publicRecyclingRouter, recyclingRouter, ecoCreditsRouter, adminRecyclingRouter, adminEcoCreditsRouter } from "./routes/recycling.mjs";
 import { adminPaymentRequestsRouter, buyerPaymentRequestsRouter, publicPayRouter } from "./routes/payment-requests.mjs";
 
 export function createApp() {
@@ -157,6 +158,8 @@ export function createApp() {
   // Live marketing campaigns — public, and mounted BEFORE the buyer-guarded
   // routers below (orderRouter is mounted at the API root behind authenticate).
   app.use(`${API}/campaigns`, publicCampaignsRouter);
+  // What can be recycled + what it earns (live rules/settings) — public too.
+  app.use(`${API}/recycling`, publicRecyclingRouter);
 
   // Authenticated areas
   app.use(`${API}/notifications`, authenticate, notificationsRouter);
@@ -164,6 +167,9 @@ export function createApp() {
   app.use(`${API}/cart`, authenticate, requireBuyer, cartRouter);
   app.use(`${API}/addresses`, authenticate, requireBuyer, addressRouter);
   app.use(`${API}/me/payment-requests`, authenticate, requireBuyer, buyerPaymentRequestsRouter);
+  // Recycling requests + the Eco Credit wallet — owner-scoped in the services.
+  app.use(`${API}/recycling`, authenticate, requireBuyer, recyclingRouter);
+  app.use(`${API}/eco-credits`, authenticate, requireBuyer, ecoCreditsRouter);
   app.use(API, authenticate, requireBuyer, orderRouter); // /checkout/*, /orders/*
   app.use(`${API}/sellers/rfqs`, authenticate, requireSeller, loadSupplierOrg, sellerRfqRouter);
   app.use(`${API}/sellers`, authenticate, requireSeller, loadSupplierOrg, sellerRouter);
@@ -175,6 +181,8 @@ export function createApp() {
   // Returns & recycling: customer-created, admin-processed.
   app.use(`${API}/returns`, authenticate, requireBuyer, returnsRouter);
   app.use(`${API}/admin/returns`, authenticate, requireAdmin, adminReturnsRouter);
+  app.use(`${API}/admin/recycling`, authenticate, requireAdmin, adminRecyclingRouter);
+  app.use(`${API}/admin/eco-credits`, authenticate, requireAdmin, adminEcoCreditsRouter);
 
   // Admin settings (payment methods, notifications) + payment requests.
   app.use(`${API}/admin/settings`, authenticate, requireAdmin, adminSettingsRouter);

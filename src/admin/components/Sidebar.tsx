@@ -27,7 +27,7 @@ interface NavItem {
   end?: boolean;
   badge?: number;
   /** Sub-pages, shown indented under the item while the sidebar is expanded. */
-  children?: { to: string; label: string }[];
+  children?: { to: string; label: string; end?: boolean }[];
 }
 
 interface NavGroup {
@@ -50,7 +50,17 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/quotes", label: "Quotations (RFQ)", icon: FileText },
       { to: "/admin/chat", label: "Negotiations", icon: MessageSquare },
       { to: "/admin/orders", label: "Orders", icon: ShoppingCart },
-      { to: "/admin/returns", label: "Returns & Recycling", icon: Recycle },
+      {
+        to: "/admin/returns", label: "Returns & Recycling", icon: Recycle, end: true,
+        children: [
+          { to: "/admin/returns", label: "Overview", end: true },
+          { to: "/admin/returns/product", label: "Product Returns" },
+          { to: "/admin/returns/recycling", label: "Recycling Requests" },
+          { to: "/admin/returns/rules", label: "Recycling Rules" },
+          { to: "/admin/returns/eco-credits", label: "Eco Credits" },
+          { to: "/admin/returns/eco-settings", label: "Eco Reward Settings" },
+        ],
+      },
       { to: "/admin/catalog", label: "Product Catalog", icon: Package },
       { to: "/admin/shipping", label: "Shipping", icon: Truck },
       { to: "/admin/finance", label: "Finance", icon: Wallet },
@@ -140,6 +150,7 @@ function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate:
                       <li key={child.to}>
                         <NavLink
                           to={child.to}
+                          end={child.end}
                           onClick={onNavigate}
                           className={({ isActive }) =>
                             cn(

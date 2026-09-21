@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Circle, Coins, Download, Leaf, Paperclip, RotateCcw, XCircle } from "lucide-react";
 import { Badge, Button, PageHeader, Tabs } from "@/admin/components/ui";
 import { EmptyState, ErrorState, ListSkeleton, Panel } from "@/admin/components/Panel";
@@ -14,11 +14,15 @@ import {
   type ReturnRequest,
   type ReturnStatus,
 } from "@/lib/api/returns";
+import { ecoCreditsApi, recyclingApi, type EcoWallet as EcoWalletData, type RecyclingProgram, type RecyclingRequest } from "@/lib/api/recycling";
+import RecycleEarn, { NewRecyclingDialog } from "./recycle/RecycleEarn";
+import RecyclingRequests from "./recycle/RecyclingRequests";
+import EcoWallet from "./recycle/EcoWallet";
 
 // ============================================================
-// My Returns & Recycling — every request the customer has raised, with a
-// live status timeline, plus the reward-points balance from the immutable
-// ledger. Requests are created from Order Details → item → Return / Recycle.
+// Returns & Recycling (customer). Recycling and product returns are separate
+// workflows on separate tabs; the components below this comment render the
+// PRODUCT RETURN cards (created from Order Details → item → Return).
 // ============================================================
 
 const TONE: Partial<Record<ReturnStatus, "success" | "warning" | "danger" | "info" | "neutral">> = {
@@ -122,7 +126,7 @@ function RequestCard({ r, onCancelled }: { r: ReturnRequest; onCancelled: () => 
       )}
       {r.pointsAwarded != null && (
         <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-          <Coins className="h-3.5 w-3.5" aria-hidden /> {r.pointsAwarded.toLocaleString("en-IN")} ZP points credited
+          <Coins className="h-3.5 w-3.5" aria-hidden /> {r.pointsAwarded.toLocaleString("en-IN")} Eco Credits credited
           {r.recycle?.acceptedQuantity != null && ` on ${r.recycle.acceptedQuantity.toLocaleString("en-IN")} accepted unit(s)`}
         </p>
       )}
@@ -160,68 +164,101 @@ function RequestCard({ r, onCancelled }: { r: ReturnRequest; onCancelled: () => 
   );
 }
 
+function ProductReturns({ requests, onChanged }: { requests: ReturnRequest[]; onChanged: () => void }) {
+  if (requests.length === 0) {
+    return (
+      <Panel>
+        <EmptyState
+          icon={RotateCcw}
+          title="No return requests yet"
+          message="Open a delivered order and choose Return on an item to request a refund or replacement."
+          action={<Link to="/account/orders" className="rounded-lg bg-primary-500 px-4 py-2 text-sm font-bold text-white hover:bg-primary-600">Go to my orders</Link>}
+        />
+      </Panel>
+    );
+  }
+  return <div className="space-y-3">{requests.map((r) => <RequestCard key={r.id} r={r} onCancelled={onChanged} />)}</div>;
+}
+
+type TabKey = "earn" | "requests" | "wallet" | "returns";
+const TAB_KEYS: TabKey[] = ["earn", "requests", "wallet", "returns"];
+
+/**
+ * Two separate things live here, on separate tabs:
+ *   Recycling  — material + quantity → verified by Zolo → Eco Credits → coupons
+ *   Returns    — refund / replacement of an order item (never earns credits)
+ */
 export default function Recycle() {
-  const [tab, setTab] = useState<"all" | "RETURN" | "RECYCLE">("all");
-  const [requests, setRequests] = useState<ReturnRequest[] | null>(null);
+  const [params, setParams] = useSearchParams();
+  const tab: TabKey = TAB_KEYS.includes(params.get("tab") as TabKey) ? (params.get("tab") as TabKey) : "earn";
+  const setTab = (k: TabKey) => { const next = new URLSearchParams(params); next.set("tab", k); next.delete("new"); setParams(next, { replace: true }); };
+
+  const [returns, setReturns] = useState<ReturnRequest[] | null>(null);
+  const [recycling, setRecycling] = useState<RecyclingRequest[] | null>(null);
+  const [wallet, setWallet] = useState<EcoWalletData | null>(null);
+  const [program, setProgram] = useState<RecyclingProgram | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [points, setPoints] = useState<{ balance: number } | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setError(null);
-      const [res, pts] = await Promise.all([returnsApi.list(), returnsApi.points()]);
-      setRequests(res.requests);
-      setPoints(pts);
+      const [ret, rec, w, prog] = await Promise.all([returnsApi.list(), recyclingApi.list(), ecoCreditsApi.wallet(), recyclingApi.program()]);
+      setReturns(ret.requests); setRecycling(rec.requests); setWallet(w); setProgram(prog);
     } catch (e) {
-      setRequests(null);
       setError(describeApiError(e).message);
     }
   }, []);
-
   useEffect(() => { void load(); }, [load]);
 
-  const visible = (requests ?? []).filter((r) => tab === "all" || r.type === tab);
+  // "Recycle & Earn" from an order (or a notification) opens the form directly.
+  useEffect(() => {
+    if (params.get("new") !== "1" || !program) return;
+    if (program.materials.length) setCreating(true);
+    const next = new URLSearchParams(params); next.delete("new"); setParams(next, { replace: true });
+  }, [params, program, setParams]);
+
+  const loading = !error && (returns === null || recycling === null || wallet === null);
+  const openRecycling = (recycling ?? []).filter((r) => ["PENDING", "PICKUP_SCHEDULED", "RECEIVED", "UNDER_VERIFICATION"].includes(r.status)).length;
 
   return (
     <div className="shell-form space-y-5">
       <PageHeader
         breadcrumb={[{ label: "Account", to: "/account/dashboard" }, { label: "Returns & Recycling" }]}
-        title="My Returns & Recycling"
-        subtitle="Track your return and recycling requests. New requests start from Orders → order → Return / Recycle."
+        title="Returns & Recycling"
+        subtitle="Recycle packaging to earn Eco Credits, redeem them for coupons, and track your product returns."
         actions={
-          points && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 py-1.5 text-sm font-bold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-              <Coins className="h-4 w-4" aria-hidden /> {points.balance.toLocaleString("en-IN")} ZP points
-            </span>
+          wallet && (
+            <button type="button" onClick={() => setTab("wallet")} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 py-1.5 text-sm font-bold text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300">
+              <Coins className="h-4 w-4" aria-hidden /> {wallet.balance.toLocaleString("en-IN")} Eco Credits
+            </button>
           )
         }
       />
 
       <Tabs
         tabs={[
-          { key: "all", label: "All" },
-          { key: "RETURN", label: "Returns" },
-          { key: "RECYCLE", label: "Recycling" },
+          { key: "earn", label: "Recycle & Earn", icon: Leaf },
+          { key: "requests", label: "My recycling requests", count: openRecycling || undefined },
+          { key: "wallet", label: "Eco Credits", icon: Coins },
+          { key: "returns", label: "Product returns", icon: RotateCcw },
         ]}
         active={tab}
-        onChange={(k) => setTab(k as typeof tab)}
+        onChange={(k) => setTab(k as TabKey)}
       />
 
-      {requests === null && !error && <Panel><ListSkeleton rows={3} /></Panel>}
+      {loading && <Panel><ListSkeleton rows={4} /></Panel>}
       {error && <Panel><ErrorState message={error} onRetry={() => void load()} /></Panel>}
-      {requests !== null && visible.length === 0 && (
-        <Panel>
-          <EmptyState
-            icon={Leaf}
-            title={tab === "RECYCLE" ? "No recycling requests yet" : tab === "RETURN" ? "No return requests yet" : "No requests yet"}
-            message="Open a delivered order and choose Return / Recycle on an item to raise a request."
-            action={<Link to="/account/orders" className="rounded-lg bg-primary-500 px-4 py-2 text-sm font-bold text-white hover:bg-primary-600">Go to my orders</Link>}
-          />
-        </Panel>
+      {!loading && !error && (
+        <>
+          {tab === "earn" && <RecycleEarn program={program} balance={wallet?.balance ?? null} onStart={() => setCreating(true)} onOpenWallet={() => setTab("wallet")} />}
+          {tab === "requests" && <RecyclingRequests requests={recycling ?? []} onChanged={() => void load()} onStart={() => setCreating(true)} canStart={Boolean(program?.materials.length)} />}
+          {tab === "wallet" && wallet && <EcoWallet wallet={wallet} onChanged={() => void load()} />}
+          {tab === "returns" && <ProductReturns requests={returns ?? []} onChanged={() => void load()} />}
+        </>
       )}
-      {visible.map((r) => (
-        <RequestCard key={r.id} r={r} onCancelled={() => void load()} />
-      ))}
+
+      <NewRecyclingDialog open={creating} program={program} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); setTab("requests"); void load(); }} />
     </div>
   );
 }
