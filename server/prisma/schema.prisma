@@ -652,6 +652,9 @@ model Product {
   @@index([category])
   @@index([categoryId])
   @@index([subcategoryId])
+  // Admin category views: filtered + paginated product listing (8 per page).
+  @@index([categoryId, deletedAt, createdAt])
+  @@index([subcategoryId, deletedAt, createdAt])
   @@index([sellerId])
 }
 

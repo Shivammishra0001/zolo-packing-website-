@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import {
   AlertTriangle,
@@ -9,7 +9,6 @@ import {
   History,
   ImageOff,
   Upload,
-  X,
   XCircle,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -48,8 +47,6 @@ import { extractEmbeddedImages, indexEmbeddedImagesByRow } from "./xlsx-embedded
 // No base64 is stored; no parallel import module.
 // ============================================================
 
-const ACCEPT = ".xlsx,.xls,.csv,.zip";
-
 /** Uint8Array → base64 (chunked to stay under call-stack limits). */
 function u8ToBase64(u8: Uint8Array): string {
   let bin = "";
@@ -68,6 +65,41 @@ interface ImportResult {
   skipped: number;
   failed: number;
   imagesUploaded: number;
+  categoriesCreated: number;
+  subcategoriesCreated: number;
+}
+
+/** Phased progress (spec: Reading Excel → categories → products → images). */
+type Phase = "reading" | "images" | "saving" | "done";
+interface Progress {
+  phase: Phase;
+  productsDone: number;
+  productsTotal: number;
+  imagesDone: number;
+  imagesTotal: number;
+}
+
+/**
+ * The category structure an import will produce, built from the validated
+ * rows: category → subcategory → product count, each flagged NEW when the
+ * database does not have it yet. Shown to the admin BEFORE anything is saved.
+ */
+function buildStructure(rows: ParsedRow[]) {
+  const cats = new Map<string, { name: string; isNew: boolean; products: number; subs: Map<string, { name: string; isNew: boolean; products: number }> }>();
+  for (const r of rows) {
+    if (r.status === "error" || !r.category) continue;
+    const ck = r.category.trim().toLowerCase().replace(/\s+/g, " ");
+    let c = cats.get(ck);
+    if (!c) { c = { name: r.category, isNew: r.isNewCategory, products: 0, subs: new Map() }; cats.set(ck, c); }
+    c.products++;
+    if (r.subcategory) {
+      const sk = r.subcategory.trim().toLowerCase().replace(/\s+/g, " ");
+      let sub = c.subs.get(sk);
+      if (!sub) { sub = { name: r.subcategory, isNew: r.isNewSubcategory, products: 0 }; c.subs.set(sk, sub); }
+      sub.products++;
+    }
+  }
+  return [...cats.values()].map((c) => ({ ...c, subs: [...c.subs.values()] }));
 }
 
 function download(name: string, data: Blob) {
@@ -142,7 +174,6 @@ export function BulkImportButton() {
   // Parsed inputs kept so validation can re-run when an option changes
   // (e.g. ticking "Create missing categories") without re-reading the files.
   const [analysis, setAnalysis] = useState<{ raws: RawRow[]; images: Map<string, ZipImage>; embeddedKeys: Map<number, { key: string }[]>; zipContents: ZipContents | null } | null>(null);
-  const [createMissingCategories, setCreateMissingCategories] = useState(false);
   const [rows, setRows] = useState<ParsedRow[] | null>(null);
   const [zip, setZip] = useState<ZipContents | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -151,7 +182,8 @@ export function BulkImportButton() {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [importing, setImporting] = useState(false);
   // Live progress for large imports (thousands of images take minutes).
-  const [progress, setProgress] = useState<{ productsDone: number; productsTotal: number; imagesDone: number; imagesTotal: number } | null>(null);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const zipInputRef = useRef<HTMLInputElement>(null);
   const cancelRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   // One object URL per zip image, shared by preview + import. URLs consumed by
@@ -172,7 +204,6 @@ export function BulkImportButton() {
     setFile(null);
     setImagesFile(null);
     setAnalysis(null);
-    setCreateMissingCategories(false);
     setRows(null);
     setZip(null);
     setParsing(false);
@@ -198,7 +229,7 @@ export function BulkImportButton() {
    * Run validation over the parsed inputs. Categories come from the REAL
    * category tree (API-backed store), images from the ZIP + embedded pictures.
    */
-  const validate = (a: NonNullable<typeof analysis>, createMissing: boolean) =>
+  const validate = (a: NonNullable<typeof analysis>) =>
     validateRows(a.raws, {
       existingSku: (sku) => !!getProductBySku(sku),
       existingProductId: (sku) => getProductBySku(sku)?.id,
@@ -207,15 +238,9 @@ export function BulkImportButton() {
         id: c.id, name: c.name, slug: c.slug,
         subcategories: c.subcategories.map((sc) => ({ id: sc.id, name: sc.name, slug: sc.slug })),
       })),
-      createMissingCategories: createMissing,
       zipImages: a.images.size > 0 ? a.images : undefined,
       embeddedByRow: a.embeddedKeys.size > 0 ? a.embeddedKeys : undefined,
     });
-
-  const toggleCreateMissing = (v: boolean) => {
-    setCreateMissingCategories(v);
-    if (analysis) setRows(validate(analysis, v));
-  };
 
   /**
    * Accepts one spreadsheet, one ZIP (spreadsheet + images), or BOTH a
@@ -294,7 +319,7 @@ export function BulkImportButton() {
 
       const a = { raws, images, embeddedKeys, zipContents };
       setAnalysis(a);
-      const parsed = validate(a, createMissingCategories);
+      const parsed = validate(a);
 
       // Preview/commit read images from `zip.images`; synthesize a container
       // when the workbook carried pictures but no ZIP was uploaded.
@@ -326,19 +351,18 @@ export function BulkImportButton() {
         imagesFound: zip?.images.size ?? 0,
         imagesMatched: rows.filter((r) => r.imageMatch.primary).length,
         imagesMissing: rows.filter((r) => r.status !== "error" && !r.imageMatch.primary).length,
-        // Category insight: how many distinct categories the file references,
-        // and which of those don't exist in the database (row errors unless
-        // "Create missing categories" is ticked).
-        categories: new Set(rows.map((r) => r.category.trim().toLowerCase()).filter(Boolean)).size,
-        newCategories: new Set(
-          rows
-            .map((r) => r.category.trim())
-            .filter((c) => c && !getCategories().some((k) => k.name.toLowerCase() === c.toLowerCase()))
-            .map((c) => c.toLowerCase()),
-        ).size,
+        // Taxonomy insight from the validated rows: what exists, what the
+        // import will create. Error rows are excluded (they do not import).
+        categories: new Set(rows.filter((r) => r.status !== "error").map((r) => r.category.trim().toLowerCase()).filter(Boolean)).size,
+        newCategories: new Set(rows.filter((r) => r.status !== "error" && r.isNewCategory).map((r) => r.category.trim().toLowerCase())).size,
+        matchedCategories: new Set(rows.filter((r) => r.status !== "error" && r.category && !r.isNewCategory).map((r) => r.category.trim().toLowerCase())).size,
+        newSubcategories: new Set(rows.filter((r) => r.status !== "error" && r.isNewSubcategory && r.subcategory).map((r) => `${r.category}::${r.subcategory}`.toLowerCase())).size,
+        matchedSubcategories: new Set(rows.filter((r) => r.status !== "error" && r.subcategory && !r.isNewSubcategory).map((r) => `${r.category}::${r.subcategory}`.toLowerCase())).size,
         duplicateSkus: rows.filter((r) => r.isDuplicate).length,
       }
     : null;
+  const structure = useMemo(() => (rows ? buildStructure(rows) : []), [rows]);
+  const createsTaxonomy = (counts?.newCategories ?? 0) + (counts?.newSubcategories ?? 0) > 0;
 
   const runImport = async () => {
     if (!rows) return;
@@ -350,7 +374,7 @@ export function BulkImportButton() {
     const imagesTotal = zip
       ? importRows.reduce((n, r) => n + (r.imageMatch.primary ? 1 : 0) + r.imageMatch.gallery.length, 0)
       : 0;
-    setProgress({ productsDone: 0, productsTotal: importRows.length, imagesDone: 0, imagesTotal });
+    setProgress({ phase: imagesTotal > 0 ? "images" : "saving", productsDone: 0, productsTotal: importRows.length, imagesDone: 0, imagesTotal });
     try {
       let uploaded = 0;
       let localFailed = 0;
@@ -413,14 +437,19 @@ export function BulkImportButton() {
         return;
       }
 
-      // Upsert by SKU in PostgreSQL, then re-hydrate the store from the DB so
-      // the UI shows exactly what was saved (survives refresh + restart).
+      // Upsert by SKU in PostgreSQL (categories → subcategories → products in
+      // one server call), then re-hydrate the store from the DB so the UI
+      // shows exactly what was saved (survives refresh + restart). New
+      // categories are created ONLY because the admin saw them in the
+      // structure preview and clicked "Create & Import".
+      setProgress((p) => (p ? { ...p, phase: "saving" } : p));
       const server = await catalogApi.importBatch(payload, dupeMode, {
         fileName: file?.name,
         fileSizeBytes: (file?.size ?? 0) + (imagesFile?.size ?? 0),
         imagesMatched: payload.filter((p) => Array.isArray(p.images) && p.images.some((u) => /^https?:|^\//.test(u))).length,
-        createMissingCategories,
+        createMissingCategories: createsTaxonomy,
       });
+      setProgress((p) => (p ? { ...p, phase: "done" } : p));
       // Re-read BOTH products and the category tree from the database: an
       // import creates categories/subcategories, and Admin + storefront must
       // reflect them without a page reload.
@@ -437,6 +466,8 @@ export function BulkImportButton() {
         skipped: server.skipped,
         failed: localFailed + server.failed,
         imagesUploaded: uploaded,
+        categoriesCreated: server.categoriesCreated ?? 0,
+        subcategoriesCreated: server.subcategoriesCreated ?? 0,
       });
       const serverErrs = server.errors.map((e) => `${e.sku}: ${e.error}`).join("; ");
       toast.success(
@@ -464,15 +495,15 @@ export function BulkImportButton() {
 
   return (
     <>
-      <Button variant="secondary" icon={Upload} onClick={() => setOpen(true)}>Bulk Import</Button>
+      <Button variant="secondary" icon={Upload} onClick={() => setOpen(true)}>Import Products</Button>
       <Link to="/admin/catalog/imports" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold erp-text-muted hover:erp-text">
         <History className="h-4 w-4" aria-hidden /> Import History
       </Link>
       <Dialog
         open={open}
         onClose={close}
-        title="Bulk import products"
-        description="Upload Excel, CSV, or ZIP to add products in bulk. ZIP files can include product images."
+        title="Import products"
+        description="Upload the products Excel (and an images ZIP). Categories, subcategories and products are detected, validated and previewed before anything is saved."
         footer={
           result ? (
             <>
@@ -490,10 +521,6 @@ export function BulkImportButton() {
           ) : rows && rows.length > 0 ? (
             <>
               <div className="mr-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                <label className="flex items-center gap-1.5 erp-text-muted" title="Unknown categories/subcategories are created on import instead of failing the row. Off by default so a typo never creates a duplicate category.">
-                  <input type="checkbox" checked={createMissingCategories} onChange={(e) => toggleCreateMissing(e.target.checked)} className="h-3.5 w-3.5 accent-primary-500" />
-                  Create missing categories
-                </label>
                 <span className="erp-text-muted">Duplicate SKU:</span>
                 <select
                   value={dupeMode}
@@ -509,10 +536,10 @@ export function BulkImportButton() {
               {importing ? (
                 <Button variant="ghost" onClick={() => { cancelRef.current = true; }}>Cancel import</Button>
               ) : (
-                <Button variant="ghost" onClick={reset}>Cancel</Button>
+                <Button variant="ghost" onClick={reset}>Cancel Import</Button>
               )}
               <Button variant="primary" disabled={importable === 0} loading={importing} onClick={runImport}>
-                Import {importable} Product{importable === 1 ? "" : "s"}
+                {createsTaxonomy ? `Create & Import ${importable} Product${importable === 1 ? "" : "s"}` : `Confirm & Import ${importable} Product${importable === 1 ? "" : "s"}`}
               </Button>
             </>
           ) : (
@@ -525,39 +552,48 @@ export function BulkImportButton() {
         }
       >
         {importing && progress && (
-          // ---------- Live progress (large imports) ----------
-          <div className="mb-4 space-y-3 rounded-xl border erp-border-soft erp-surface-2 p-4">
+          // ---------- Live progress, phase by phase ----------
+          <div className="mb-4 space-y-3 rounded-xl border erp-border-soft erp-surface-2 p-4" aria-live="polite">
             <div className="flex items-center gap-2 text-sm font-bold erp-text">
               <Upload className="h-4 w-4 animate-pulse text-primary-500" aria-hidden /> Importing…
             </div>
-            {file && (
-              <p className="text-xs erp-text-muted">{file.name} · {formatBytes(file.size)}</p>
-            )}
-            {[
-              { label: "Products", done: progress.productsDone, total: progress.productsTotal },
-              ...(progress.imagesTotal > 0 ? [{ label: "Images", done: progress.imagesDone, total: progress.imagesTotal }] : []),
-            ].map((bar) => (
-              <div key={bar.label}>
-                <div className="mb-1 flex justify-between text-xs erp-text-muted">
-                  <span>{bar.label}</span>
-                  <span className="tabular-nums">{bar.done.toLocaleString("en-IN")} / {bar.total.toLocaleString("en-IN")}</span>
+            {file && <p className="text-xs erp-text-muted">{file.name}{imagesFile ? ` + ${imagesFile.name}` : ""}</p>}
+            {(() => {
+              const order: Phase[] = ["reading", "images", "saving", "done"];
+              const idx = order.indexOf(progress.phase);
+              const pct = (phase: Phase, live: number) => (order.indexOf(phase) < idx ? 100 : order.indexOf(phase) > idx ? 0 : live);
+              const bars = [
+                { label: "Reading Excel", pct: 100 },
+                ...(progress.imagesTotal > 0 ? [{ label: `Processing images (${progress.imagesDone.toLocaleString("en-IN")} / ${progress.imagesTotal.toLocaleString("en-IN")})`, pct: pct("images", progress.imagesTotal ? Math.round((progress.imagesDone / progress.imagesTotal) * 100) : 100) }] : []),
+                { label: "Processing categories & subcategories", pct: pct("saving", 50) },
+                { label: `Processing products (${progress.productsTotal.toLocaleString("en-IN")})`, pct: pct("saving", 50) },
+              ];
+              return bars.map((bar) => (
+                <div key={bar.label}>
+                  <div className="mb-1 flex justify-between text-xs erp-text-muted">
+                    <span>{bar.label}{bar.pct >= 100 ? " ✓" : bar.pct > 0 ? "…" : ""}</span>
+                    <span className="tabular-nums">{bar.pct}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full erp-surface">
+                    <div className="h-full rounded-full bg-primary-500 transition-all" style={{ width: `${bar.pct}%` }} />
+                  </div>
                 </div>
-                <div className="h-2 w-full overflow-hidden rounded-full erp-surface">
-                  <div
-                    className="h-full rounded-full bg-primary-500 transition-all"
-                    style={{ width: `${bar.total ? Math.round((bar.done / bar.total) * 100) : 0}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              ));
+            })()}
           </div>
         )}
         {result ? (
           // ---------- Result ----------
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-sm font-bold erp-text">
-              <CheckCircle2 className="h-5 w-5 text-emerald-500" aria-hidden /> Import completed
+              <CheckCircle2 className="h-5 w-5 text-emerald-500" aria-hidden /> Import complete ✓
             </div>
+            <ul className="space-y-0.5 text-sm erp-text" data-testid="import-result">
+              <li><strong>{result.created + result.updated}</strong> Products imported ({result.created} created · {result.updated} updated · {result.skipped} skipped · {result.failed} failed)</li>
+              <li><strong>{result.categoriesCreated}</strong> Categories created</li>
+              <li><strong>{result.subcategoriesCreated}</strong> Subcategories created</li>
+              <li><strong>{result.imagesUploaded}</strong> Images matched</li>
+            </ul>
             <div className="grid grid-cols-3 gap-2 text-center">
               {[
                 { label: "Processed", value: result.processed },
@@ -582,65 +618,40 @@ export function BulkImportButton() {
               </div>
             )}
             <p className="text-xs erp-text-faint">
-              Imported products are live in the Product Catalog and on the buyer website.
+              Imported products are live in the Product Catalog and on the buyer website.{" "}
+              <Link to="/admin/catalog/categories" onClick={close} className="font-semibold text-primary-600 hover:underline dark:text-primary-400">Open Categories</Link>
             </p>
           </div>
         ) : !rows ? (
-          // ---------- Upload ----------
+          // ---------- Upload: Excel + (optional) images ZIP ----------
           <div className="space-y-3">
-            {!file ? (
-              <div
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => { e.preventDefault(); setDragOver(false); const fs = Array.from(e.dataTransfer.files ?? []); if (fs.length) void handleFiles(fs); }}
-                onClick={() => inputRef.current?.click()}
-                className={cn(
-                  "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-9 text-center transition-colors",
-                  dragOver ? "border-primary-500 bg-primary-50 dark:bg-primary-500/10" : "erp-border erp-surface-2",
-                )}
-              >
-                <span className="flex h-11 w-11 items-center justify-center rounded-full erp-surface erp-text-muted">
-                  <Upload className="h-5 w-5" aria-hidden />
-                </span>
-                <p className="text-sm font-semibold erp-text">Drag &amp; drop your file(s) here</p>
-                <p className="text-xs erp-text-faint">or click to browse — a spreadsheet, a ZIP, or products.xlsx + products.zip together</p>
-                <div className="mt-1 space-y-0.5 text-[11px] erp-text-faint">
-                  <p>Supported: XLSX, XLS, CSV, ZIP</p>
-                  <p>Spreadsheet max {formatBytes(LIMITS.SPREADSHEET_MAX_BYTES)} · ZIP with images max {formatBytes(LIMITS.ZIP_MAX_BYTES)}</p>
-                </div>
-                <input ref={inputRef} type="file" accept={ACCEPT} multiple className="hidden" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) void handleFiles(fs); e.target.value = ""; }} />
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 rounded-xl border erp-border erp-surface-2 p-3">
-                {file.name.toLowerCase().endsWith(".zip")
-                  ? <FileArchive className="h-8 w-8 text-primary-500" aria-hidden />
-                  : <FileSpreadsheet className="h-8 w-8 text-emerald-500" aria-hidden />}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold erp-text">{file.name}</p>
-                  <p className="text-xs erp-text-faint">{file.name.split(".").pop()?.toUpperCase()} · {formatBytes(file.size)}{imagesFile ? ` + ${imagesFile.name} (${formatBytes(imagesFile.size)})` : ""}</p>
-                </div>
-                {parsing ? (
-                  <span className="text-xs erp-text-muted">Parsing…</span>
-                ) : (
-                  <button onClick={reset} aria-label="Remove file" className="flex h-8 w-8 items-center justify-center rounded-lg erp-text-muted hover:erp-surface">
-                    <X className="h-4 w-4" aria-hidden />
-                  </button>
-                )}
-              </div>
-            )}
-            {imagesFile && !file && (
-              <div className="flex items-center gap-3 rounded-xl border erp-border erp-surface-2 p-3">
-                <FileArchive className="h-8 w-8 text-primary-500" aria-hidden />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold erp-text">{imagesFile.name}</p>
-                  <p className="text-xs erp-text-faint">Images ZIP · {formatBytes(imagesFile.size)} · now add the products spreadsheet</p>
-                </div>
-                <button onClick={reset} aria-label="Remove file" className="flex h-8 w-8 items-center justify-center rounded-lg erp-text-muted hover:erp-surface">
-                  <X className="h-4 w-4" aria-hidden />
-                </button>
-              </div>
-            )}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); const fs = Array.from(e.dataTransfer.files ?? []); if (fs.length) void handleFiles(fs); }}
+              className={cn("grid gap-3 rounded-xl border-2 border-dashed p-3 transition-colors sm:grid-cols-2", dragOver ? "border-primary-500 bg-primary-50 dark:bg-primary-500/10" : "erp-border")}
+            >
+              {/* Excel slot */}
+              <button type="button" onClick={() => inputRef.current?.click()} disabled={parsing} className="flex flex-col items-center justify-center gap-1.5 rounded-lg border erp-border erp-surface-2 px-4 py-6 text-center hover:border-primary-400" data-testid="upload-excel">
+                {file && !file.name.toLowerCase().endsWith(".zip")
+                  ? <><FileSpreadsheet className="h-7 w-7 text-emerald-500" aria-hidden /><span className="text-sm font-semibold erp-text">Excel: {file.name} ✓</span><span className="text-[11px] erp-text-faint">{formatBytes(file.size)} · click to replace</span></>
+                  : <><FileSpreadsheet className="h-7 w-7 erp-text-faint" aria-hidden /><span className="text-sm font-semibold erp-text">Upload Excel</span><span className="text-[11px] erp-text-faint">products.xlsx · .xls · .csv (max {formatBytes(LIMITS.SPREADSHEET_MAX_BYTES)})</span></>}
+              </button>
+              {/* Images ZIP slot */}
+              <button type="button" onClick={() => zipInputRef.current?.click()} disabled={parsing} className="flex flex-col items-center justify-center gap-1.5 rounded-lg border erp-border erp-surface-2 px-4 py-6 text-center hover:border-primary-400" data-testid="upload-zip">
+                {imagesFile || file?.name.toLowerCase().endsWith(".zip")
+                  ? <><FileArchive className="h-7 w-7 text-primary-500" aria-hidden /><span className="text-sm font-semibold erp-text">Images: {(imagesFile ?? file)!.name} ✓</span><span className="text-[11px] erp-text-faint">{formatBytes((imagesFile ?? file)!.size)} · click to replace</span></>
+                  : <><FileArchive className="h-7 w-7 erp-text-faint" aria-hidden /><span className="text-sm font-semibold erp-text">Upload Product Images ZIP</span><span className="text-[11px] erp-text-faint">optional · SKU.jpg, SKU-1.jpg, SKU/any.jpg (max {formatBytes(LIMITS.ZIP_MAX_BYTES)})</span></>}
+              </button>
+              <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,.zip" multiple className="hidden" aria-label="Excel file" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) void handleFiles(fs); e.target.value = ""; }} />
+              <input ref={zipInputRef} type="file" accept=".zip" className="hidden" aria-label="Images ZIP" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) void handleFiles(fs); e.target.value = ""; }} />
+              <p className="text-center text-xs erp-text-faint sm:col-span-2">
+                {parsing ? "Reading Excel…" : "Drag & drop both files here, or a single ZIP that contains products.xlsx and the images."}
+                {(file || imagesFile) && !parsing && <> · <button type="button" onClick={reset} className="font-semibold text-primary-600 hover:underline dark:text-primary-400">Clear</button></>}
+              </p>
+            </div>
             <p className="text-center text-xs erp-text-faint">
+              The Category / Subcategory columns build the catalog structure: existing ones are matched (any capitalisation), new ones are shown for confirmation before anything is created.
               Images match by SKU (<code className="font-mono">BOX001.jpg</code>, <code className="font-mono">BOX001-2.jpg</code>, <code className="font-mono">BOX001/any.jpg</code>), Product ID, the Image column, or the product name.{" "}
               <button onClick={downloadZipExample} className="font-semibold text-primary-600 hover:underline dark:text-primary-400">Download the ZIP example</button>.
             </p>
@@ -648,17 +659,78 @@ export function BulkImportButton() {
         ) : rows.length === 0 ? (
           <div className="py-8 text-center text-sm erp-text-muted">No valid rows found. Check your file and try again.</div>
         ) : (
-          // ---------- Preview ----------
+          // ---------- Preview: nothing is saved until Confirm ----------
           <div className="space-y-3">
-            <p className="text-sm font-semibold erp-text">
-              {counts!.total} product{counts!.total === 1 ? "" : "s"} found
-              {zip && (
-                <span className="font-normal erp-text-muted">
-                  {" "}· {counts!.imagesFound} images found · {counts!.imagesMatched} matched · {counts!.imagesMissing} missing
-                </span>
-              )}
-              <span className="font-normal erp-text-muted"> · {counts!.error} invalid</span>
-            </p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs erp-text-muted">
+              <span className="inline-flex items-center gap-1 font-semibold erp-text"><FileSpreadsheet className="h-3.5 w-3.5 text-emerald-500" aria-hidden /> {file?.name} ✓</span>
+              {(imagesFile || zip) && <span className="inline-flex items-center gap-1 font-semibold erp-text"><FileArchive className="h-3.5 w-3.5 text-primary-500" aria-hidden /> {imagesFile?.name ?? (file?.name.toLowerCase().endsWith(".zip") ? file.name : "embedded images")} ✓</span>}
+              {!imagesFile && !zip && <button type="button" onClick={() => zipInputRef.current?.click()} className="font-semibold text-primary-600 hover:underline dark:text-primary-400">+ Add images ZIP</button>}
+              <input ref={zipInputRef} type="file" accept=".zip" className="hidden" aria-label="Images ZIP" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) void handleFiles(fs); e.target.value = ""; }} />
+            </div>
+
+            {/* IMPORT SUMMARY */}
+            <section aria-label="Import summary" className="rounded-xl border erp-border-soft erp-surface-2 p-3" data-testid="import-summary">
+              <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wide erp-text-faint">Import summary</h3>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+                <div><span className="erp-text-muted">Products detected:</span> <strong className="erp-text">{counts!.total}</strong></div>
+                <div><span className="erp-text-muted">New Categories:</span> <strong className={counts!.newCategories ? "text-primary-600 dark:text-primary-400" : "erp-text"}>{counts!.newCategories}</strong></div>
+                <div><span className="erp-text-muted">New Subcategories:</span> <strong className={counts!.newSubcategories ? "text-primary-600 dark:text-primary-400" : "erp-text"}>{counts!.newSubcategories}</strong></div>
+                <div><span className="erp-text-muted">Existing Categories matched:</span> <strong className="erp-text">{counts!.matchedCategories}</strong></div>
+                <div><span className="erp-text-muted">Existing Subcategories matched:</span> <strong className="erp-text">{counts!.matchedSubcategories}</strong></div>
+                <div><span className="erp-text-muted">Duplicate SKUs:</span> <strong className="erp-text">{counts!.duplicateSkus}</strong></div>
+                {zip && <div><span className="erp-text-muted">Images:</span> <strong className="erp-text">{counts!.imagesFound} found · {counts!.imagesMatched} matched · {counts!.imagesMissing} missing</strong></div>}
+                <div><span className="erp-text-muted">Warnings:</span> <strong className="text-amber-600 dark:text-amber-400">{counts!.warning}</strong></div>
+                <div><span className="erp-text-muted">Errors:</span> <strong className={counts!.error ? "text-red-600 dark:text-red-400" : "erp-text"}>{counts!.error}</strong></div>
+              </div>
+            </section>
+
+            {/* CATEGORY STRUCTURE the import will produce */}
+            {structure.length > 0 && (
+              <section aria-label="Category structure" className="rounded-xl border erp-border-soft p-3" data-testid="import-structure">
+                <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wide erp-text-faint">Category structure</h3>
+                <div className="max-h-48 space-y-2 overflow-y-auto text-sm">
+                  {structure.map((c) => (
+                    <div key={c.name}>
+                      <div className="flex items-center gap-2 font-bold erp-text">
+                        {c.name}
+                        {c.isNew ? <Badge tone="info">NEW CATEGORY</Badge> : <Badge tone="neutral">existing</Badge>}
+                        <span className="text-xs font-normal erp-text-muted">{c.products} product{c.products === 1 ? "" : "s"}</span>
+                      </div>
+                      {c.subs.length > 0 && (
+                        <ul className="ml-2 border-l erp-border pl-3 text-xs">
+                          {c.subs.map((sub, i) => (
+                            <li key={sub.name} className="flex items-center gap-2 py-0.5 erp-text">
+                              <span className="erp-text-faint">{i === c.subs.length - 1 ? "└──" : "├──"}</span>
+                              <span className="font-semibold">{sub.name}</span>
+                              {sub.isNew && <Badge tone="info">NEW SUBCATEGORY</Badge>}
+                              <span className="erp-text-muted">— {sub.products} product{sub.products === 1 ? "" : "s"}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {createsTaxonomy && <p className="mt-2 text-xs erp-text-muted">Items marked NEW do not exist yet. They are created only when you click <strong>Create &amp; Import</strong>.</p>}
+              </section>
+            )}
+
+            {/* ROW ERRORS & WARNINGS — the exact row, product and problem */}
+            {errorRows.length > 0 && (
+              <section aria-label="Row issues" className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-500/30 dark:bg-amber-500/5" data-testid="import-issues">
+                <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wide erp-text-faint">Issues ({counts!.error} error{counts!.error === 1 ? "" : "s"} must be fixed · {counts!.warning} warning{counts!.warning === 1 ? "" : "s"} still import)</h3>
+                <ul className="max-h-40 space-y-1.5 overflow-y-auto text-xs">
+                  {errorRows.slice(0, 200).map((r) => (
+                    <li key={r.row} className="rounded-md erp-surface px-2.5 py-1.5">
+                      <div className="font-semibold erp-text">Row {r.row} · Product: {r.name || "—"}{r.sku ? ` (${r.sku})` : ""}</div>
+                      {r.errors.map((e) => <div key={e} className="text-red-600 dark:text-red-400">Error: {e}</div>)}
+                      {r.warnings.map((w) => <div key={w} className="text-amber-700 dark:text-amber-300">Warning: {w}</div>)}
+                    </li>
+                  ))}
+                  {errorRows.length > 200 && <li className="erp-text-faint">…and {errorRows.length - 200} more (download the report).</li>}
+                </ul>
+              </section>
+            )}
 
             <div className="grid grid-cols-3 gap-2 text-center sm:grid-cols-6">
               {[

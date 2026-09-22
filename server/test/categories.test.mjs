@@ -214,3 +214,93 @@ test("permissions: reads are public, every write needs the admin role", async ()
   const row = await prisma.category.findUnique({ where: { id: cat.id } });
   assert.equal(row.name, cat.name); assert.equal(row.isActive, true); assert.equal(row.deletedAt, null);
 });
+
+test("paginated category product view: 8 per page, filters, sort and facets all run in the database", async () => {
+  const cat = await makeCat({ name: `Page Cat ${rnd()}` });
+  const sub = await makeCat({ name: `Page Sub ${rnd()}`, parentId: cat.id });
+  for (let i = 0; i < 10; i++) {
+    const r = await admin("/products", { method: "POST", body: {
+      name: `Page Product ${String(i).padStart(2, "0")} ${rnd()}`, sku: `ZOLO-TEST-CAT-PAGE-${i}-${rnd().toUpperCase()}`,
+      categoryId: cat.id, subcategoryId: i < 4 ? sub.id : null, basePriceMinor: 1000, moq: 1,
+      status: i % 3 === 0 ? "draft" : "active", productType: i % 2 ? "Mailer" : "Shipper", color: i % 2 ? "Brown, White" : "Black", sizeLabel: "6x6x4 in, 8x8x6 in",
+    } });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+  }
+  const p1 = (await admin(`/products?categoryId=${cat.id}&page=1&limit=8`)).body.data;
+  assert.equal(p1.products.length, 8); assert.equal(p1.total, 10); assert.equal(p1.pages, 2); assert.equal(p1.page, 1);
+  const p2 = (await admin(`/products?categoryId=${cat.id}&page=2&limit=8`)).body.data;
+  assert.equal(p2.products.length, 2);
+  assert.ok(!p1.products.some((a) => p2.products.some((b) => b.id === a.id)), "pages do not overlap");
+  // subcategory + status + type + colour + search filters
+  assert.equal((await admin(`/products?subcategoryId=${sub.id}&limit=8&page=1`)).body.data.total, 4);
+  assert.equal((await admin(`/products?categoryId=${cat.id}&status=draft&limit=8`)).body.data.total, 4);
+  assert.equal((await admin(`/products?categoryId=${cat.id}&productType=mailer&limit=8`)).body.data.total, 5);
+  assert.equal((await admin(`/products?categoryId=${cat.id}&color=white&limit=8`)).body.data.total, 5);
+  assert.equal((await admin(`/products?categoryId=${cat.id}&size=8x8x6&limit=8`)).body.data.total, 10);
+  assert.equal((await admin(`/products?categoryId=${cat.id}&q=Product%2003&limit=8`)).body.data.total, 1);
+  // sort
+  const az = (await admin(`/products?categoryId=${cat.id}&sort=name_asc&limit=8`)).body.data.products.map((p) => p.name);
+  assert.deepEqual(az, [...az].sort((a, b) => a.localeCompare(b)));
+  const za = (await admin(`/products?categoryId=${cat.id}&sort=name_desc&limit=8`)).body.data.products.map((p) => p.name);
+  assert.deepEqual(za, [...za].sort((a, b) => b.localeCompare(a)));
+  assert.notEqual(za[0], az[0]);
+  // facets
+  const f = (await admin(`/products/facets?categoryId=${cat.id}`)).body.data;
+  assert.deepEqual(f.types, ["Mailer", "Shipper"]);
+  assert.deepEqual(f.colors, ["Black", "Brown", "White"]);
+  assert.deepEqual(f.sizes, ["6x6x4 in", "8x8x6 in"]);
+  // bulk status
+  const ids = p1.products.map((p) => p.id);
+  const bs = (await admin("/products/bulk-status", { method: "POST", body: { ids, status: "archived" } })).body.data;
+  assert.equal(bs.updated, 8);
+  assert.equal((await admin(`/products?categoryId=${cat.id}&status=archived&limit=8`)).body.data.total, 8);
+  // counts on the tree are live
+  const node = (await adminTree()).find((c) => c.id === cat.id);
+  assert.equal(node.productCount, 10);
+  assert.equal(node.subcategories[0].productCount, 4);
+});
+
+test("bulk category actions: activate/deactivate/archive follow the branch; delete is refused per id while products exist", async () => {
+  const a = await makeCat({ name: `Bulk A ${rnd()}` });
+  const aSub = await makeCat({ name: `Bulk A Sub ${rnd()}`, parentId: a.id });
+  const b = await makeCat({ name: `Bulk B ${rnd()}` });
+  const prod = await makeProduct(a, aSub);
+  assert.equal(prod.status, 201);
+  const off = (await admin("/categories/bulk", { method: "POST", body: { ids: [a.id, b.id], action: "deactivate" } })).body.data;
+  assert.equal(off.done, 2);
+  let tree = await adminTree();
+  assert.equal(tree.find((c) => c.id === a.id).isActive, false);
+  assert.equal(tree.find((c) => c.id === a.id).subcategories[0].isActive, false, "subcategories follow the parent");
+  assert.ok(!(await publicTree()).some((c) => c.id === a.id), "hidden from the storefront");
+  const on = (await admin("/categories/bulk", { method: "POST", body: { ids: [a.id], action: "activate" } })).body.data;
+  assert.equal(on.done, 1);
+  assert.equal((await adminTree()).find((c) => c.id === a.id).isActive, true);
+  // delete: A has products → refused with the count; B (empty) is soft-deleted
+  const del = (await admin("/categories/bulk", { method: "POST", body: { ids: [a.id, b.id], action: "delete" } })).body.data;
+  assert.equal(del.done, 1); assert.equal(del.failed, 1);
+  const refused = del.results.find((r) => r.id === a.id);
+  assert.equal(refused.code, "CATEGORY_HAS_PRODUCTS"); assert.equal(refused.productCount, 1);
+  tree = await adminTree();
+  assert.ok(tree.some((c) => c.id === a.id), "category with products still exists");
+  assert.ok(!tree.some((c) => c.id === b.id), "empty category archived");
+  assert.equal((await prisma.product.count({ where: { categoryId: a.id, deletedAt: null } })), 1, "no product was deleted");
+});
+
+test("move-products reassigns both FKs and names, after which the emptied category can be deleted", async () => {
+  const from = await makeCat({ name: `Move From ${rnd()}` });
+  const to = await makeCat({ name: `Move To ${rnd()}` });
+  const toSub = await makeCat({ name: `Move To Sub ${rnd()}`, parentId: to.id });
+  const p = (await makeProduct(from)).body.data.product;
+  const bad = await admin(`/categories/${from.id}/move-products`, { method: "POST", body: { toCategoryId: to.id, toSubcategoryId: from.id } });
+  assert.equal(bad.status, 400, "subcategory must belong to the destination");
+  const moved = (await admin(`/categories/${from.id}/move-products`, { method: "POST", body: { toCategoryId: to.id, toSubcategoryId: toSub.id } })).body.data;
+  assert.equal(moved.moved, 1);
+  const row = await prisma.product.findUnique({ where: { id: p.id } });
+  assert.equal(row.categoryId, to.id); assert.equal(row.subcategoryId, toSub.id);
+  assert.equal(row.category, to.name); assert.equal(row.subcategory, toSub.name);
+  const del = await admin(`/categories/${from.id}`, { method: "DELETE" });
+  assert.equal(del.status, 200);
+  const tree = await adminTree();
+  assert.equal(tree.find((c) => c.id === to.id).productCount, 1);
+  assert.equal(tree.find((c) => c.id === to.id).subcategories[0].productCount, 1);
+});

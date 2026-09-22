@@ -253,8 +253,50 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   return body.data as T;
 }
 
+export interface ProductListQuery {
+  page?: number;
+  limit?: number;
+  categoryId?: string;
+  subcategoryId?: string;
+  status?: ProductStatus | "";
+  productType?: string;
+  color?: string;
+  size?: string;
+  q?: string;
+  sort?: "newest" | "oldest" | "name_asc" | "name_desc";
+}
+export interface ProductPage {
+  products: CatalogProduct[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
 export const catalogApi = {
   list: () => request<{ products: DbProduct[] }>("/products").then((d) => d.products.map(fromDb)),
+
+  /**
+   * ONE page of products, filtered/sorted in PostgreSQL. This is what the
+   * admin category views use (8 per page) — never the full catalog.
+   */
+  page: (query: ProductListQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== null && v !== "") qs.set(k, String(v));
+    return request<{ products: DbProduct[]; total: number; page: number; limit: number; pages: number }>(`/products?${qs.toString()}`)
+      .then((d) => ({ ...d, products: d.products.map(fromDb) }) as ProductPage);
+  },
+
+  /** Distinct type / colour / size values for the filter dropdowns of one category. */
+  facets: (query: { categoryId?: string; subcategoryId?: string }) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) if (v) qs.set(k, v);
+    return request<{ types: string[]; colors: string[]; sizes: string[] }>(`/products/facets?${qs.toString()}`);
+  },
+
+  /** Bulk lifecycle change (active / draft / archived) for the multi-select toolbar. */
+  bulkStatus: (ids: string[], status: ProductStatus) =>
+    request<{ requested: number; updated: number; status: ProductStatus }>("/products/bulk-status", { method: "POST", body: JSON.stringify({ ids, status }) }),
 
   /** Create ONE product (admin form). Returns the database-saved record. */
   create: (input: ProductWriteInput) =>
@@ -278,7 +320,7 @@ export const catalogApi = {
    *   create — import under a suffixed SKU, never overwriting
    */
   importBatch: (products: CatalogProduct[], mode: "update" | "skip" | "create", meta: { fileName?: string; fileSizeBytes?: number; imagesMatched?: number; createMissingCategories?: boolean } = {}) =>
-    request<{ processed: number; created: number; updated: number; skipped: number; failed: number; importId: string | null; errors: { sku: string; level?: string; error: string }[] }>(
+    request<{ processed: number; created: number; updated: number; skipped: number; failed: number; categoriesCreated?: number; subcategoriesCreated?: number; importId: string | null; errors: { sku: string; level?: string; error: string }[] }>(
       "/products/import",
       { method: "POST", body: JSON.stringify({ products: products.map(importRow), mode, fileName: meta.fileName, fileSizeBytes: meta.fileSizeBytes, imagesMatched: meta.imagesMatched, createMissingCategories: meta.createMissingCategories === true }) },
     ),

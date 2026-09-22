@@ -48,6 +48,10 @@ categoriesRouter.post("/subcategories", ...adminOnly, wrap(async (req, res) => {
 }));
 
 // Reorder a whole sibling list (drag & drop) — MUST precede the /:id routes.
+/** Multi-select toolbar: { ids, action: activate | deactivate | archive | delete }. */
+categoriesRouter.post("/categories/bulk", ...adminOnly, wrap(async (req, res) => ok(res, await categories.bulk(req.user.id, req.body ?? {}))));
+/** Reassign every product of :id to another category/subcategory (never deletes). */
+categoriesRouter.post("/categories/:id/move-products", ...adminOnly, wrap(async (req, res) => ok(res, await categories.moveProducts(req.user.id, req.params.id, req.body ?? {}))));
 categoriesRouter.post("/categories/reorder", ...adminOnly, wrap(async (req, res) => ok(res, await categories.reorder(req.user.id, req.body ?? {}))));
 categoriesRouter.post("/subcategories/reorder", ...adminOnly, wrap(async (req, res) => {
   if (!req.body?.parentId) throw badRequest("Choose the parent category", "PARENT_REQUIRED");

@@ -334,10 +334,11 @@ function isBlockingMessage(m: string): boolean {
     m.includes("SKU is required") ||
     m.includes("Product Name is required") ||
     m.includes("Duplicate SKU within file") ||
+    m === "Category is missing" ||
     // Taxonomy must match the REAL database — a misspelled category would
     // otherwise create a duplicate ("Corrugated Box" beside "Corrugated Boxes").
     /^(Category|Subcategory) ".*" does not exist/.test(m) ||
-    /^Subcategory ".*" belongs to/.test(m)
+    /^Subcategory ".*" does not belong to/.test(m)
   );
 }
 
@@ -347,6 +348,9 @@ export interface ParsedRow {
   name: string;
   category: string;
   subcategory?: string;
+  /** Category / subcategory the import will CREATE (not in the database yet). */
+  isNewCategory: boolean;
+  isNewSubcategory: boolean;
   price: number | null; // null = quotation-based (no fixed price)
   stock: number;
   imageName?: string;
@@ -429,6 +433,19 @@ export function suggestName(name: string, candidates: readonly string[]): string
   return best !== null && bestScore <= budget ? best : null;
 }
 
+/**
+ * "Corrugated Box" vs "Corrugated Boxes": a spelling slip, not a new category.
+ * One edit for short names, two for long ones, or a singular/plural pair.
+ */
+export function isLikelyTypo(name: string, existing: string): boolean {
+  const a = categoryKey(name), b = categoryKey(existing);
+  if (!a || !b || a === b) return false;
+  const singular = (k: string) => k.replace(/(ies|es|s)$/, "");
+  if (singular(a) === singular(b)) return true;
+  const budget = Math.max(a.length, b.length) >= 8 ? 2 : 1;
+  return levenshtein(a, b) <= budget;
+}
+
 function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
   const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -458,9 +475,10 @@ export interface ValidateOptions {
    */
   categoryTree?: KnownCategory[];
   /**
-   * When false (default) an unknown category/subcategory is a row ERROR with a
-   * suggestion. When true (admin ticked "Create missing categories") it becomes
-   * a warning and the server creates it.
+   * Default: an unknown category/subcategory is NEW — a warning, listed in the
+   * preview's structure and created when the admin confirms — unless it looks
+   * like a typo of an existing name, which is an ERROR with the suggestion.
+   * `false` = strict: every unknown name is an error.
    */
   createMissingCategories?: boolean;
   /** known category names (empty list ⇒ any category accepted) — legacy name-only check */
@@ -500,49 +518,72 @@ export function validateRows(rawRows: RawRow[], opts: ValidateOptions): ParsedRo
 
     // Category / subcategory: matched against the REAL database tree. A match
     // is case/whitespace-insensitive (name or slug) and the row is stamped with
-    // the official DB name + id. No match ⇒ error with a close-match hint,
-    // unless the admin explicitly opted into creating missing categories.
-    let category = categoryCell;
+    // the official DB name + id. No match ⇒ NEW (created on confirm), except a
+    // likely typo of an existing name ⇒ error with the suggestion. A
+    // subcategory that exists under ANOTHER category is an error: it must
+    // belong to the row's category.
+    // Whitespace-normalised so "Stretch  Film" and "Stretch Film" are one
+    // category in the preview structure and on the server.
+    let category = categoryCell.replace(/\s+/g, " ");
     let categoryId: string | undefined;
-    let subcategory = subcategoryCell && categoryKey(subcategoryCell) !== "general" ? subcategoryCell : undefined;
+    let subcategory = subcategoryCell && categoryKey(subcategoryCell) !== "general" ? subcategoryCell.replace(/\s+/g, " ") : undefined;
     let subcategoryId: string | undefined;
+    let isNewCategory = false;
+    let isNewSubcategory = false;
+    const strict = opts.createMissingCategories === false;
     const tree = opts.categoryTree ?? [];
-    if (tree.length > 0) {
-      if (categoryCell) {
-        const key = categoryKey(categoryCell);
-        const hit = tree.find((c) => categoryKey(c.name) === key || (c.slug && c.slug === slugifyName(categoryCell)));
-        if (hit) {
-          category = hit.name;
-          categoryId = hit.id;
-          if (subcategory) {
-            const subKey = categoryKey(subcategory);
-            const subs = hit.subcategories ?? [];
-            const subHit = subs.find((sc) => categoryKey(sc.name) === subKey || (sc.slug && sc.slug === slugifyName(subcategory!)));
-            if (subHit) {
-              subcategory = subHit.name;
-              subcategoryId = subHit.id;
+    if (!categoryCell) messages.push("Category is missing");
+    if (tree.length > 0 && categoryCell) {
+      const key = categoryKey(categoryCell);
+      const hit = tree.find((c) => categoryKey(c.name) === key || (c.slug && c.slug === slugifyName(categoryCell)));
+      if (hit) {
+        category = hit.name;
+        categoryId = hit.id;
+        if (subcategory) {
+          const subKey = categoryKey(subcategory);
+          const subs = hit.subcategories ?? [];
+          const subHit = subs.find((sc) => categoryKey(sc.name) === subKey || (sc.slug && sc.slug === slugifyName(subcategory!)));
+          if (subHit) {
+            subcategory = subHit.name;
+            subcategoryId = subHit.id;
+          } else {
+            const elsewhere = tree.find((c) => c.id !== hit.id && (c.subcategories ?? []).some((sc) => categoryKey(sc.name) === subKey));
+            const hint = suggestName(subcategory, subs.map((sc) => sc.name));
+            if (elsewhere) {
+              messages.push(`Subcategory "${subcategory}" does not belong to category "${hit.name}" (it belongs to "${elsewhere.name}")`);
+            } else if (hint && (strict || isLikelyTypo(subcategory, hint))) {
+              messages.push(`Subcategory "${subcategory}" does not exist under "${hit.name}". Possible existing subcategory: "${hint}"`);
+            } else if (strict) {
+              messages.push(`Subcategory "${subcategory}" does not exist under "${hit.name}"`);
             } else {
-              const elsewhere = tree.find((c) => c.id !== hit.id && (c.subcategories ?? []).some((sc) => categoryKey(sc.name) === subKey));
-              const hint = suggestName(subcategory, subs.map((sc) => sc.name));
-              const problem = elsewhere
-                ? `Subcategory "${subcategory}" belongs to "${elsewhere.name}", not "${hit.name}"`
-                : `Subcategory "${subcategory}" does not exist under "${hit.name}"`;
-              const suggestion = hint ? `. Possible existing subcategory: "${hint}"` : "";
-              messages.push(opts.createMissingCategories ? `New subcategory "${subcategory}" will be created under "${hit.name}"` : `${problem}${suggestion}`);
+              isNewSubcategory = true;
+              messages.push(`New subcategory "${subcategory}" will be created under "${hit.name}"`);
             }
           }
+        }
+      } else {
+        const hint = suggestName(categoryCell, tree.map((c) => c.name));
+        if (hint && (strict || isLikelyTypo(categoryCell, hint))) {
+          messages.push(`Category "${categoryCell}" does not exist. Possible existing category: "${hint}"`);
+        } else if (strict) {
+          messages.push(`Category "${categoryCell}" does not exist`);
         } else {
-          const hint = suggestName(categoryCell, tree.map((c) => c.name));
-          const suggestion = hint ? `. Possible existing category: "${hint}"` : "";
-          messages.push(opts.createMissingCategories ? `New category "${categoryCell}" will be created` : `Category "${categoryCell}" does not exist${suggestion}`);
+          isNewCategory = true;
+          messages.push(`New category "${categoryCell}" will be created${hint ? ` (similar to existing "${hint}")` : ""}`);
+          if (subcategory) { isNewSubcategory = true; messages.push(`New subcategory "${subcategory}" will be created under "${categoryCell}"`); }
         }
       }
     } else if (
       category &&
-      opts.knownCategories.length > 0 &&
-      !opts.knownCategories.some((c) => c.toLowerCase() === category.toLowerCase())
+      (opts.categoryTree !== undefined || opts.knownCategories.length > 0) &&
+      !opts.knownCategories.some((c) => categoryKey(c) === categoryKey(category))
     ) {
-      messages.push(`New category "${category}"`);
+      // An EMPTY catalog (tree supplied but empty) or a name-only list:
+      // anything unknown is NEW. With no taxonomy info at all (unit tests,
+      // offline) every category is accepted silently — the server decides.
+      isNewCategory = true;
+      messages.push(`New category "${category}" will be created`);
+      if (subcategory) { isNewSubcategory = true; messages.push(`New subcategory "${subcategory}" will be created under "${category}"`); }
     }
 
     // Price is OPTIONAL (quotation-based). Only validate when provided.
@@ -649,6 +690,7 @@ export function validateRows(rawRows: RawRow[], opts: ValidateOptions): ParsedRo
     return {
       row: index + 2,
       sku, name, category, subcategory,
+      isNewCategory, isNewSubcategory,
       price,
       stock,
       imageName,

@@ -39,18 +39,18 @@ test("unknown category is at most a WARNING, never an error", () => {
   assert.notEqual(rows[0].status, "error");
 });
 
-test("empty category does NOT error (defaults to Uncategorised)", () => {
+test("empty category is an ERROR ('Category is missing') — the structure is driven by the Category column", () => {
   const rows = validateRows([{ sku: "ZOLO-A-1", name: "Box A" }], opts());
-  assert.notEqual(rows[0].status, "error");
-  assert.equal(rows[0].data.category, "Uncategorised");
+  assert.equal(rows[0].status, "error");
+  assert.ok(rows[0].errors.includes("Category is missing"));
 });
 
 test("blank/whitespace price is fine (quotation-based); junk price warns but imports", () => {
-  const ok = validateRows([{ sku: "S1", name: "N", price: "  " }], opts());
+  const ok = validateRows([{ sku: "S1", name: "N", category: "Boxes", price: "  " }], opts());
   assert.equal(ok[0].status, "ready");
   // Junk in an OPTIONAL field must not cost us the product — warn and import
   // as quotation-based rather than rejecting the row.
-  const bad = validateRows([{ sku: "S2", name: "N", price: "abc" }], opts());
+  const bad = validateRows([{ sku: "S2", name: "N", category: "Boxes", price: "abc" }], opts());
   assert.equal(bad[0].status, "warning");
   assert.equal(bad[0].price, null);
 });
@@ -193,7 +193,7 @@ test("a SKU-named file wins over the Image column (priority 1)", () => {
 
 test("error report lists clean rows too and attributes a field", () => {
   const rows = validateRows(
-    [{ sku: "OK", name: "Fine", category: "Boxes" }, { name: "Broken" }],
+    [{ sku: "OK", name: "Fine", category: "Boxes" }, { name: "Broken", category: "Boxes" }],
     opts(),
   );
   const csv = buildErrorReportCsv(rows);
@@ -241,13 +241,28 @@ test("misspelled category is a blocking ERROR with the closest existing category
 test("subcategory must belong to the row's category", () => {
   const [r] = validateRows([{ sku: "K3", name: "Box", category: "Corrugated Boxes", subcategory: "Kraft Bags" }], opts({ categoryTree: TREE }));
   assert.equal(r.status, "error");
-  assert.ok(r.errors.some((m) => m.startsWith('Subcategory "Kraft Bags" belongs to "Paper Bags", not "Corrugated Boxes"')), r.errors.join(" | "));
+  assert.ok(r.errors.some((m) => m === 'Subcategory "Kraft Bags" does not belong to category "Corrugated Boxes" (it belongs to "Paper Bags")'), r.errors.join(" | "));
 });
 
-test("with createMissingCategories the unknown category becomes a warning and the row imports", () => {
-  const [r] = validateRows([{ sku: "K4", name: "Box", category: "Corrugated Box" }], opts({ categoryTree: TREE, createMissingCategories: true }));
+test("a genuinely new category/subcategory is a warning (created on confirm), flagged for the structure preview", () => {
+  const [r] = validateRows([{ sku: "K4", name: "Film", category: "Stretch Film", subcategory: "Machine Stretch Film" }], opts({ categoryTree: TREE }));
   assert.equal(r.status, "warning");
-  assert.ok(r.warnings.some((m) => m.includes("will be created")));
+  assert.equal(r.isNewCategory, true); assert.equal(r.isNewSubcategory, true);
+  assert.ok(r.warnings.some((m) => m === 'New category "Stretch Film" will be created'));
+  assert.ok(r.warnings.some((m) => m === 'New subcategory "Machine Stretch Film" will be created under "Stretch Film"'));
+  // strict mode: every unknown name is an error
+  const [strict] = validateRows([{ sku: "K5", name: "Film", category: "Stretch Film" }], opts({ categoryTree: TREE, createMissingCategories: false }));
+  assert.equal(strict.status, "error");
+});
+
+test("blank category is an error; new subcategory under an existing category is a warning", () => {
+  const [blank] = validateRows([{ sku: "K6", name: "No Cat" }], opts({ categoryTree: TREE }));
+  assert.equal(blank.status, "error");
+  assert.ok(blank.errors.includes("Category is missing"));
+  const [r] = validateRows([{ sku: "K7", name: "Box", category: "Corrugated Boxes", subcategory: "Heavy Duty Boxes" }], opts({ categoryTree: TREE }));
+  assert.equal(r.status, "warning");
+  assert.equal(r.isNewCategory, false); assert.equal(r.isNewSubcategory, true);
+  assert.equal(r.data.category, "Corrugated Boxes"); assert.equal(r.data.categoryId, "c1");
 });
 
 // ---------- ZIP image matching: SKU → Product ID → filename → name slug ----------

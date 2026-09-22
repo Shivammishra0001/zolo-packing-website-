@@ -21,6 +21,7 @@ import ProductDetail from "./pages/ProductDetail";
 import PackagingTemplates from "./pages/PackagingTemplates";
 import ImportHistory from "./pages/ImportHistory";
 import CategoriesPage from "./pages/catalog/CategoriesPage";
+import CategoryProductsPage from "./pages/catalog/CategoryProductsPage";
 
 // Operations
 import Artwork from "./pages/Artwork";
@@ -83,6 +84,7 @@ export default function AdminRoutes() {
         <Route path="catalog" element={<Catalog />} />
         <Route path="catalog/imports" element={<ImportHistory />} />
         <Route path="catalog/categories" element={<CategoriesPage />} />
+        <Route path="catalog/categories/:id" element={<CategoryProductsPage />} />
         <Route path="catalog/:id" element={<ProductDetail />} />
         <Route path="templates" element={<PackagingTemplates />} />
 

@@ -319,6 +319,77 @@ export async function archive(adminId, id) {
   return { id, archived: true, productsAffected: 0 };
 }
 
+/**
+ * Bulk action from the admin multi-select. Every id is processed on its own
+ * so one refusal (a category that still has products) never blocks the rest;
+ * the result lists what happened per id.
+ *
+ *   activate / deactivate — isActive on the row (a category's subcategories
+ *                            follow it, so the storefront hides the whole branch)
+ *   archive               — deactivate the row and its subcategories; products
+ *                            keep their links (the safe alternative to delete)
+ *   delete                — the existing soft-delete (archive()): refused while
+ *                            products or subcategories reference the row
+ */
+export async function bulk(adminId, { ids, action }) {
+  if (!Array.isArray(ids) || !ids.length || ids.some((x) => typeof x !== "string")) throw issue("ids", "Send the list of category ids");
+  if (ids.length > 500) throw issue("ids", "At most 500 categories per request");
+  if (!["activate", "deactivate", "archive", "delete"].includes(action)) throw issue("action", "action must be activate, deactivate, archive or delete");
+  const unique = [...new Set(ids)];
+  const results = [];
+  for (const id of unique) {
+    try {
+      const row = await prisma.category.findFirst({ where: { id, deletedAt: null }, select: { id: true, name: true, parentId: true } });
+      if (!row) { results.push({ id, ok: false, error: "Category not found" }); continue; }
+      if (action === "delete") {
+        const r = await archive(adminId, id);
+        results.push({ id, ok: true, name: row.name, ...r });
+        continue;
+      }
+      const isActive = action === "activate";
+      const branch = row.parentId ? [id] : [id, ...(await prisma.category.findMany({ where: { parentId: id, deletedAt: null }, select: { id: true } })).map((c) => c.id)];
+      await prisma.category.updateMany({ where: { id: { in: branch } }, data: { isActive } });
+      await recordEvent({
+        eventType: isActive ? "category.activated" : action === "archive" ? "category.archived_soft" : "category.deactivated",
+        actorId: adminId, entityType: "Category", entityId: id, metadata: { name: row.name, affected: branch.length, action },
+      });
+      results.push({ id, ok: true, name: row.name, affected: branch.length });
+    } catch (e) {
+      results.push({ id, ok: false, error: e.message, code: e.code ?? null, productCount: e.productCount ?? null });
+    }
+  }
+  return { action, requested: unique.length, done: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length, results };
+}
+
+/**
+ * Move every product of a category (or subcategory) to another one. This is
+ * the "Move Products" path offered when a delete is refused. Both FKs and the
+ * denormalised name strings are rewritten together so the storefront and the
+ * counts agree; nothing is deleted.
+ */
+export async function moveProducts(adminId, fromId, { toCategoryId, toSubcategoryId = null }) {
+  const from = await prisma.category.findFirst({ where: { id: fromId, deletedAt: null } });
+  if (!from) throw notFound("Category not found");
+  if (!toCategoryId || typeof toCategoryId !== "string") throw issue("toCategoryId", "Choose the destination category");
+  const to = await prisma.category.findFirst({ where: { id: toCategoryId, deletedAt: null, parentId: null } });
+  if (!to) throw issue("toCategoryId", "Destination category not found");
+  let toSub = null;
+  if (toSubcategoryId) {
+    toSub = await prisma.category.findFirst({ where: { id: toSubcategoryId, deletedAt: null, parentId: to.id } });
+    if (!toSub) throw issue("toSubcategoryId", "Destination subcategory must belong to the destination category");
+  }
+  const where = { deletedAt: null, OR: [{ categoryId: fromId }, { subcategoryId: fromId }] };
+  const { count } = await prisma.product.updateMany({
+    where,
+    data: {
+      categoryId: to.id, category: to.name,
+      subcategoryId: toSub?.id ?? null, subcategory: toSub?.name ?? "General",
+    },
+  });
+  await recordEvent({ eventType: "category.products_moved", actorId: adminId, entityType: "Category", entityId: fromId, metadata: { from: from.name, to: to.name, toSub: toSub?.name ?? null, moved: count } });
+  return { moved: count, toCategoryId: to.id, toSubcategoryId: toSub?.id ?? null };
+}
+
 /** Is this row usable for a NEW product assignment? (active + not archived) */
 export const assignable = (row) => Boolean(row && !row.deletedAt && row.isActive);
 

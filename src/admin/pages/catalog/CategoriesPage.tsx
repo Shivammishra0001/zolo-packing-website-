@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, type DragEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
-  Archive, ArrowDown, ArrowUp, ChevronDown, ChevronRight, FolderTree, GripVertical, ImageIcon, Layers, MoveRight, Pencil, Plus, Power, PowerOff,
+  Archive, ArrowDown, ArrowUp, ChevronDown, ChevronRight, Download, FolderTree, GripVertical, ImageIcon, LayoutGrid, Layers, List, MoveRight, Pencil, Plus, Power, PowerOff, Settings2, Trash2,
 } from "lucide-react";
 import { ApiError, describeApiError } from "@/lib/api/client";
-import { type CategoryInput, type CategoryNode, type CategoryTreeNode } from "@/lib/api/categories";
+import { categoriesApi, type CategoryInput, type CategoryNode, type CategoryTreeNode } from "@/lib/api/categories";
 import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/utils/cn";
 import { Badge, Button, Dialog, PageHeader, SearchInput, Select, Toolbar } from "../../components/ui";
@@ -13,17 +13,20 @@ import { TableSkeleton } from "../../components/DataTable";
 import { archiveCategory, hydrateCategories, reorderCategories, saveCategory, setCategoryStatus, useCategories } from "../../categories-store";
 import { hydrateCatalog } from "../../catalog-store";
 import { AREA, CampaignImageField, errorsFrom, Field, FIELD, FIELD_ERR, RowActions, SwitchRow, type FormErrors } from "../marketing/shared";
+import { BulkImportButton } from "./BulkImport";
 
 // ============================================================
 // Product Catalog → Categories. The whole catalog structure, managed here and
 // read by the storefront (nav, filters, category pages) straight from
 // PostgreSQL. Subcategories are rows of the same table with a parent.
 //
-// Ordering: drag a row onto a sibling (or use the arrows) → the full sibling
-// order is sent to the server and persisted as sortOrder; the storefront
-// picks it up on its next load. Archiving is refused while products still
-// reference the row — the admin reassigns them first, products are never
-// touched from here.
+// Two views of the same tree: CARDS (default — image, DB product/subcategory
+// counts, status, Manage/Edit/Delete, multi-select with a bulk toolbar) and
+// TABLE (drag a row onto a sibling or use the arrows → the full sibling order
+// is persisted as sortOrder). Counts are COUNT(*) queries on the server, never
+// stored numbers. Deleting is the existing soft archive and is refused while
+// products reference the row: the admin views, moves or archives instead —
+// products are never touched from here.
 // ============================================================
 
 /** URL-safe slug preview, same rule as the server. */
@@ -140,17 +143,41 @@ function CategoryDialog({ open, node, parentId: initialParent, categories, onClo
 // ---------- page ----------
 
 type Filter = "all" | "active" | "inactive";
+type View = "cards" | "table";
+type BulkAction = "activate" | "deactivate" | "archive" | "delete";
+
+/** CSV export of the whole structure with live counts. */
+function exportCsv(categories: CategoryTreeNode[]) {
+  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines = ["Category,Subcategory,Slug,Products,Subcategories,Status"];
+  for (const c of categories) {
+    lines.push([c.name, "", c.slug, c.productCount, c.subcategoryCount, c.isActive ? "active" : "inactive"].map(esc).join(","));
+    for (const s of c.subcategories) lines.push([c.name, s.name, s.slug, s.productCount, "", s.isActive ? "active" : "inactive"].map(esc).join(","));
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = "zolo-categories.csv"; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 export default function CategoriesPage() {
   const toast = useToast();
+  const nav = useNavigate();
   const categories = useCategories();
   const [loaded, setLoaded] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  // The list (table) is the default — the same view as before, with checkboxes
+  // and bulk actions added; cards are an alternative, never paginated.
+  const [view, setView] = useState<View>("table");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState<{ node: CategoryNode | null; parentId: string | null } | null>(null);
-  const [archiving, setArchiving] = useState<CategoryNode | null>(null);
+  // Delete flow: confirm → (refused with products) blocked → move products.
+  const [deleting, setDeleting] = useState<CategoryNode[] | null>(null);
   const [blocked, setBlocked] = useState<{ node: CategoryNode; message: string } | null>(null);
+  const [moving, setMoving] = useState<CategoryNode | null>(null);
+  const [moveTo, setMoveTo] = useState<{ categoryId: string; subcategoryId: string }>({ categoryId: "", subcategoryId: "" });
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState<{ id: string; parentId: string | null } | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -174,6 +201,8 @@ export default function CategoriesPage() {
 
   const toggle = (id: string) => setExpanded((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const isOpen = (id: string) => filtering || expanded.has(id);
+  const toggleSelect = (id: string) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const byId = useMemo(() => new Map<string, CategoryNode>(categories.flatMap((c) => [[c.id, c] as const, ...c.subcategories.map((s) => [s.id, s] as const)])), [categories]);
 
   const refreshEverything = async () => { await hydrateCategories(true); void hydrateCatalog(); };
 
@@ -185,19 +214,60 @@ export default function CategoriesPage() {
     } catch (e) { toast.error("Couldn't change status", describeApiError(e).message); }
   };
 
-  const archive = async () => {
-    if (!archiving) return;
+  /** Bulk toolbar. Delete goes through the confirmation dialog first. */
+  const runBulk = async (action: BulkAction, ids: string[]) => {
+    if (!ids.length) return;
     setBusy(true);
     try {
-      await archiveCategory(archiving.id);
-      toast.success("Archived", `${archiving.name} was removed from the catalog structure.`);
-      setArchiving(null);
-    } catch (e) {
-      const msg = describeApiError(e).message;
-      setArchiving(null);
-      if (e instanceof ApiError && (e.code === "CATEGORY_HAS_PRODUCTS" || e.code === "CATEGORY_HAS_SUBCATEGORIES")) setBlocked({ node: archiving, message: msg });
-      else toast.error("Couldn't archive", msg);
-    } finally { setBusy(false); }
+      const r = await categoriesApi.bulk(ids, action);
+      await refreshEverything();
+      const verb = { activate: "activated", deactivate: "deactivated", archive: "archived", delete: "deleted" }[action];
+      if (r.failed === 0) toast.success(`${r.done} categor${r.done === 1 ? "y" : "ies"} ${verb}`);
+      else {
+        const refused = r.results.filter((x) => !x.ok);
+        toast.error(`${r.done} ${verb}, ${r.failed} refused`, refused.map((x) => `${byId.get(x.id)?.name ?? x.id}: ${x.error}`).join(" · "));
+        // Single blocked delete → offer the safe options.
+        if (action === "delete" && refused.length === 1 && refused[0].code === "CATEGORY_HAS_PRODUCTS") {
+          const node = byId.get(refused[0].id);
+          if (node) setBlocked({ node, message: refused[0].error ?? "" });
+        }
+      }
+      setSelected(new Set()); setDeleting(null);
+    } catch (e) { toast.error("Action failed", describeApiError(e).message); }
+    finally { setBusy(false); }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    // Single delete keeps the precise 409 path (message + options).
+    if (deleting.length === 1) {
+      const n = deleting[0];
+      setBusy(true);
+      try {
+        await archiveCategory(n.id);
+        toast.success("Deleted", `${n.name} was removed from the catalog structure.`);
+        setDeleting(null); void hydrateCatalog();
+      } catch (e) {
+        const msg = describeApiError(e).message;
+        setDeleting(null);
+        if (e instanceof ApiError && (e.code === "CATEGORY_HAS_PRODUCTS" || e.code === "CATEGORY_HAS_SUBCATEGORIES")) setBlocked({ node: n, message: msg });
+        else toast.error("Couldn't delete", msg);
+      } finally { setBusy(false); }
+      return;
+    }
+    await runBulk("delete", deleting.map((n) => n.id));
+  };
+
+  const doMove = async () => {
+    if (!moving || !moveTo.categoryId) return;
+    setBusy(true);
+    try {
+      const r = await categoriesApi.moveProducts(moving.id, moveTo.categoryId, moveTo.subcategoryId || null);
+      toast.success(`${r.moved} product${r.moved === 1 ? "" : "s"} moved`, `${moving.name} is now empty and can be deleted.`);
+      setMoving(null); setBlocked(null);
+      await refreshEverything();
+    } catch (e) { toast.error("Couldn't move products", describeApiError(e).message); }
+    finally { setBusy(false); }
   };
 
   /** Move `id` to `position` (1-based) among its siblings and persist. */
@@ -224,6 +294,16 @@ export default function CategoriesPage() {
 
   const topIds = categories.map((c) => c.id);
   const th = "px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wide erp-text-faint";
+  const manage = (id: string) => nav(`/admin/catalog/categories/${id}`);
+  const nodeActions = (n: CategoryNode, depth: 0 | 1) => [
+    { label: "Manage products", icon: Settings2, onClick: () => manage(n.id) },
+    { label: "Edit", icon: Pencil, onClick: () => setDialog({ node: n, parentId: n.parentId }) },
+    { label: "Add subcategory", icon: Plus, onClick: () => setDialog({ node: null, parentId: n.id }), hidden: depth !== 0 },
+    { label: "Manage subcategories", icon: Layers, onClick: () => setExpanded((s) => new Set(s).add(n.id)), hidden: depth !== 0 },
+    { label: "Move to another category", icon: MoveRight, onClick: () => setDialog({ node: n, parentId: n.parentId }), hidden: depth !== 1 },
+    { label: n.isActive ? "Deactivate" : "Activate", icon: n.isActive ? PowerOff : Power, onClick: () => void setStatus(n) },
+    { label: "Delete", icon: Trash2, danger: true, onClick: () => setDeleting([n]) },
+  ];
 
   const Row = ({ n, depth, siblings, parentId, expandable }: { n: CategoryNode; depth: 0 | 1; siblings: string[]; parentId: string | null; expandable?: { open: boolean; count: number } }) => {
     const idx = siblings.indexOf(n.id);
@@ -236,6 +316,7 @@ export default function CategoriesPage() {
       >
         <td className="px-2 py-2.5">
           <div className={cn("flex items-center gap-1.5", depth === 1 && "pl-8")}>
+            <input type="checkbox" checked={selected.has(n.id)} onChange={() => toggleSelect(n.id)} aria-label={`Select ${n.name}`} className="h-3.5 w-3.5 accent-primary-500" />
             <span className={cn("cursor-grab erp-text-faint", filtering && "invisible")} title="Drag to reorder" aria-hidden><GripVertical className="h-4 w-4" /></span>
             {expandable ? (
               <button type="button" onClick={() => toggle(n.id)} aria-expanded={expandable.open} aria-label={`${expandable.open ? "Collapse" : "Expand"} ${n.name}`} className="flex h-7 w-7 items-center justify-center rounded-md erp-text-muted hover:erp-surface-2">
@@ -254,7 +335,7 @@ export default function CategoriesPage() {
         <td className="px-4 py-2.5 text-sm erp-text-muted">{depth === 0 ? (expandable?.count ?? 0) : <span className="erp-text-faint">—</span>}</td>
         <td className="px-4 py-2.5 text-sm">
           {n.productCount > 0
-            ? <Link to={`/admin/catalog?category=${enc(n.name)}`} className="font-semibold text-primary-600 hover:underline dark:text-primary-400">{n.productCount}</Link>
+            ? <Link to={`/admin/catalog/categories/${n.id}`} className="font-semibold text-primary-600 hover:underline dark:text-primary-400">{n.productCount}</Link>
             : <span className="erp-text-faint">0</span>}
         </td>
         <td className="px-4 py-2.5"><Badge tone={n.isActive ? "success" : "neutral"} dot>{n.isActive ? "Active" : "Inactive"}</Badge></td>
@@ -265,51 +346,117 @@ export default function CategoriesPage() {
             <button type="button" disabled={filtering || idx >= siblings.length - 1} onClick={() => void move(parentId, siblings, n.id, idx + 2)} aria-label={`Move ${n.name} down`} className="flex h-7 w-7 items-center justify-center rounded-md erp-text-muted hover:erp-surface-2 disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button>
           </div>
         </td>
-        <td className="px-2 py-2.5">
-          <RowActions label={`Actions for ${n.name}`} actions={[
-            { label: "Edit", icon: Pencil, onClick: () => setDialog({ node: n, parentId: n.parentId }) },
-            { label: "Add subcategory", icon: Plus, onClick: () => setDialog({ node: null, parentId: n.id }), hidden: depth !== 0 },
-            { label: "Manage subcategories", icon: Layers, onClick: () => setExpanded((s) => new Set(s).add(n.id)), hidden: depth !== 0 },
-            { label: "Move to another category", icon: MoveRight, onClick: () => setDialog({ node: n, parentId: n.parentId }), hidden: depth !== 1 },
-            { label: n.isActive ? "Deactivate" : "Activate", icon: n.isActive ? PowerOff : Power, onClick: () => void setStatus(n) },
-            { label: "Archive", icon: Archive, danger: true, onClick: () => setArchiving(n) },
-          ]} />
-        </td>
+        <td className="px-2 py-2.5"><RowActions label={`Actions for ${n.name}`} actions={nodeActions(n, depth)} /></td>
       </tr>
+    );
+  };
+
+  /** Category card (spec §17): image, name, counts, status, Manage/Edit/Delete, expandable subcategories. */
+  const Card = ({ c }: { c: CategoryTreeNode }) => {
+    const open = isOpen(c.id);
+    const full = categories.find((x) => x.id === c.id) ?? c;
+    return (
+      <article className={cn("flex flex-col rounded-xl border erp-border erp-surface", selected.has(c.id) && "ring-2 ring-primary-400", !c.isActive && "opacity-80")} data-category-card={c.id}>
+        <div className="relative flex h-28 items-center justify-center overflow-hidden rounded-t-xl erp-surface-2">
+          <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)} aria-label={`Select ${c.name}`} className="absolute left-3 top-3 z-10 h-4 w-4 accent-primary-500" />
+          {c.image ? <img src={c.image} alt="" className="h-full w-full object-cover" loading="lazy" /> : <ImageIcon className="h-8 w-8 erp-text-faint" aria-hidden />}
+          <span className="absolute right-3 top-3"><Badge tone={c.isActive ? "success" : "neutral"} dot>{c.isActive ? "Active" : "Inactive"}</Badge></span>
+        </div>
+        <div className="flex flex-1 flex-col p-3">
+          <div className="truncate text-sm font-bold erp-text" title={c.name}>{c.name}</div>
+          <div className="mt-0.5 text-xs erp-text-muted" data-testid="category-counts">
+            <span className="font-semibold erp-text">{c.productCount}</span> Product{c.productCount === 1 ? "" : "s"} • <span className="font-semibold erp-text">{full.subcategoryCount}</span> Subcategor{full.subcategoryCount === 1 ? "y" : "ies"}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <Button size="sm" variant="primary" icon={Settings2} onClick={() => manage(c.id)}>Manage</Button>
+            <Button size="sm" icon={Pencil} onClick={() => setDialog({ node: c, parentId: null })}>Edit</Button>
+            <Button size="sm" variant="danger" icon={Trash2} onClick={() => setDeleting([c])}>Delete</Button>
+            <span className="ml-auto"><RowActions label={`More actions for ${c.name}`} actions={nodeActions(c, 0)} /></span>
+          </div>
+          <button type="button" onClick={() => toggle(c.id)} aria-expanded={open} className="mt-3 flex items-center gap-1 text-xs font-semibold erp-text-muted hover:erp-text">
+            {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />} {full.subcategoryCount} subcategor{full.subcategoryCount === 1 ? "y" : "ies"}
+          </button>
+          {open && (
+            <ul className="mt-1.5 space-y-1 border-l erp-border pl-2">
+              {c.subcategories.length === 0 && <li className="text-xs erp-text-faint">No subcategories. <button type="button" onClick={() => setDialog({ node: null, parentId: c.id })} className="font-semibold text-primary-600 hover:underline dark:text-primary-400">Add one</button></li>}
+              {c.subcategories.map((s) => (
+                <li key={s.id} className="flex items-center gap-1.5 text-xs" data-subcategory-row={s.id}>
+                  <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id)} aria-label={`Select ${s.name}`} className="h-3 w-3 accent-primary-500" />
+                  <span className={cn("min-w-0 flex-1 truncate font-semibold erp-text", !s.isActive && "line-through opacity-60")} title={s.name}>{s.name}</span>
+                  <Link to={`/admin/catalog/categories/${s.id}`} className="whitespace-nowrap font-semibold text-primary-600 hover:underline dark:text-primary-400">{s.productCount} Product{s.productCount === 1 ? "" : "s"}</Link>
+                  <RowActions label={`Actions for ${s.name}`} actions={nodeActions(s, 1)} />
+                </li>
+              ))}
+              {c.subcategories.length > 0 && <li><button type="button" onClick={() => setDialog({ node: null, parentId: c.id })} className="text-xs font-semibold text-primary-600 hover:underline dark:text-primary-400">+ Add subcategory</button></li>}
+            </ul>
+          )}
+        </div>
+      </article>
     );
   };
 
   const total = categories.length;
   const totalSubs = categories.reduce((n, c) => n + c.subcategories.length, 0);
+  const selectedNodes = [...selected].map((id) => byId.get(id)).filter((n): n is CategoryNode => Boolean(n));
+  const deleteStats = (nodes: CategoryNode[]) => ({
+    products: nodes.reduce((n, x) => n + x.productCount, 0),
+    subcategories: nodes.reduce((n, x) => n + (x.parentId ? 0 : (categories.find((c) => c.id === x.id)?.subcategoryCount ?? 0)), 0),
+  });
+  // Any top-level category except the one being emptied (a subcategory's own parent is a valid target).
+  const moveTargets = categories.filter((c) => c.id !== moving?.id);
 
   return (
-    <div className="shell-admin space-y-5">
+    <div className="shell-admin space-y-4">
       <PageHeader
         breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Catalog", to: "/admin/catalog" }, { label: "Categories" }]}
         title="Categories"
-        subtitle="The catalog structure customers browse. Changes are live in the storefront on its next load — no deployment needed."
+        subtitle="The catalog structure customers browse. Product counts are live database counts. Changes are live in the storefront on its next load."
         actions={<>
+          <Button icon={Download} onClick={() => exportCsv(categories)} disabled={!categories.length}>Export</Button>
+          <BulkImportButton />
           <Button icon={Plus} onClick={() => setDialog({ node: null, parentId: categories[0]?.id ?? null })} disabled={!categories.length}>Add Subcategory</Button>
           <Button variant="primary" icon={Plus} onClick={() => setDialog({ node: null, parentId: null })}>Add Category</Button>
         </>}
       />
 
       <Toolbar>
-        <SearchInput value={search} onChange={setSearch} placeholder="Search categories and subcategories…" className="w-full sm:w-80" aria-label="Search categories" />
+        <SearchInput value={search} onChange={setSearch} placeholder="Search categories…" className="w-full sm:w-80" aria-label="Search categories" />
         <Select value={filter} onChange={(v) => setFilter(v as Filter)} aria-label="Status filter">
           <option value="all">Active & inactive</option>
           <option value="active">Active only</option>
           <option value="inactive">Inactive only</option>
         </Select>
-        <span className="text-xs erp-text-faint sm:ml-auto">{total} categories · {totalSubs} subcategories{filtering ? " · reordering is available without filters" : ""}</span>
+        <div className="flex rounded-lg border erp-border p-0.5" role="group" aria-label="View">
+          <button type="button" onClick={() => setView("cards")} aria-pressed={view === "cards"} aria-label="Card view" className={cn("flex h-8 w-8 items-center justify-center rounded-md", view === "cards" ? "erp-surface-2 erp-text" : "erp-text-muted")}><LayoutGrid className="h-4 w-4" /></button>
+          <button type="button" onClick={() => setView("table")} aria-pressed={view === "table"} aria-label="Table view (reorder)" className={cn("flex h-8 w-8 items-center justify-center rounded-md", view === "table" ? "erp-surface-2 erp-text" : "erp-text-muted")}><List className="h-4 w-4" /></button>
+        </div>
+        <span className="text-xs erp-text-faint sm:ml-auto">{total} categories · {totalSubs} subcategories{filtering && view === "table" ? " · reordering is available without filters" : ""}</span>
         <Button size="sm" variant="ghost" onClick={() => setExpanded(new Set(expanded.size === total ? [] : topIds))}>{expanded.size === total && total > 0 ? "Collapse all" : "Expand all"}</Button>
       </Toolbar>
 
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3 py-2 text-sm dark:border-primary-500/30 dark:bg-primary-500/10" role="region" aria-label="Bulk actions">
+          <span className="font-bold erp-text">{selected.size} selected</span>
+          <Button size="sm" icon={Power} disabled={busy} onClick={() => void runBulk("activate", [...selected])}>Activate</Button>
+          <Button size="sm" icon={PowerOff} disabled={busy} onClick={() => void runBulk("deactivate", [...selected])}>Deactivate</Button>
+          <Button size="sm" icon={Archive} disabled={busy} onClick={() => void runBulk("archive", [...selected])}>Archive</Button>
+          <Button size="sm" variant="danger" icon={Trash2} disabled={busy} onClick={() => setDeleting(selectedNodes)}>Delete</Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+        </div>
+      )}
+
       <Panel bodyClassName="p-0">
         {!loaded && categories.length === 0 && <div className="p-4"><TableSkeleton rows={5} cols={6} /></div>}
-        {loaded && categories.length === 0 && <EmptyState icon={FolderTree} title="No categories yet" message="Add a category to start building the catalog structure customers will browse." action={<Button variant="primary" icon={Plus} onClick={() => setDialog({ node: null, parentId: null })}>Add Category</Button>} />}
+        {loaded && categories.length === 0 && <EmptyState icon={FolderTree} title="No categories yet" message="Add a category, or import an Excel file — its Category / Subcategory columns build the structure." action={<Button variant="primary" icon={Plus} onClick={() => setDialog({ node: null, parentId: null })}>Add Category</Button>} />}
         {categories.length > 0 && rows.length === 0 && <EmptyState icon={FolderTree} title="No categories match" message="Try another search or filter." />}
-        {rows.length > 0 && (
+        {rows.length > 0 && view === "cards" && (
+          <div className="p-4">
+            <div className="grid-cards grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" data-testid="category-grid">
+              {rows.map((c) => <Card key={c.id} c={c} />)}
+            </div>
+          </div>
+        )}
+        {rows.length > 0 && view === "table" && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <caption className="sr-only">Categories and subcategories</caption>
@@ -340,25 +487,63 @@ export default function CategoriesPage() {
         onSaved={(saved) => { setDialog(null); if (saved.parentId) setExpanded((s) => new Set(s).add(saved.parentId!)); void refreshEverything(); }}
       />
 
+      {/* Delete confirmation — always shows what the selection contains. */}
       <Dialog
-        open={!!archiving} onClose={() => setArchiving(null)}
-        title={`Archive ${archiving?.name ?? ""}?`}
-        description={archiving?.productCount ? `${archiving.name} still has ${archiving.productCount} product(s). Archiving will be refused until they are reassigned — consider deactivating instead.` : "It disappears from the storefront and this list. Products are never deleted."}
-        footer={<><Button onClick={() => setArchiving(null)} disabled={busy}>Cancel</Button><Button variant="danger" icon={Archive} loading={busy} onClick={archive}>Archive</Button></>}
+        open={!!deleting} onClose={() => setDeleting(null)}
+        title={deleting?.length === 1 ? `Delete ${deleting[0].name}?` : `Delete ${deleting?.length ?? 0} categories?`}
+        description={deleting ? (() => {
+          const st = deleteStats(deleting);
+          if (st.products > 0) return `${deleting.length === 1 ? "This category contains" : "These categories contain"} ${st.products} product${st.products === 1 ? "" : "s"}${st.subcategories ? ` and ${st.subcategories} subcategor${st.subcategories === 1 ? "y" : "ies"}` : ""}. Please reassign or archive these products before deleting the categor${deleting.length === 1 ? "y" : "ies"} — products are never deleted from here.`;
+          if (st.subcategories > 0) return `${deleting.length === 1 ? "This category has" : "These categories have"} ${st.subcategories} subcategor${st.subcategories === 1 ? "y" : "ies"}. Delete or move them first.`;
+          return "It disappears from the storefront and this list (soft delete, restorable from the database). Products are never deleted.";
+        })() : ""}
+        footer={<>
+          <Button onClick={() => setDeleting(null)} disabled={busy}>Cancel</Button>
+          {deleting && deleteStats(deleting).products > 0 && deleting.length === 1 && <>
+            <Button icon={Settings2} onClick={() => { const n = deleting[0]; setDeleting(null); manage(n.id); }}>View Products</Button>
+            <Button icon={MoveRight} onClick={() => { const n = deleting[0]; setDeleting(null); setMoving(n); setMoveTo({ categoryId: "", subcategoryId: "" }); }}>Move Products</Button>
+            {deleting[0].isActive && <Button variant="primary" icon={Archive} onClick={() => { const n = deleting[0]; setDeleting(null); void runBulk("archive", [n.id]); }}>Archive Category</Button>}
+          </>}
+          {deleting && deleteStats(deleting).products === 0 && <Button variant="danger" icon={Trash2} loading={busy} onClick={confirmDelete}>Delete</Button>}
+          {deleting && deleteStats(deleting).products > 0 && deleting.length > 1 && <Button variant="danger" icon={Trash2} loading={busy} onClick={confirmDelete}>Delete empty ones only</Button>}
+        </>}
       />
 
       <Dialog
         open={!!blocked} onClose={() => setBlocked(null)}
-        title="Cannot archive"
+        title="Cannot delete"
         description={blocked?.message}
         footer={<>
-          <Button onClick={() => setBlocked(null)}>Close</Button>
-          {blocked && blocked.node.productCount > 0 && <Link to={`/admin/catalog?category=${enc(blocked.node.name)}`}><Button variant="secondary">Open its products</Button></Link>}
-          {blocked && blocked.node.isActive && <Button variant="primary" icon={PowerOff} onClick={() => { const n = blocked.node; setBlocked(null); void setStatus(n); }}>Deactivate instead</Button>}
+          <Button onClick={() => setBlocked(null)}>Cancel</Button>
+          {blocked && blocked.node.productCount > 0 && <>
+            <Button icon={Settings2} onClick={() => { const n = blocked.node; setBlocked(null); manage(n.id); }}>View Products</Button>
+            <Button icon={MoveRight} onClick={() => { const n = blocked.node; setBlocked(null); setMoving(n); setMoveTo({ categoryId: "", subcategoryId: "" }); }}>Move Products</Button>
+          </>}
+          {blocked && blocked.node.isActive && <Button variant="primary" icon={Archive} onClick={() => { const n = blocked.node; setBlocked(null); void runBulk("archive", [n.id]); }}>Archive Category</Button>}
         </>}
       />
+
+      <Dialog
+        open={!!moving} onClose={() => setMoving(null)}
+        title={`Move ${moving?.productCount ?? 0} product${moving?.productCount === 1 ? "" : "s"} from ${moving?.name ?? ""}`}
+        description="Every product of this category is reassigned to the destination. Nothing is deleted; counts update immediately."
+        footer={<><Button onClick={() => setMoving(null)} disabled={busy}>Cancel</Button><Button variant="primary" icon={MoveRight} loading={busy} disabled={!moveTo.categoryId} onClick={doMove}>Move Products</Button></>}
+      >
+        <div className="space-y-3">
+          <Field label="Destination category" required>
+            <select value={moveTo.categoryId} onChange={(e) => setMoveTo({ categoryId: e.target.value, subcategoryId: "" })} className={FIELD} aria-label="Destination category">
+              <option value="">Select a category…</option>
+              {moveTargets.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Destination subcategory" hint="Optional.">
+            <select value={moveTo.subcategoryId} onChange={(e) => setMoveTo((m) => ({ ...m, subcategoryId: e.target.value }))} className={FIELD} aria-label="Destination subcategory" disabled={!moveTo.categoryId}>
+              <option value="">None</option>
+              {(categories.find((c) => c.id === moveTo.categoryId)?.subcategories ?? []).filter((s) => s.id !== moving?.id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </Field>
+        </div>
+      </Dialog>
     </div>
   );
 }
-
-const enc = encodeURIComponent;

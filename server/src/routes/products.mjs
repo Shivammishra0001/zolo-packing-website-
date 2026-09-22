@@ -15,6 +15,7 @@ import {
   slugify,
 } from "../services/catalog.mjs";
 import { recordImport } from "../services/catalog-imports.mjs";
+import { splitMultiValue } from "../services/catalog-normalize.mjs";
 import { createProduct, updateProduct } from "../services/product-write.mjs";
 import { authenticate, requireAdmin } from "../middleware/auth.mjs";
 
@@ -25,28 +26,116 @@ export const productsRouter = Router();
 // UI is not authorization.
 const adminOnly = [authenticate, requireAdmin];
 
+const SORTS = {
+  newest: { createdAt: "desc" },
+  oldest: { createdAt: "asc" },
+  name_asc: { name: "asc" },
+  name_desc: { name: "desc" },
+};
+const STATUSES = new Set(["draft", "active", "archived"]);
+
+/** Query-string filters for GET /products — every one is optional. */
+function productFilters(q) {
+  const where = {};
+  const text = (v) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const categoryId = text(q.categoryId);
+  const subcategoryId = text(q.subcategoryId);
+  // A category id matches products linked to it directly OR through one of
+  // its subcategories (every product carries both FKs).
+  if (categoryId) where.OR = [{ categoryId }, { subcategoryId: categoryId }];
+  if (subcategoryId) where.subcategoryId = subcategoryId;
+  const status = text(q.status);
+  if (status && STATUSES.has(status)) where.status = status;
+  const productType = text(q.productType);
+  if (productType) where.productType = { equals: productType, mode: "insensitive" };
+  // color / sizeLabel hold comma-separated lists, so a filter is a substring
+  // match on the stored string ("White" matches "Brown, White").
+  const color = text(q.color);
+  if (color) where.color = { contains: color, mode: "insensitive" };
+  const size = text(q.size);
+  if (size) where.sizeLabel = { contains: size, mode: "insensitive" };
+  const search = text(q.q ?? q.search);
+  if (search) {
+    where.AND = [{ OR: [
+      { name: { contains: search, mode: "insensitive" } },
+      { sku: { contains: search, mode: "insensitive" } },
+      { description: { contains: search, mode: "insensitive" } },
+    ] }];
+  }
+  return where;
+}
+
 /**
  * List products. Soft-deleted rows are hidden by default so the storefront and
  * catalog never show archived stock; `?includeDeleted=1` is for admin tooling.
- * Supports optional pagination — omitted params keep the original "all rows"
- * behavior that existing callers depend on.
+ *
+ * Pagination: `?page=1&limit=8` (page-based, used by the admin category view)
+ * or the older `?limit&offset`. Omitted params keep the original "all rows"
+ * behaviour that existing callers depend on. Filters: categoryId,
+ * subcategoryId, status, productType, color, size, q; sort: newest (default),
+ * oldest, name_asc, name_desc. All of it is done in PostgreSQL — the browser
+ * never receives more than one page.
  */
 productsRouter.get("/products", wrap(async (req, res) => {
   const includeDeleted = req.query.includeDeleted === "1" || req.query.includeDeleted === "true";
-  const where = includeDeleted ? {} : { deletedAt: null };
+  const where = { ...(includeDeleted ? {} : { deletedAt: null }), ...productFilters(req.query) };
 
   const take = Math.min(Number(req.query.limit) || 0, 500);
-  const skip = Math.max(Number(req.query.offset) || 0, 0);
+  const page = Math.max(Number(req.query.page) || 0, 0);
+  const skip = page > 0 && take > 0 ? (page - 1) * take : Math.max(Number(req.query.offset) || 0, 0);
+  const orderBy = SORTS[String(req.query.sort ?? "")] ?? SORTS.newest;
 
   const [products, total] = await Promise.all([
     prisma.product.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy,
       ...(take > 0 ? { take, skip } : {}),
     }),
     prisma.product.count({ where }),
   ]);
-  ok(res, { products, total });
+  ok(res, {
+    products, total,
+    ...(take > 0 ? { page: page || Math.floor(skip / take) + 1, limit: take, pages: Math.max(1, Math.ceil(total / take)) } : {}),
+  });
+}));
+
+/**
+ * Distinct filter values (type / colour / size) for the products of one
+ * category or subcategory — feeds the admin filter dropdowns without loading
+ * the products themselves. Colour and size columns are lists, so they are
+ * split into individual values here.
+ */
+productsRouter.get("/products/facets", ...adminOnly, wrap(async (req, res) => {
+  const where = { deletedAt: null, ...productFilters({ categoryId: req.query.categoryId, subcategoryId: req.query.subcategoryId }) };
+  const [types, colors, sizes] = await Promise.all([
+    prisma.product.findMany({ where: { ...where, productType: { not: null } }, select: { productType: true }, distinct: ["productType"], take: 200 }),
+    prisma.product.findMany({ where: { ...where, color: { not: null } }, select: { color: true }, distinct: ["color"], take: 500 }),
+    prisma.product.findMany({ where: { ...where, sizeLabel: { not: null } }, select: { sizeLabel: true }, distinct: ["sizeLabel"], take: 500 }),
+  ]);
+  const uniq = (values) => {
+    const seen = new Map();
+    for (const v of values) { const k = v.toLowerCase(); if (!seen.has(k)) seen.set(k, v); }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
+  };
+  ok(res, {
+    types: uniq(types.map((t) => t.productType.trim()).filter(Boolean)),
+    colors: uniq(colors.flatMap((c) => splitMultiValue(c.color))),
+    sizes: uniq(sizes.flatMap((s) => splitMultiValue(s.sizeLabel))),
+  });
+}));
+
+/**
+ * Bulk lifecycle change from the admin list: activate / deactivate (draft) /
+ * archive. Soft-deleted rows are left alone; nothing is ever hard-deleted.
+ */
+productsRouter.post("/products/bulk-status", ...adminOnly, wrap(async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.filter((x) => typeof x === "string" && x))] : [];
+  const status = String(req.body?.status ?? "");
+  if (!ids.length) throw badRequest("No product ids supplied", "NO_IDS");
+  if (ids.length > 1000) throw badRequest("Too many products in one request (max 1000)", "TOO_MANY");
+  if (!STATUSES.has(status)) throw badRequest("status must be draft, active or archived", "BAD_STATUS");
+  const { count } = await prisma.product.updateMany({ where: { id: { in: ids }, deletedAt: null }, data: { status } });
+  ok(res, { requested: ids.length, updated: count, status });
 }));
 
 /**

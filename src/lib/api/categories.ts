@@ -48,6 +48,17 @@ export const categoriesApi = {
   setPosition: (id: string, position: number) => request<{ order: string[] }>(`/categories/${enc(id)}/order`, { method: "PATCH", body: { position } }),
   /** Persist a whole sibling order (drag & drop). parentId null = top level. */
   reorder: (parentId: string | null, ids: string[]) => request<{ order: string[] }>("/categories/reorder", { method: "POST", body: { parentId, ids } }),
+  /**
+   * Multi-select toolbar. Per-id results: a "delete" of a category that still
+   * has products is refused for that id only (code CATEGORY_HAS_PRODUCTS).
+   */
+  bulk: (ids: string[], action: "activate" | "deactivate" | "archive" | "delete") =>
+    request<{ action: string; requested: number; done: number; failed: number; results: { id: string; ok: boolean; name?: string; error?: string; code?: string | null; productCount?: number | null }[] }>(
+      "/categories/bulk", { method: "POST", body: { ids, action } },
+    ),
+  /** Reassign every product of a category to another category/subcategory (never deletes). */
+  moveProducts: (id: string, toCategoryId: string, toSubcategoryId: string | null = null) =>
+    request<{ moved: number }>(`/categories/${enc(id)}/move-products`, { method: "POST", body: { toCategoryId, toSubcategoryId } }),
   /** Archive (soft). 409 CATEGORY_HAS_PRODUCTS while products reference it. */
   archive: (id: string) => request<{ id: string; archived: boolean; productsAffected: number }>(`/categories/${enc(id)}`, { method: "DELETE" }),
 };
