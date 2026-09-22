@@ -4,9 +4,6 @@ import { request } from "./client";
 
 // ---------- Types ----------
 export interface CartLine {
-  variantId?: string | null;
-  /** Option values of the chosen variant ({ Size: "8x8x6", Color: "White" }). */
-  attributes?: Record<string, string> | null;
   id: string;
   productId: string;
   variant: string | null;
@@ -59,7 +56,7 @@ export interface Quote {
 export type CheckoutPaymentMethod = "cod" | "upi" | "bank_transfer" | "neft" | "cheque";
 
 export interface OrderAddress { name: string; phone: string; line1: string; line2?: string | null; city: string; state: string; postalCode: string; country: string }
-export interface OrderItem { id: string; productId: string | null; productName: string; sku: string | null; variant: string | null; variantId?: string | null; variantAttributes?: Record<string, string>; moq?: number | null; specs: unknown; quantity: number; unitPriceMinor: number; discountMinor: number; taxMinor: number; lineTotalMinor: number }
+export interface OrderItem { id: string; productId: string | null; productName: string; sku: string | null; variant: string | null; specs: unknown; quantity: number; unitPriceMinor: number; discountMinor: number; taxMinor: number; lineTotalMinor: number }
 export interface OrderPayment { paymentNumber: string; method: string; amountMinor: number; status: string; reference: string | null; paidAt: string | null }
 export interface OrderShipmentEvent { status: string; location: string | null; note: string | null; at: string }
 export interface OrderShipment { shipmentNumber: string; courier: string | null; trackingNumber: string | null; status: string; shippedAt: string | null; deliveredAt: string | null; expectedAt: string | null; events: OrderShipmentEvent[] }
@@ -109,7 +106,7 @@ export interface InvoiceView { invoiceNumber: string; issuedAt: string; status: 
 // ---------- Cart ----------
 export const cartApi = {
   get: () => request<CartView>("/cart"),
-  add: (input: { productId: string; variantId?: string | null; variant?: string | null; quantity: number }) =>
+  add: (input: { productId: string; variant?: string | null; quantity: number }) =>
     request<CartView>("/cart/items", { method: "POST", body: input }),
   update: (itemId: string, quantity: number) =>
     request<CartView>(`/cart/items/${itemId}`, { method: "PATCH", body: { quantity } }),

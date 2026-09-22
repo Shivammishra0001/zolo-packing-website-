@@ -357,7 +357,6 @@ export function Dialog({
   description,
   children,
   footer,
-  width = "max-w-md",
 }: {
   open: boolean;
   onClose: () => void;
@@ -365,8 +364,6 @@ export function Dialog({
   description?: ReactNode;
   children?: ReactNode;
   footer?: ReactNode;
-  /** Tailwind max-width class (default max-w-md). */
-  width?: string;
 }) {
   useOverlay(open, onClose);
   if (!open) return null;
@@ -375,7 +372,7 @@ export function Dialog({
       <div className="absolute inset-0 bg-dark-950/50 backdrop-blur-sm" onClick={onClose} aria-hidden />
       {/* Flex column capped to the viewport so tall content scrolls INSIDE the
           dialog instead of overflowing the screen (short/landscape viewports). */}
-      <div className={cn("relative flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-xl erp-surface p-5 shadow-2xl animate-[fade-up_.18s_ease-out]", width)}>
+      <div className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col rounded-xl erp-surface p-5 shadow-2xl animate-[fade-up_.18s_ease-out]">
         <div className="flex shrink-0 items-start justify-between gap-3">
           <div>
             <h2 className="text-base font-bold erp-text">{title}</h2>

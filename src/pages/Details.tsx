@@ -81,8 +81,6 @@ export default function Details() {
   // crashed with "Rendered more hooks than during the previous render".
   const [selectedSize, setSelectedSize] = useState(0);
   const [selectedMaterial, setSelectedMaterial] = useState(0);
-  // VARIABLE products: the chosen value per option ({ Size: "8x8x6", Color: "White" }).
-  const [selection, setSelection] = useState<Record<string, string>>({});
   const [quantity, setQuantity] = useState(100);
   const [artwork, setArtwork] = useState<string | null>(null);
   const [artworkName, setArtworkName] = useState("");
@@ -97,38 +95,16 @@ export default function Details() {
     // Reset selection configurations when navigating to a new product
     setSelectedSize(0);
     setSelectedMaterial(0);
-    // Default to the first purchasable variant so price/stock show at once.
-    const first = storeProduct?.variants?.find((v) => (v.available ?? v.stock) > 0) ?? storeProduct?.variants?.[0];
-    setSelection(first ? { ...first.attributes } : {});
     setArtwork(null);
     setArtworkName("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, storeProduct]);
 
-  // ---- variants: resolve the selected combination to ONE sellable unit ----
-  type Variant = NonNullable<typeof storeProduct>["variants"][number];
-  const variants: Variant[] = product?.variants ?? [];
-  const isVariable = product?.kind === "variable" && variants.length > 0;
-  const options: { name: string; values: string[] }[] = isVariable ? product.variantOptions : [];
-  const matches = (v: Variant, sel: Record<string, string>) => options.every((o) => !sel[o.name] || v.attributes[o.name] === sel[o.name]);
-  const selectedVariant = isVariable && options.every((o) => selection[o.name]) ? variants.find((v) => matches(v, selection)) ?? null : null;
-  const complete = !isVariable || Boolean(selectedVariant);
-  /** Is `value` for option `name` purchasable given the OTHER selections? */
-  const valueAvailable = (name: string, value: string) => variants.some((v) => v.attributes[name] === value && matches(v, { ...selection, [name]: value }));
-  const sellable = selectedVariant
-    ? { sku: selectedVariant.sku, priceMinor: selectedVariant.priceMinor, compareAtMinor: selectedVariant.compareAtPriceMinor, moq: selectedVariant.moq, available: selectedVariant.available ?? selectedVariant.stock, image: selectedVariant.image, label: selectedVariant.label, weightGrams: selectedVariant.weightGrams, dims: selectedVariant.length ? `${selectedVariant.length}×${selectedVariant.width}×${selectedVariant.height} ${selectedVariant.dimUnit ?? ""}`.trim() : null, variantId: selectedVariant.id as string | null }
-    : { sku: product?.sku ?? "", priceMinor: product?.priceMinor ?? 0, compareAtMinor: null as number | null, moq: product?.moq ?? 1, available: product && (product.inStock === false || product.stockStatus === "out_of_stock") ? 0 : null as number | null, image: null as string | null, label: null as string | null, weightGrams: null as number | null, dims: null as string | null, variantId: null as string | null };
-  const outOfStock = product ? (isVariable ? (complete ? sellable.available === 0 : false) : (product.inStock === false || product.stockStatus === "out_of_stock")) : false;
-  // Quotation-based (no fixed price): never show ₹0 / cart buttons —
-  // the Request Custom Quote CTA below is the purchase path.
-  const quoteOnly = complete && !sellable.priceMinor;
-
   useEffect(() => {
     if (product) {
-      setQuantity(sellable.moq || 100);
+      setQuantity(product.moq || 100);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product, sellable.variantId]);
+  }, [product]);
 
   // Guest guard — safe to return now that every hook above has run.
   if (!isAuthenticated) return null;
@@ -158,7 +134,6 @@ export default function Details() {
   }
 
   const wishlisted = has(product._id || product.id);
-  const unitLabel = /s$/i.test(String(product.unit ?? "")) ? product.unit : `${product.unit}s`;
   // Related = same admin-managed category (by Category id, falling back to the
   // legacy name slug for rows without a link).
   const related = allProducts
@@ -194,18 +169,21 @@ export default function Details() {
     reader.readAsDataURL(file);
   };
 
+  const outOfStock = product.inStock === false || product.stockStatus === "out_of_stock";
+  // Quotation-based product (no fixed price): never show ₹0 / cart buttons —
+  // the Request Custom Quote CTA below is the purchase path.
+  const quoteOnly = !product.priceMinor;
 
   const handleAddToCart = () => {
     // Guarded: guests get the auth modal, then this resumes automatically.
     guard(
       async () => {
         // Combine the selected size/material chips into one variant descriptor.
-        if (isVariable && !selectedVariant) { toast.error("Choose your options", "Select every option to add this product to your cart."); return; }
         const parts = [product.sizes?.[selectedSize], product.materials?.[selectedMaterial]].filter(Boolean);
-        const variant = isVariable ? null : parts.length ? parts.join(" / ") : null;
+        const variant = parts.length ? parts.join(" / ") : null;
         try {
-          await addToCart({ productId: product._id || product.id, variantId: sellable.variantId, variant, quantity });
-          toast.success("Added to cart", `${quantity} × ${product.name}${sellable.label ? ` (${sellable.label})` : ""}`);
+          await addToCart({ productId: product._id || product.id, variant, quantity });
+          toast.success("Added to cart", `${quantity} × ${product.name}`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Please try again.";
           toast.error("Couldn't add to cart", msg);
@@ -218,11 +196,10 @@ export default function Details() {
   const handleBuyNow = () => {
     guard(
       async () => {
-        if (isVariable && !selectedVariant) { toast.error("Choose your options", "Select every option first."); return; }
         const parts = [product.sizes?.[selectedSize], product.materials?.[selectedMaterial]].filter(Boolean);
-        const variant = isVariable ? null : parts.length ? parts.join(" / ") : null;
+        const variant = parts.length ? parts.join(" / ") : null;
         try {
-          await addToCart({ productId: product._id || product.id, variantId: sellable.variantId, variant, quantity });
+          await addToCart({ productId: product._id || product.id, variant, quantity });
           nav("/cart");
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Please try again.";
@@ -245,12 +222,11 @@ export default function Details() {
         addToRfq({
           productId: product._id || product.id,
           productName: product.name,
-          sku: sellable.sku,
+          sku: product.sku,
           quantity,
           unit: product.unit,
           specs: {
-            ...(isVariable ? selection : {}),
-            size: isVariable ? sellable.label ?? "Default" : product.sizes[selectedSize] || "Default",
+            size: product.sizes[selectedSize] || "Default",
             material: product.materials[selectedMaterial] || "Default",
             ...(artworkName ? { artwork: artworkName } : {}),
           },
@@ -297,8 +273,7 @@ export default function Details() {
             transition={{ duration: 0.5 }}
           >
             <ProductGallery
-              key={sellable.image ?? "product"}
-              images={sellable.image ? [sellable.image, ...(product.images ?? []).filter((u: string) => u !== sellable.image)] : (product.images ?? [])}
+              images={product.images ?? []}
               name={product.name}
               fallback={<PackagingMockup type={mockupType} color={product.accent} className="w-full h-full drop-shadow-xl" />}
               overlay={
@@ -375,41 +350,21 @@ export default function Details() {
                   <span className="h-4 w-px bg-dark-200" />
                 </>
               )}
-              {!complete ? (
-                <span className="text-sm text-dark-500 font-semibold">Choose your options</span>
-              ) : outOfStock ? (
+              {outOfStock ? (
                 <span className="text-sm text-red-600 font-semibold flex items-center gap-1">Out of stock</span>
               ) : (
                 <span className="text-sm text-emerald-600 font-semibold flex items-center gap-1">
-                  <Check className="h-3.5 w-3.5" /> In stock{sellable.available != null && sellable.available > 0 ? ` · ${sellable.available.toLocaleString("en-IN")} available` : ""}
+                  <Check className="h-3.5 w-3.5" /> In stock
                 </span>
               )}
-            </div>
-
-            {/* Price + SKU for the selected variant (or the product) */}
-            <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1" data-testid="sellable">
-              {complete && sellable.priceMinor > 0 ? (
-                <>
-                  <span className="font-display text-2xl font-extrabold text-dark-900">₹{(sellable.priceMinor / 100).toLocaleString("en-IN")}</span>
-                  {sellable.compareAtMinor && sellable.compareAtMinor > sellable.priceMinor && <span className="text-sm text-dark-400 line-through">₹{(sellable.compareAtMinor / 100).toLocaleString("en-IN")}</span>}
-                  <span className="text-xs text-dark-500">per {product.unit}</span>
-                </>
-              ) : complete ? (
-                <span className="text-sm font-bold text-primary-700">Price on quotation</span>
-              ) : isVariable && product.priceMinor > 0 ? (
-                <span className="text-sm text-dark-600">From <span className="font-bold text-dark-900">₹{(product.priceMinor / 100).toLocaleString("en-IN")}</span></span>
-              ) : null}
-              <span className="text-xs text-dark-400">SKU <span className="font-mono text-dark-600">{sellable.sku}</span></span>
             </div>
 
             {/* Description */}
             <div className="mt-6 p-4 rounded-2xl bg-dark-50 border border-dark-100">
               <div className="flex items-center gap-3">
                 <div className="text-xs text-dark-500 font-semibold bg-white px-2.5 py-1 rounded-full border border-dark-200">
-                  Minimum Order (MOQ): {sellable.moq} {unitLabel}
+                  Minimum Order (MOQ): {product.moq} {product.unit}s
                 </div>
-                {sellable.weightGrams != null && sellable.weightGrams > 0 && <div className="text-xs text-dark-500 font-semibold bg-white px-2.5 py-1 rounded-full border border-dark-200">Weight: {sellable.weightGrams} g</div>}
-                {sellable.dims && <div className="text-xs text-dark-500 font-semibold bg-white px-2.5 py-1 rounded-full border border-dark-200">Size: {sellable.dims}</div>}
               </div>
               <div className="mt-3 text-sm text-dark-700 leading-relaxed">{product.description}</div>
             </div>
@@ -417,40 +372,8 @@ export default function Details() {
             {/* ===== STEP-BY-STEP SELECTION ===== */}
             <div className="mt-6 space-y-6">
 
-              {/* VARIABLE product: one step per option (Size, Color, Capacity…) — combinations
-                  that are not sold are shown disabled, and the chosen combination resolves
-                  to ONE variant with its own SKU / price / stock / MOQ / image. */}
-              {isVariable && options.map((o, idx) => (
-                <div key={o.name} className="p-5 rounded-2xl border border-dark-100 bg-white" data-option={o.name}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="h-6 w-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center">{idx + 1}</span>
-                    <div className="text-sm font-bold text-dark-900">Choose {o.name}</div>
-                    <div className="ml-auto text-xs text-primary-600 font-semibold">{selection[o.name] ?? "—"}</div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {o.values.map((value) => {
-                      const on = selection[o.name] === value;
-                      const ok = valueAvailable(o.name, value);
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          aria-pressed={on}
-                          onClick={() => setSelection((s) => ({ ...s, [o.name]: value }))}
-                          data-available={ok}
-                          className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all border ${on && ok ? "bg-dark-900 text-white border-dark-900 shadow-md" : on ? "bg-red-50 text-red-700 border-dashed border-red-300" : ok ? "bg-white text-dark-700 border-dark-200 hover:border-dark-400" : "bg-white text-dark-400 border-dashed border-dark-200"}`}
-                          title={ok ? undefined : "Not available with the other selected options"}
-                        >
-                          {value}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-
-              {/* STEP 1: Choose Size (simple products) */}
-              {!isVariable && <div className="p-5 rounded-2xl border border-dark-100 bg-white">
+              {/* STEP 1: Choose Size */}
+              <div className="p-5 rounded-2xl border border-dark-100 bg-white">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="h-6 w-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center">1</span>
                   <div className="text-sm font-bold text-dark-900">Choose Size</div>
@@ -471,10 +394,10 @@ export default function Details() {
                     </button>
                   ))}
                 </div>
-              </div>}
+              </div>
 
-              {/* STEP 2: Choose Material (simple products) */}
-              {!isVariable && <div className="p-5 rounded-2xl border border-dark-100 bg-white">
+              {/* STEP 2: Choose Material */}
+              <div className="p-5 rounded-2xl border border-dark-100 bg-white">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="h-6 w-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center">2</span>
                   <div className="text-sm font-bold text-dark-900">Choose Material</div>
@@ -494,7 +417,7 @@ export default function Details() {
                     </button>
                   ))}
                 </div>
-              </div>}
+              </div>
 
               {/* STEP 3: Upload Artwork */}
               <div className="p-5 rounded-2xl border border-dark-100 bg-white">
@@ -580,12 +503,12 @@ export default function Details() {
             <div className="mt-6 p-5 rounded-2xl bg-dark-950 text-white">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-semibold text-dark-300">Your Selection</span>
-                <span className="text-xs text-dark-400">{isVariable ? sellable.label ?? "Choose options" : `${product.sizes[selectedSize]} · ${product.materials[selectedMaterial]}`}</span>
+                <span className="text-xs text-dark-400">{product.sizes[selectedSize]} · {product.materials[selectedMaterial]}</span>
               </div>
               <div className="flex items-baseline justify-between">
                 <div>
                   <div className="text-xs text-dark-400">Selected Quantity</div>
-                  <div className="font-display text-2xl font-extrabold grad-text">{quantity} {unitLabel}</div>
+                  <div className="font-display text-2xl font-extrabold grad-text">{quantity} {product.unit}s</div>
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-dark-400">Ships in</div>
@@ -596,11 +519,7 @@ export default function Details() {
 
             {/* CTA Buttons */}
             <div className="mt-6 space-y-3">
-              {!complete ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-semibold text-amber-800" data-testid="incomplete">
-                  This combination is not available — choose another {options.map((o) => o.name.toLowerCase()).join(" or ")}.
-                </div>
-              ) : outOfStock ? (
+              {outOfStock ? (
                 <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm font-semibold text-red-700">
                   Out of stock — Add to Cart and Buy Now are unavailable.
                 </div>
@@ -668,7 +587,7 @@ export default function Details() {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between py-2 border-b border-dark-50"><span className="text-dark-500">Material</span><span className="font-semibold text-dark-900">{product.materials.join(", ")}</span></div>
                     <div className="flex justify-between py-2 border-b border-dark-50"><span className="text-dark-500">Available Sizes</span><span className="font-semibold text-dark-900">{product.sizes.join(", ")}</span></div>
-                    <div className="flex justify-between py-2"><span className="text-dark-500">MOQ</span><span className="font-semibold text-dark-900">{product.moq} {unitLabel}</span></div>
+                    <div className="flex justify-between py-2"><span className="text-dark-500">MOQ</span><span className="font-semibold text-dark-900">{product.moq} {product.unit}s</span></div>
                     {product.rating != null && (
                       <div className="flex justify-between py-2"><span className="text-dark-500">Rating</span><span className="font-semibold text-dark-900">{product.rating}/5 ({product.reviews ?? 0} reviews)</span></div>
                     )}

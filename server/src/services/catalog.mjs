@@ -174,7 +174,7 @@ const WRITABLE = new Set([
   "material", "printing", "finishing", "customizable",
   "productType", "thickness", "sizeLabel",
   "basePriceMinor", "salePriceMinor", "costMinor", "moq", "stock",
-  "lowStockLevel", "imageEmoji", "images",
+  "lowStockLevel", "imageEmoji", "images", "variants",
 ]);
 
 /** Columns that are NOT NULL in the schema — a null here must be dropped. */

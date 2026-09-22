@@ -1,4 +1,4 @@
-import type { CatalogProduct, ProductStatus, ProductVariant, VariantOption } from "@/admin/types";
+import type { CatalogProduct, ProductStatus, ProductVariant } from "@/admin/types";
 
 // ============================================================
 // Catalog API client — Express + Prisma + PostgreSQL (server/).
@@ -43,12 +43,7 @@ interface DbProduct {
   lowStockLevel: number | null;
   imageEmoji: string;
   images: string[];
-  kind?: "simple" | "variable";
-  hasVariants?: boolean;
-  variantOptions?: unknown;
-  variants?: unknown;
-  brand?: string | null;
-  manufacturer?: string | null;
+  variants: unknown;
   isFeatured?: boolean;
   featuredOrder?: number | null;
   isNewArrival?: boolean;
@@ -85,11 +80,7 @@ export function fromDb(row: DbProduct): CatalogProduct {
     lowStockLevel: row.lowStockLevel ?? undefined,
     imageEmoji: row.imageEmoji,
     images: row.images.length ? row.images : [row.imageEmoji],
-    kind: row.kind ?? (row.hasVariants ? "variable" : "simple"),
-    variantOptions: (Array.isArray(row.variantOptions) ? row.variantOptions : []) as VariantOption[],
-    variants: (Array.isArray(row.variants) ? row.variants : []).filter((v) => v && typeof v === "object" && "attributes" in (v as object)) as ProductVariant[],
-    brand: row.brand ?? null,
-    manufacturer: row.manufacturer ?? null,
+    variants: (Array.isArray(row.variants) ? row.variants : []) as ProductVariant[],
     isFeatured: row.isFeatured ?? false,
     featuredOrder: row.featuredOrder ?? null,
     isNewArrival: row.isNewArrival ?? false,
@@ -135,42 +126,8 @@ export interface ProductWriteInput {
   newArrivalOrder?: number | null;
   images?: string[];
   imageUploads?: { name: string; mime: string; dataBase64: string }[];
-  brand?: string | null;
-  manufacturer?: string | null;
-  kind?: "simple" | "variable";
-  variantOptions?: VariantOption[];
-  variants?: VariantWriteInput[];
+  variants?: ProductVariant[];
 }
-
-/** One variant as the API accepts it (full-list semantics on the product write). */
-export interface VariantWriteInput {
-  id?: string;
-  sku?: string;
-  attributes: Record<string, string>;
-  priceMinor?: number;
-  compareAtPriceMinor?: number | null;
-  costMinor?: number | null;
-  stock?: number;
-  moq?: number;
-  weightGrams?: number | null;
-  length?: number | null;
-  width?: number | null;
-  height?: number | null;
-  dimUnit?: "in" | "cm" | "mm" | null;
-  material?: string | null;
-  thickness?: string | null;
-  image?: string | null;
-  isActive?: boolean;
-  sortOrder?: number;
-}
-
-/** A stored variant → the write shape (what the optimistic mutators resend). */
-export const variantToWrite = (v: ProductVariant): VariantWriteInput => ({
-  id: v.id, sku: v.sku, attributes: v.attributes, priceMinor: v.priceMinor, compareAtPriceMinor: v.compareAtPriceMinor ?? null,
-  stock: v.stock, moq: v.moq, weightGrams: v.weightGrams ?? null, length: v.length ?? null, width: v.width ?? null, height: v.height ?? null,
-  dimUnit: (v.dimUnit as "in" | "cm" | "mm" | null) ?? null, material: v.material ?? null, thickness: v.thickness ?? null, image: v.image ?? null,
-  isActive: v.isActive, sortOrder: v.sortOrder,
-});
 
 /** Full-record payload used by the store's optimistic mutators (stock/status/archive). */
 export function toDb(p: CatalogProduct): ProductWriteInput {
@@ -199,11 +156,7 @@ export function toDb(p: CatalogProduct): ProductWriteInput {
     isNewArrival: p.isNewArrival ?? false,
     newArrivalOrder: p.isNewArrival ? (p.newArrivalOrder ?? null) : null,
     images,
-    brand: p.brand ?? null,
-    manufacturer: p.manufacturer ?? null,
-    // A variable product resends its full variant list so nothing is lost;
-    // a simple product sends none.
-    ...(p.kind === "variable" ? { kind: "variable" as const, variantOptions: p.variantOptions, variants: (p.variants ?? []).map(variantToWrite) } : { kind: "simple" as const }),
+    variants: p.variants ?? [],
   };
 }
 

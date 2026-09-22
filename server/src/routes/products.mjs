@@ -15,10 +15,8 @@ import {
   slugify,
 } from "../services/catalog.mjs";
 import { recordImport } from "../services/catalog-imports.mjs";
-import { validateImport, runImport } from "../services/catalog-import.mjs";
 import { createProduct, updateProduct } from "../services/product-write.mjs";
-import { authenticate, requireAdmin, isAdminRole } from "../middleware/auth.mjs";
-import { addVariant, updateVariant, deleteVariant, shapeVariant, shapePublicVariant } from "../services/variants.mjs";
+import { authenticate, requireAdmin } from "../middleware/auth.mjs";
 
 export const productsRouter = Router();
 
@@ -26,24 +24,6 @@ export const productsRouter = Router();
 // Every WRITE below requires an authenticated admin — hiding a button in the
 // UI is not authorization.
 const adminOnly = [authenticate, requireAdmin];
-
-/** Is the caller an authenticated admin? (public routes that return more to admins) */
-async function isAdminRequest(req, res) {
-  if (!req.headers.authorization) return false;
-  await new Promise((resolve) => authenticate(req, res ?? { status() { return this; }, json() {} }, () => resolve()));
-  return Boolean(req.user && isAdminRole(req.user.role));
-}
-
-/** A product row + its variant rows, as the API returns them. */
-function shapeProductRow(p, admin) {
-  const { legacyVariants: _legacy, variants = [], ...rest } = p;
-  return {
-    ...rest,
-    kind: p.hasVariants ? "variable" : "simple",
-    variants: variants.map((v) => (admin ? shapeVariant(v) : shapePublicVariant(v))),
-    ...(admin ? {} : { costMinor: undefined }),
-  };
-}
 
 /**
  * List products. Soft-deleted rows are hidden by default so the storefront and
@@ -58,42 +38,15 @@ productsRouter.get("/products", wrap(async (req, res) => {
   const take = Math.min(Number(req.query.limit) || 0, 500);
   const skip = Math.max(Number(req.query.offset) || 0, 0);
 
-  const [rows, total] = await Promise.all([
+  const [products, total] = await Promise.all([
     prisma.product.findMany({
       where,
       orderBy: { createdAt: "desc" },
       ...(take > 0 ? { take, skip } : {}),
-      include: { variants: { where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },
     }),
     prisma.product.count({ where }),
   ]);
-  // Variants ride along so the storefront can offer them; internal fields
-  // (cost, reserved stock) are stripped unless the caller is an admin.
-  const admin = await isAdminRequest(req);
-  const products = rows.map((p) => shapeProductRow(p, admin));
   ok(res, { products, total });
-}));
-
-/** One product with its variants (public for active products; admin sees all). */
-productsRouter.get("/products/:id", wrap(async (req, res) => {
-  const admin = await isAdminRequest(req);
-  const p = await prisma.product.findFirst({
-    where: { OR: [{ id: req.params.id }, { slug: req.params.id }], ...(admin ? {} : { deletedAt: null }) },
-    include: { variants: { where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },
-  });
-  if (!p) throw notFound("Product not found");
-  ok(res, { product: shapeProductRow(p, admin) });
-}));
-
-// ---- Variants (admin) ----
-productsRouter.post("/products/:id/variants", ...adminOnly, wrap(async (req, res) => {
-  ok(res, { variants: await addVariant(req.user.id, req.params.id, req.body ?? {}) }, 201);
-}));
-productsRouter.patch("/variants/:id", ...adminOnly, wrap(async (req, res) => {
-  ok(res, { variant: await updateVariant(req.user.id, req.params.id, req.body ?? {}) });
-}));
-productsRouter.delete("/variants/:id", ...adminOnly, wrap(async (req, res) => {
-  ok(res, { variants: await deleteVariant(req.user.id, req.params.id) });
 }));
 
 /**
@@ -103,27 +56,25 @@ productsRouter.delete("/variants/:id", ...adminOnly, wrap(async (req, res) => {
  * generated server-side — a client-supplied id is ignored.
  */
 productsRouter.post("/products", ...adminOnly, wrap(async (req, res) => {
-  const product = await createProduct(editable(req.body), { actorId: req.user.id });
-  ok(res, { product: await withVariants(product) }, 201);
+  const { id: _clientId, slug: _slug, imageEmoji: _emoji, createdAt, updatedAt, ...body } = req.body ?? {};
+  const product = await createProduct(body, { actorId: req.user.id });
+  ok(res, { product }, 201);
 }));
 
 // Strip fields the client may echo back but must never write directly.
 const editable = (body) => {
-  const { id: _id, slug: _slug, imageEmoji: _emoji, createdAt, updatedAt, deletedAt, categoryRef, subcategoryRef, sellerId, reservedStock, commissionBps, hasVariants, legacyVariants, ...rest } = body ?? {};
+  const { id: _id, slug: _slug, imageEmoji: _emoji, createdAt, updatedAt, deletedAt, categoryRef, subcategoryRef, sellerId, reservedStock, commissionBps, ...rest } = body ?? {};
   return rest;
 };
 
 // PUT and PATCH share one validated, transactional update (partial semantics:
 // only supplied fields change; images/taxonomy are re-linked when supplied).
-const withVariants = async (product) =>
-  shapeProductRow({ ...product, variants: await prisma.productVariant.findMany({ where: { productId: product.id, deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }) }, true);
-
 productsRouter.put("/products/:id", ...adminOnly, wrap(async (req, res) => {
-  ok(res, { product: await withVariants(await updateProduct(req.params.id, editable(req.body), { actorId: req.user.id })) });
+  ok(res, { product: await updateProduct(req.params.id, editable(req.body), { actorId: req.user.id }) });
 }));
 
 productsRouter.patch("/products/:id", ...adminOnly, wrap(async (req, res) => {
-  ok(res, { product: await withVariants(await updateProduct(req.params.id, editable(req.body), { actorId: req.user.id })) });
+  ok(res, { product: await updateProduct(req.params.id, editable(req.body), { actorId: req.user.id }) });
 }));
 
 /**
@@ -152,31 +103,9 @@ productsRouter.post("/products/bulk-delete", ...adminOnly, wrap(async (req, res)
  * Bulk import. Row-isolated: one bad row is reported and skipped while every
  * other row still commits.
  */
-/**
- * Import v2 dry run: validate a grouped (simple + variable) payload and answer
- * the summary / errors / warnings / preview the wizard shows. Writes nothing.
- */
-productsRouter.post("/products/import/validate", ...adminOnly, wrap(async (req, res) => {
-  const { _clean, ...report } = await validateImport(req.body ?? {});
-  ok(res, report);
-}));
-
 productsRouter.post("/products/import", ...adminOnly, wrap(async (req, res) => {
-  const { products = [], mode = "update", fileName = null, fileSizeBytes = null, imagesMatched = 0, format } = req.body ?? {};
+  const { products = [], mode = "update", fileName = null, fileSizeBytes = null, imagesMatched = 0 } = req.body ?? {};
   if (!Array.isArray(products)) throw badRequest("`products` must be an array", "BAD_PAYLOAD");
-
-  // v2 (the import wizard): grouped products with variants, ONE transaction.
-  if (format === "v2") {
-    const result = await runImport({ products, mode, createCategories: Boolean(req.body?.createCategories), fileName, actorId: req.user.id });
-    const errors = result.warnings.map((w) => ({ sku: w.product, level: "warning", error: w.message, field: w.field }));
-    const record = await recordImport({
-      result: { processed: products.length, created: result.created, updated: result.updated, skipped: result.skipped, failed: 0, warnings: errors.length, errors, products: result.products },
-      mode, fileName, fileSizeBytes: Number(fileSizeBytes) || null, actorId: req.user.id, imagesMatched: Number(imagesMatched) || 0,
-    });
-    console.log(`[catalog:import:v2] created=${result.created} updated=${result.updated} skipped=${result.skipped} variants=${result.variantsWritten}`);
-    ok(res, { ...result, success: true, failed: 0, errors, importId: record?.id ?? null });
-    return;
-  }
   if (!["update", "skip", "create"].includes(mode)) {
     throw badRequest(`Unknown duplicate mode "${mode}" (use update/skip/create)`, "BAD_MODE");
   }

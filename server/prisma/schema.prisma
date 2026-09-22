@@ -618,21 +618,7 @@ model Product {
   lowStockLevel   Int?
   imageEmoji      String        @default("📦") // primary image (emoji or URL)
   images          String[]      @default([]) // ordered; [0] = primary
-  // Legacy admin-UI variant blob (pre ProductVariant). Read by nothing; kept
-  // so no data is dropped. Real variants are ProductVariant rows.
-  legacyVariants  Json          @default("[]") @map("variants")
-  // SIMPLE product: this row is the sellable unit (sku / price / stock above).
-  // VARIABLE product: the sellable units are its ProductVariant rows; this
-  // row's price/stock/moq are roll-ups (min price, total stock, min MOQ) kept
-  // in step by the variant service so lists and low-stock views still work.
-  hasVariants     Boolean       @default(false)
-  // Which option axes the variants use, in display order:
-  //   [{ "name": "Size", "values": ["6x6x4", "8x8x6"] }, { "name": "Color", "values": ["Kraft Brown"] }]
-  // Free-form names: Size, Color, GSM, Thickness, Capacity, Ply, Width… are
-  // all just option names — nothing is hard-coded.
-  variantOptions  Json          @default("[]")
-  brand           String?
-  manufacturer    String?
+  variants        Json          @default("[]")
   // Homepage merchandising — set ONLY by an admin in the Add/Edit product form
   // (or the catalog row actions). The storefront rails read these flags; they
   // are never inferred from createdAt, API order or position. The two rails
@@ -659,7 +645,6 @@ model Product {
   priceTiers     PriceTier[]
   coupons        CouponProduct[]
   campaigns      Campaign[]
-  variants       ProductVariant[]
 
   @@index([status])
   @@index([isFeatured, featuredOrder])
@@ -668,44 +653,6 @@ model Product {
   @@index([categoryId])
   @@index([subcategoryId])
   @@index([sellerId])
-}
-
-// One sellable combination of a VARIABLE product ("6x6x4 / Kraft Brown").
-// `attributes` holds the option values keyed by option name, matching the
-// parent's variantOptions: { "Size": "6x6x4", "Color": "Kraft Brown" }.
-// Every sellable number (price, stock, MOQ) lives here for variable products.
-model ProductVariant {
-  id                  String    @id @default(cuid())
-  productId           String
-  product             Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  sku                 String    @unique
-  attributes          Json      @default("{}")
-  label               String // "6x6x4 / Kraft Brown" — derived, stored for lists/snapshots
-  priceMinor          Int       @default(0) // 0 = quotation-based
-  compareAtPriceMinor Int?
-  costMinor           Int? // internal, never exposed to buyers
-  stock               Int       @default(0)
-  reservedStock       Int       @default(0)
-  moq                 Int       @default(1)
-  weightGrams         Int?
-  length              Float?
-  width               Float?
-  height              Float?
-  dimUnit             String?
-  material            String? // variant-specific, else the product's
-  thickness           String?
-  image               String? // uploads URL; falls back to the product images
-  isActive            Boolean   @default(true)
-  sortOrder           Int       @default(0)
-  deletedAt           DateTime? // soft: order history keeps resolving
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-
-  cartItems  CartItem[]
-  orderItems OrderItem[]
-
-  @@index([productId, sortOrder])
-  @@index([productId, isActive])
 }
 
 // ============================================================
@@ -815,21 +762,17 @@ model Cart {
 }
 
 model CartItem {
-  id             String          @id @default(cuid())
+  id             String   @id @default(cuid())
   cartId         String
-  cart           Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  cart           Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
   productId      String
-  // The exact ProductVariant for a variable product (null = simple product).
-  variantId      String?
-  variantRef     ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  variant        String? // legacy free-text descriptor; the variant label for variant lines
-  quantity       Int             @default(1)
+  variant        String? // selected variant descriptor (size/material/etc.)
+  quantity       Int      @default(1)
   unitPriceMinor Int // price snapshot at add-to-cart time
-  createdAt      DateTime        @default(now())
+  createdAt      DateTime @default(now())
 
-  @@unique([cartId, productId, variantId, variant])
+  @@unique([cartId, productId, variant])
   @@index([cartId])
-  @@index([variantId])
 }
 
 model Order {
@@ -906,34 +849,27 @@ model Order {
 
 // Frozen snapshot — immune to later product/price edits.
 model OrderItem {
-  id                String          @id @default(cuid())
-  returnRequests    ReturnRequest[]
-  orderId           String
-  order             Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId         String? // reference only; snapshot below is the source of truth
-  productName       String
-  sku               String? // the VARIANT sku for variant lines
-  variant           String? // variant label ("6x6x4 / Kraft Brown")
-  // Variant SNAPSHOT: the id is a reference only; attributes/moq are frozen
-  // here so the order reads the same after the variant is edited or removed.
-  variantId         String?
-  variantRef        ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  variantAttributes Json            @default("{}")
-  moq               Int?
-  specs             Json            @default("{}") // dimensions/gsm/material/printing/finishes
-  quantity          Int
-  unitPriceMinor    Int
-  discountMinor     Int             @default(0)
-  taxMinor          Int             @default(0)
-  lineTotalMinor    Int
+  id              String          @id @default(cuid())
+  returnRequests  ReturnRequest[]
+  orderId         String
+  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String? // reference only; snapshot below is the source of truth
+  productName     String
+  sku             String?
+  variant         String?
+  specs           Json            @default("{}") // dimensions/gsm/material/printing/finishes
+  quantity        Int
+  unitPriceMinor  Int
+  discountMinor   Int             @default(0)
+  taxMinor        Int             @default(0)
+  lineTotalMinor  Int
   // Commission SNAPSHOT. Both the rate and the resolved amount are frozen
   // here at order creation, so changing a product's rate later never
   // restates historical payouts.
-  commissionBps     Int             @default(0)
-  commissionMinor   Int             @default(0)
+  commissionBps   Int             @default(0)
+  commissionMinor Int             @default(0)
 
   @@index([orderId])
-  @@index([variantId])
 }
 
 // Append-only order status transitions.
@@ -1518,8 +1454,6 @@ model StockMovement {
   id        String       @id @default(cuid())
   productId String
   product   Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
-  // Set when the movement is against one variant's stock (variable products).
-  variantId String?
   type      MovementType
   // Signed delta applied to Product.stock (+receipt / -consumption).
   quantity  Int

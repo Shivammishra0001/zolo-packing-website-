@@ -135,19 +135,12 @@ function RowMenu({
             </button>
           ) : (
             <>
-              {/* Variable products keep stock per variant — edit it in the product form. */}
-              {product.kind === "variable" ? (
-                <div className="px-3 py-2 text-[11px] erp-text-faint">Stock is set per variant — use Edit product.</div>
-              ) : (
-                <>
               <button role="menuitem" className={item} onClick={() => { setOpen(false); onUpdateStock(); }}>
                 <PackageCheck className="h-4 w-4 erp-text-faint" aria-hidden /> Update Stock
               </button>
               <button role="menuitem" className={item} onClick={() => { setOpen(false); onMarkOOS(); }}>
                 <Ban className="h-4 w-4 erp-text-faint" aria-hidden /> Mark Out of Stock
               </button>
-                </>
-              )}
               <button role="menuitem" className={item} onClick={() => { setOpen(false); onDuplicate(); }}>
                 <Copy className="h-4 w-4 erp-text-faint" aria-hidden /> Duplicate
               </button>

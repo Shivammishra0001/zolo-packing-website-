@@ -35,8 +35,7 @@ export function errorHandler(err, _req, res, _next) {
     return res.status(400).json({ success: false, error: "Validation failed", code: "VALIDATION", issues });
   }
   if (err instanceof HttpError) {
-    // Optional structured details (e.g. the import's per-product error list).
-    return res.status(err.status).json({ success: false, error: err.message, code: err.code, ...(err.details ? { details: err.details } : {}) });
+    return res.status(err.status).json({ success: false, error: err.message, code: err.code });
   }
   // Body larger than the configured limit → 413, not a generic 500. express.json
   // raises this with type "entity.too.large" / status 413.

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useCatalog, getProduct as getCatalogProductById } from "@/admin/catalog-store";
-import type { ProductVariant, VariantOption, CatalogProduct } from "@/admin/types";
+import type { CatalogProduct } from "@/admin/types";
 import type { Product } from "@/data/products";
 
 // ============================================================
@@ -59,10 +59,6 @@ export function toStoreProduct(p: CatalogProduct): Product & {
   featuredOrder: number | null;
   isNewArrival: boolean;
   newArrivalOrder: number | null;
-  /** Simple vs variable product; variable products carry their option axes and active variants. */
-  kind: "simple" | "variable";
-  variantOptions: VariantOption[];
-  variants: ProductVariant[];
 } {
   // Every real image, deduped, order preserved — this is what the gallery needs.
   // The old adapter kept only images[0], so the detail page could NEVER show
@@ -110,12 +106,7 @@ export function toStoreProduct(p: CatalogProduct): Product & {
     // extras
     sku: p.sku,
     stockStatus: p.stockStatus,
-    // For a VARIABLE product this is the lowest variant price ("from ₹…");
-    // the exact price comes from the chosen variant.
     priceMinor: Math.round(p.basePrice * 100),
-    kind: p.kind ?? "simple",
-    variantOptions: p.variantOptions ?? [],
-    variants: (p.variants ?? []).filter((v) => v.isActive),
     images: realImages, // empty when the product has no real image → mockup fallback
   };
 }
