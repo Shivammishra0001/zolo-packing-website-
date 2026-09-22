@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Package, Search, X } from "lucide-react";
 import { useBuyerProducts, isRealImageUrl, type StoreProduct } from "@/lib/products";
 import { addStoreProductLine } from "@/lib/rfq-cart-store";
+import { EmptyState } from "@/components/UI";
 
 // ============================================================
 // Product picker — "Select Product From Store" for the RFQ builder.
@@ -78,36 +79,36 @@ export function ProductPickerModal({
     <div className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Select a product from the store">
       <div className="absolute inset-0 bg-dark-950/50 backdrop-blur-sm" onClick={onClose} aria-hidden />
 
-      <div className="relative flex max-h-[92dvh] w-full max-w-3xl flex-col rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+      <div className="card relative flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[16px] rounded-b-none sm:rounded-[12px]">
         {/* Header + search */}
-        <div className="shrink-0 border-b border-dark-100 p-4 sm:p-5">
+        <div className="shrink-0 border-b border-dark-200 p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="font-display text-lg font-bold text-dark-900">Select product from store</h2>
-            <button type="button" onClick={onClose} aria-label="Close" className="rounded-full p-2 text-dark-400 hover:bg-dark-50 hover:text-dark-800">
+            <h2 className="h3 text-dark-900">Select product from store</h2>
+            <button type="button" onClick={onClose} aria-label="Close" className="rounded-full p-2 text-dark-400 transition-colors duration-150 hover:bg-dark-50 hover:text-dark-800">
               <X className="h-5 w-5" />
             </button>
           </div>
           <div className="relative mt-3">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dark-400" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-dark-400" aria-hidden />
             <input
               ref={searchRef}
               type="text"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search by product name or SKU…"
-              className="w-full rounded-xl border border-dark-200 py-2.5 pl-10 pr-3 text-sm focus:border-primary-500 focus:outline-none"
+              aria-label="Search products"
+              className="input pl-10"
             />
           </div>
           {categories.length > 0 && (
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            <div className="no-scrollbar mt-3 flex gap-2 overflow-x-auto pb-1">
               {["all", ...categories].map((c) => (
                 <button
                   key={c}
                   type="button"
                   onClick={() => setCat(c)}
-                  className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                    cat === c ? "bg-primary-500 text-white" : "bg-dark-50 text-dark-600 hover:bg-dark-100"
-                  }`}
+                  aria-pressed={cat === c}
+                  className={`chip shrink-0 ${cat === c ? "chip-active" : ""}`}
                 >
                   {c === "all" ? "All" : c}
                 </button>
@@ -117,25 +118,26 @@ export function ProductPickerModal({
         </div>
 
         {/* Results */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-dark-50/60 p-4 sm:p-5">
           {results.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-14 text-center">
-              <Package className="h-8 w-8 text-dark-300" />
-              <p className="text-sm font-semibold text-dark-600">No products match your search</p>
-              <p className="text-xs text-dark-400">Try a different name, SKU or category — or add a custom product instead.</p>
-            </div>
+            <EmptyState
+              icon={Package}
+              title="No products match your search"
+              message="Try a different name, SKU or category — or add a custom product instead."
+              className="shadow-none"
+            />
           ) : (
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {results.map((p) => {
                 const added = addedIds.has(p.id) || justAdded.has(p.id);
                 const realImg = isRealImageUrl(p.image);
                 return (
-                  <li key={p.id} className="flex items-center gap-3 rounded-xl border border-dark-100 p-3">
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-dark-50">
+                  <li key={p.id} className="card-flat flex items-center gap-3 p-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-green-50">
                       {realImg ? (
                         <img src={p.image} alt={p.name} className="h-full w-full object-contain" loading="lazy" />
                       ) : (
-                        <span className="text-3xl" aria-hidden>{p.emoji || "📦"}</span>
+                        <span className="text-2xl" aria-hidden>{p.emoji || "📦"}</span>
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -143,16 +145,13 @@ export function ProductPickerModal({
                       {p.sku && <p className="text-[11px] text-dark-400">SKU {p.sku}</p>}
                       {p.shortDesc && <p className="mt-0.5 line-clamp-2 text-xs text-dark-500">{p.shortDesc}</p>}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => add(p)}
-                      disabled={added}
-                      className={`shrink-0 rounded-lg px-3 py-2 text-xs font-bold transition ${
-                        added ? "bg-green-50 text-green-700" : "bg-primary-500 text-white hover:bg-primary-600"
-                      }`}
-                    >
-                      {added ? <span className="flex items-center gap-1"><Check className="h-3.5 w-3.5" /> Added</span> : "Select"}
-                    </button>
+                    {added ? (
+                      <span className="badge shrink-0 bg-green-100 text-green-600"><Check className="h-3 w-3" aria-hidden /> Added</span>
+                    ) : (
+                      <button type="button" onClick={() => add(p)} className="btn btn-secondary btn-sm shrink-0">
+                        Add
+                      </button>
+                    )}
                   </li>
                 );
               })}
@@ -161,12 +160,8 @@ export function ProductPickerModal({
         </div>
 
         {/* Footer */}
-        <div className="shrink-0 border-t border-dark-100 p-4 sm:p-5">
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full rounded-xl bg-dark-900 py-2.5 text-sm font-bold text-white hover:bg-dark-800"
-          >
+        <div className="shrink-0 border-t border-dark-200 p-4 sm:p-5">
+          <button type="button" onClick={onClose} className="btn btn-navy w-full">
             Done{justAdded.size > 0 ? ` · ${justAdded.size} added` : ""}
           </button>
         </div>

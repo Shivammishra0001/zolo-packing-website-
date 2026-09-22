@@ -19,7 +19,8 @@ const TABS: { id: AuthTab; label: string }[] = [
 
 /**
  * Accessible auth dialog: focus trap, Escape to close, backdrop click,
- * scroll lock, and glassmorphism styling. Login / Create Account tabs.
+ * scroll lock. Bottom sheet on phones, centred card on desktop.
+ * Login / Create Account tabs.
  */
 export function AuthModal({ open, initialTab, onClose }: AuthModalProps) {
   const [tab, setTab] = useState<AuthTab>(initialTab);
@@ -92,55 +93,46 @@ export function AuthModal({ open, initialTab, onClose }: AuthModalProps) {
             aria-labelledby={titleId}
             tabIndex={-1}
             onKeyDown={onKeyDownTrap}
-            initial={{ opacity: 0, y: 40, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 24, scale: 0.98 }}
-            transition={{ type: "spring", stiffness: 320, damping: 30 }}
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
             className={cn(
               // Cap to the viewport and scroll internally so a tall register
-              // form is never clipped on small/landscape phones. overflow-y-auto
-              // still clips to the rounded corners and the decorative glow.
-              "relative max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-3xl outline-none sm:rounded-3xl",
-              // Glassmorphism
-              "border border-white/40 bg-white/80 shadow-2xl backdrop-blur-2xl",
-              "dark:border-white/10 dark:bg-dark-900/80",
+              // form is never clipped on small/landscape phones. Bottom sheet
+              // on phones (rounded top only), centred card on larger screens.
+              "card relative max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-[16px] rounded-b-none outline-none sm:rounded-[12px]",
             )}
           >
-            {/* Decorative brand glow (kept subtle) */}
-            <div
-              className="pointer-events-none absolute -top-24 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-primary-400/30 blur-3xl"
-              aria-hidden
-            />
-
             <button
               onClick={onClose}
-              className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full text-dark-500 transition-colors hover:bg-dark-100/70 hover:text-dark-800 dark:text-dark-400 dark:hover:bg-dark-800"
+              className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full text-dark-500 transition-colors duration-150 hover:bg-dark-100 hover:text-dark-800"
               aria-label="Close"
             >
               <X className="h-5 w-5" aria-hidden />
             </button>
 
-            <div className="relative px-6 pb-6 pt-7 sm:px-8 sm:pb-8">
+            <div className="relative px-5 pb-6 pt-7 sm:px-8 sm:pb-8">
               {/* Header */}
               <div className="mb-5 flex flex-col items-center text-center">
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-amber-400 text-white shadow-lg shadow-primary-500/30">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600">
                   <Package className="h-6 w-6" aria-hidden />
                 </div>
-                <h2 id={titleId} className="font-display text-xl font-extrabold text-dark-900 dark:text-white">
+                <h2 id={titleId} className="h3 text-dark-900">
                   {tab === "login" ? "Welcome back" : "Create your account"}
                 </h2>
-                <p className="mt-1 text-sm text-dark-500 dark:text-dark-400">
+                <p className="mt-1 text-sm text-dark-500">
                   {tab === "login"
                     ? "Sign in to order, quote and save designs."
                     : "Join Zolo Packaging to order and request quotes."}
                 </p>
               </div>
 
-              {/* Tabs */}
+              {/* Tabs: underline style, green active */}
               <div
                 role="tablist"
                 aria-label="Authentication"
-                className="mb-6 grid grid-cols-2 gap-1 rounded-xl bg-dark-100/70 p-1 dark:bg-dark-800/70"
+                className="mb-6 grid grid-cols-2 border-b border-dark-200"
               >
                 {TABS.map((t) => {
                   const selected = tab === t.id;
@@ -153,18 +145,18 @@ export function AuthModal({ open, initialTab, onClose }: AuthModalProps) {
                       aria-controls={`panel-${t.id}`}
                       onClick={() => setTab(t.id)}
                       className={cn(
-                        "relative h-9 rounded-lg text-sm font-bold transition-colors",
-                        selected ? "text-dark-900 dark:text-white" : "text-dark-500 hover:text-dark-700 dark:text-dark-400",
+                        "relative -mb-px h-11 text-sm font-bold transition-colors duration-150",
+                        selected ? "text-green-600" : "text-dark-500 hover:text-dark-800",
                       )}
                     >
+                      <span>{t.label}</span>
                       {selected && (
                         <motion.span
-                          layoutId="auth-tab-pill"
-                          className="absolute inset-0 rounded-lg bg-white shadow-sm dark:bg-dark-700"
-                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                          layoutId="auth-tab-underline"
+                          className="absolute inset-x-0 bottom-0 h-0.5 bg-green-500"
+                          transition={{ duration: 0.2, ease: "easeOut" }}
                         />
                       )}
-                      <span className="relative z-10">{t.label}</span>
                     </button>
                   );
                 })}

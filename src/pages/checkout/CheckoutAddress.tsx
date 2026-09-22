@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, MapPin, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, MapPin, Phone, Plus, Trash2 } from "lucide-react";
 import { useToast } from "../../components/ui/Toast";
-import { CheckoutSteps } from "../CartPage";
-import { addressApi, type Address, type AddressInput } from "../../lib/api/commerce";
+import { Badge, Breadcrumb, Button, EmptyState, Field, Input, Select, cx } from "../../components/UI";
+import { CheckoutSteps, SummaryRow } from "../CartPage";
+import { addressApi, orderApi, type Address, type AddressInput, type Quote } from "../../lib/api/commerce";
+import { computeTotals, useCart } from "../../lib/cart-store";
 import { useCheckout } from "./checkout-context";
 import { useAuthSession } from "../../components/auth/AuthContext";
 import { INDIAN_STATES } from "../../lib/auth/constants";
+
+const inr = (m: number) => "₹" + Math.round(m / 100).toLocaleString("en-IN");
 
 const EMPTY: AddressInput = {
   kind: "shipping", name: "", phone: "", line1: "", line2: "", city: "", state: "",
@@ -17,7 +21,8 @@ export default function CheckoutAddress() {
   const nav = useNavigate();
   const toast = useToast();
   const { user } = useAuthSession();
-  const { shippingAddressId, setShippingAddressId } = useCheckout();
+  const { shippingAddressId, setShippingAddressId, couponCode } = useCheckout();
+  const items = useCart();
   const [addresses, setAddresses] = useState<Address[] | null>(null);
   const [showForm, setShowForm] = useState(false);
   // Prefill the contact fields from the signed-in profile — a saved profile
@@ -29,6 +34,16 @@ export default function CheckoutAddress() {
   });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Summary panel: server totals when available, local estimate meanwhile.
+  const [quote, setQuote] = useState<Quote | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (items.length === 0) { setQuote(null); return; }
+    orderApi.quote(couponCode ?? null).then((q) => { if (!cancelled) setQuote(q); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [items, couponCode]);
+  const totals = quote ?? computeTotals(items);
 
   const load = () =>
     addressApi.list().then((list) => {
@@ -100,119 +115,199 @@ export default function CheckoutAddress() {
     }
   };
 
+  const unitCount = items.reduce((s, it) => s + it.quantity, 0);
+
   return (
-    <main className="py-10">
-      <div className="mx-auto max-w-3xl px-4 sm:px-6">
-        <CheckoutSteps current={1} />
-        <h1 className="font-display text-2xl font-extrabold text-dark-900">Delivery address</h1>
-        <p className="mt-0.5 text-sm text-dark-500">Choose where we should ship your order.</p>
-        {user && (
-          <p className="mt-2 text-xs text-dark-500">
-            Ordering as <span className="font-semibold text-dark-800">{[user.firstName, user.lastName].filter(Boolean).join(" ") || user.email}</span>
-            {" · "}{user.email}{user.phone ? ` · +91 ${user.phone}` : ""}
-          </p>
-        )}
+    <main className="section-sm">
+      <div className="shell">
+        <div>
+          <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Cart", to: "/cart" }, { label: "Checkout" }]} />
+          <CheckoutSteps current={1} className="mt-4" />
 
-        {/* Saved addresses */}
-        <div className="mt-6 space-y-3">
-          {addresses === null ? (
-            <div className="text-sm text-dark-400">Loading addresses…</div>
-          ) : addresses.length === 0 && !showForm ? (
-            <div className="rounded-2xl border border-dashed border-dark-200 p-8 text-center">
-              <MapPin className="mx-auto h-8 w-8 text-dark-300" />
-              <p className="mt-2 font-semibold text-dark-900">No saved addresses</p>
-              <button onClick={() => setShowForm(true)} className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-primary-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-primary-600">
-                <Plus className="h-4 w-4" /> Add address
-              </button>
-            </div>
-          ) : (
-            addresses.map((a) => (
-              <label key={a.id} className={`flex cursor-pointer items-start gap-3 rounded-2xl border bg-white p-4 ${shippingAddressId === a.id ? "border-primary-500 ring-1 ring-primary-200" : "border-dark-100"}`}>
-                <input type="radio" name="addr" checked={shippingAddressId === a.id} onChange={() => setShippingAddressId(a.id)} className="mt-1 accent-primary-600" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-bold text-dark-900">{a.name}</span>
-                    {a.label && <span className="rounded-full bg-dark-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-dark-600">{a.label}</span>}
-                    {a.isDefault && <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-bold text-primary-700">Default {a.kind}</span>}
-                  </div>
-                  <p className="text-sm text-dark-600">{a.line1}{a.line2 ? `, ${a.line2}` : ""}, {a.city}, {a.state} — {a.postalCode}</p>
-                  <p className="text-xs text-dark-400">☎ {a.phone}</p>
+          <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+            {/* Step content */}
+            <div className="space-y-4">
+              <section className="card p-5 sm:p-6">
+                <h1 className="h3 text-dark-900">Delivery address</h1>
+                <p className="mt-1 text-sm text-dark-500">Choose where we should ship your order.</p>
+                {user && (
+                  <p className="mt-2 text-xs text-dark-500">
+                    Ordering as <span className="font-semibold text-dark-800">{[user.firstName, user.lastName].filter(Boolean).join(" ") || user.email}</span>
+                    {" · "}{user.email}{user.phone ? ` · +91 ${user.phone}` : ""}
+                  </p>
+                )}
+
+                {/* Saved addresses */}
+                <div className="mt-5 space-y-3">
+                  {addresses === null ? (
+                    <div className="space-y-3" aria-busy="true" aria-label="Loading addresses">
+                      <div className="skeleton h-24" />
+                      <div className="skeleton h-24" />
+                    </div>
+                  ) : addresses.length === 0 && !showForm ? (
+                    <EmptyState
+                      className="shadow-none"
+                      icon={MapPin}
+                      title="No saved addresses"
+                      message="Add a delivery address to continue."
+                      action={<Button variant="green" icon={Plus} onClick={() => setShowForm(true)}>Add address</Button>}
+                    />
+                  ) : (
+                    addresses.map((a) => {
+                      const selected = shippingAddressId === a.id;
+                      return (
+                        <label
+                          key={a.id}
+                          className={cx(
+                            "card-flat flex cursor-pointer items-start gap-3 p-4 transition-colors",
+                            selected ? "border-green-500 bg-green-50 ring-2 ring-green-200" : "hover:border-dark-300",
+                          )}
+                        >
+                          <input
+                            type="radio"
+                            name="addr"
+                            checked={selected}
+                            onChange={() => setShippingAddressId(a.id)}
+                            className="mt-1 h-4 w-4 shrink-0 accent-green-600"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-dark-900">{a.name}</span>
+                              {a.label && <Badge tone="neutral">{a.label}</Badge>}
+                              {a.isDefault && <Badge tone="green">Default {a.kind}</Badge>}
+                            </div>
+                            <p className="mt-1 text-sm text-dark-600">{a.line1}{a.line2 ? `, ${a.line2}` : ""}, {a.city}, {a.state} — {a.postalCode}</p>
+                            <p className="mt-1 inline-flex items-center gap-1 text-xs text-dark-500"><Phone className="h-3 w-3" aria-hidden /> {a.phone}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.preventDefault(); removeAddress(a.id); }}
+                            className="btn btn-ghost btn-sm -mr-2 -mt-1 h-9 w-9 shrink-0 px-0 text-dark-400 hover:text-red-600"
+                            aria-label={`Delete address for ${a.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden />
+                          </button>
+                        </label>
+                      );
+                    })
+                  )}
                 </div>
-                <button onClick={(e) => { e.preventDefault(); removeAddress(a.id); }} className="text-dark-300 hover:text-red-500" aria-label="Delete address">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </label>
-            ))
-          )}
-        </div>
 
-        {/* Add-new toggle */}
-        {addresses !== null && addresses.length > 0 && !showForm && (
-          <button onClick={() => setShowForm(true)} className="mt-3 inline-flex items-center gap-1.5 text-sm font-bold text-primary-600 hover:underline">
-            <Plus className="h-4 w-4" /> Add a new address
-          </button>
-        )}
+                {/* Add-new toggle */}
+                {addresses !== null && addresses.length > 0 && !showForm && (
+                  <Button variant="secondary" size="sm" icon={Plus} className="mt-4" onClick={() => setShowForm(true)}>
+                    Add a new address
+                  </Button>
+                )}
+              </section>
 
-        {/* New-address form */}
-        {showForm && (
-          <div className="mt-5 rounded-2xl border border-dark-100 bg-white p-5">
-            <h2 className="font-bold text-dark-900">New address</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <Field label="Full name" error={errors.name}><input value={form.name} onChange={set("name")} className="inp" /></Field>
-              <Field label="Mobile number" error={errors.phone}><input value={form.phone} onChange={set("phone")} className="inp" placeholder="10-digit" /></Field>
-              <Field label="Address line 1" error={errors.line1} full><input value={form.line1} onChange={set("line1")} className="inp" /></Field>
-              <Field label="Address line 2 (optional)" full><input value={form.line2 ?? ""} onChange={set("line2")} className="inp" /></Field>
-              <Field label="City" error={errors.city}><input value={form.city} onChange={set("city")} className="inp" /></Field>
-              <Field label="State" error={errors.state}>
-                <select
-                  value={form.state}
-                  onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
-                  className="inp bg-white"
-                >
-                  <option value="">Select state…</option>
-                  {INDIAN_STATES.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Pincode" error={errors.postalCode}><input value={form.postalCode} onChange={set("postalCode")} className="inp" placeholder="6-digit" /></Field>
-              <label className="col-span-full mt-1 flex items-center gap-2 text-sm text-dark-600">
-                <input type="checkbox" checked={!!form.isDefault} onChange={(e) => setForm((f) => ({ ...f, isDefault: e.target.checked }))} className="accent-primary-600" />
-                Set as default address
-              </label>
+              {/* New-address form */}
+              {showForm && (
+                <section className="card p-5 sm:p-6">
+                  <h2 className="h3 text-dark-900">New address</h2>
+                  <p className="mt-1 text-sm text-dark-500">We'll use these details for delivery updates.</p>
+
+                  <form
+                    className="mt-5 space-y-6"
+                    onSubmit={(e) => { e.preventDefault(); void saveAddress(); }}
+                    noValidate
+                  >
+                    {/* Contact */}
+                    <fieldset>
+                      <legend className="mb-3 text-xs font-bold uppercase tracking-[0.12em] text-dark-500">Contact</legend>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Field label="Full name" htmlFor="addr-name" required error={errors.name}>
+                          <Input id="addr-name" value={form.name} onChange={set("name")} error={errors.name} autoComplete="name" />
+                        </Field>
+                        <Field label="Mobile number" htmlFor="addr-phone" required error={errors.phone}>
+                          <Input id="addr-phone" value={form.phone} onChange={set("phone")} error={errors.phone} placeholder="10-digit" inputMode="numeric" autoComplete="tel-national" />
+                        </Field>
+                      </div>
+                    </fieldset>
+
+                    {/* Address */}
+                    <fieldset>
+                      <legend className="mb-3 text-xs font-bold uppercase tracking-[0.12em] text-dark-500">Address</legend>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Field label="Address line 1" htmlFor="addr-line1" required error={errors.line1} className="sm:col-span-2">
+                          <Input id="addr-line1" value={form.line1} onChange={set("line1")} error={errors.line1} autoComplete="address-line1" placeholder="House / flat, building, street" />
+                        </Field>
+                        <Field label="Address line 2 (optional)" htmlFor="addr-line2" className="sm:col-span-2">
+                          <Input id="addr-line2" value={form.line2 ?? ""} onChange={set("line2")} autoComplete="address-line2" placeholder="Area, landmark" />
+                        </Field>
+                        <Field label="City" htmlFor="addr-city" required error={errors.city}>
+                          <Input id="addr-city" value={form.city} onChange={set("city")} error={errors.city} autoComplete="address-level2" />
+                        </Field>
+                        <Field label="State" htmlFor="addr-state" required error={errors.state}>
+                          <Select
+                            id="addr-state"
+                            value={form.state}
+                            onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
+                            aria-invalid={errors.state ? true : undefined}
+                            autoComplete="address-level1"
+                          >
+                            <option value="">Select state…</option>
+                            {INDIAN_STATES.map((s) => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <Field label="Pincode" htmlFor="addr-pin" required error={errors.postalCode}>
+                          <Input id="addr-pin" value={form.postalCode} onChange={set("postalCode")} error={errors.postalCode} placeholder="6-digit" inputMode="numeric" autoComplete="postal-code" />
+                        </Field>
+                      </div>
+                    </fieldset>
+
+                    {/* Delivery notes */}
+                    <fieldset>
+                      <legend className="mb-3 text-xs font-bold uppercase tracking-[0.12em] text-dark-500">Delivery notes</legend>
+                      <label className="flex items-center gap-2.5 text-sm text-dark-700">
+                        <input
+                          type="checkbox"
+                          checked={!!form.isDefault}
+                          onChange={(e) => setForm((f) => ({ ...f, isDefault: e.target.checked }))}
+                          className="h-4 w-4 accent-green-600"
+                        />
+                        Set as my default shipping address
+                      </label>
+                    </fieldset>
+
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                      {addresses && addresses.length > 0 && (
+                        <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+                      )}
+                      <Button type="submit" variant="green" disabled={saving}>
+                        {saving ? "Saving…" : "Save address"}
+                      </Button>
+                    </div>
+                  </form>
+                </section>
+              )}
             </div>
-            <div className="mt-4 flex justify-end gap-2">
-              {addresses && addresses.length > 0 && <button onClick={() => setShowForm(false)} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-dark-600 hover:bg-dark-50">Cancel</button>}
-              <button onClick={saveAddress} disabled={saving} className="rounded-lg bg-primary-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-primary-600 disabled:opacity-60">
-                {saving ? "Saving…" : "Save address"}
-              </button>
-            </div>
+
+            {/* Summary */}
+            <aside className="card h-fit p-5 lg:sticky lg:top-24">
+              <h2 className="h3 text-dark-900">Order summary</h2>
+              <p className="mt-1 text-xs text-dark-500">{items.length} item{items.length === 1 ? "" : "s"} · {unitCount} unit{unitCount === 1 ? "" : "s"}</p>
+              <dl className="mt-4 divide-y divide-dark-100 text-sm">
+                <SummaryRow label="Subtotal" value={inr(totals.subtotalMinor)} />
+                <SummaryRow label="Shipping" value={totals.shippingMinor > 0 ? inr(totals.shippingMinor) : <span className="font-semibold text-green-600">Free</span>} />
+                <SummaryRow label="GST (18%)" value={inr(totals.taxMinor)} />
+                <SummaryRow label="Discount" value={totals.discountMinor > 0 ? <span className="text-green-600">− {inr(totals.discountMinor)}</span> : inr(0)} />
+                <SummaryRow
+                  label={<span className="font-bold text-dark-900">Total</span>}
+                  value={<span className="text-lg font-bold text-dark-900">{inr(totals.grandTotalMinor)}</span>}
+                  className="pt-3"
+                />
+              </dl>
+              <Button size="lg" className="mt-5 w-full" onClick={() => nav("/checkout/review")} disabled={!shippingAddressId}>
+                Continue to Review <ArrowRight className="h-4 w-4" aria-hidden />
+              </Button>
+              {!shippingAddressId && <p className="mt-2 text-center text-xs text-dark-500">Select or add a delivery address to continue.</p>}
+            </aside>
           </div>
-        )}
-
-        {/* Continue */}
-        <div className="mt-8 flex justify-end">
-          <button
-            onClick={() => nav("/checkout/review")}
-            disabled={!shippingAddressId}
-            className="inline-flex items-center gap-2 rounded-xl bg-dark-900 px-6 py-3 text-sm font-bold text-white hover:bg-dark-800 disabled:opacity-50"
-          >
-            Continue to Review <ArrowRight className="h-4 w-4" />
-          </button>
         </div>
       </div>
-
-      <style>{`.inp{width:100%;border:1px solid var(--tw-dark-200,#e5e7eb);border-radius:.5rem;padding:.6rem .75rem;font-size:.875rem;outline:none}.inp:focus{border-color:#f97316}`}</style>
     </main>
-  );
-}
-
-function Field({ label, error, full, children }: { label: string; error?: string; full?: boolean; children: React.ReactNode }) {
-  return (
-    <label className={`block ${full ? "col-span-full" : ""}`}>
-      <span className="mb-1 block text-xs font-semibold text-dark-600">{label}</span>
-      {children}
-      {error && <span className="mt-1 block text-xs text-red-600">{error}</span>}
-    </label>
   );
 }

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Banknote, Building2, FileText, Loader2, Lock, QrCode } from "lucide-react";
+import { ArrowRight, Banknote, Building2, FileText, Loader2, Lock, QrCode, ShoppingCart } from "lucide-react";
 import { useToast } from "../../components/ui/Toast";
-import { CheckoutSteps } from "../CartPage";
+import { Breadcrumb, Button, ButtonLink, EmptyState, cx } from "../../components/UI";
+import { CheckoutSteps, SummaryRow } from "../CartPage";
 import { hydrateCart, useCart } from "../../lib/cart-store";
 import { orderApi, type CheckoutPaymentMethod, type Quote } from "../../lib/api/commerce";
 import { checkoutMethodsApi, type PublicPaymentMethod } from "../../lib/api/settings";
@@ -29,13 +30,17 @@ export default function CheckoutPayment() {
 
   // Methods come from the admin's Payment Settings (enabled ones only). If the
   // remembered choice is no longer offered, fall back to the first available.
-  useEffect(() => {
+  const loadMethods = () => {
+    setMethodsError(null);
     checkoutMethodsApi.list()
       .then((r) => {
         setMethods(r.methods);
         if (r.methods.length && !r.methods.some((m) => m.key === paymentMethod)) setPaymentMethod(r.methods[0].key as CheckoutPaymentMethod);
       })
       .catch((e) => setMethodsError(e instanceof Error ? e.message : "Could not load payment methods."));
+  };
+  useEffect(() => {
+    loadMethods();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -75,81 +80,134 @@ export default function CheckoutPayment() {
   };
 
   if (items.length === 0 && !placing) {
-    return <main className="py-20 text-center text-sm text-dark-500">Your cart is empty.</main>;
+    return (
+      <main className="section-sm">
+        <div className="shell">
+          <div>
+            <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Cart", to: "/cart" }, { label: "Checkout" }]} />
+            <EmptyState
+              className="mt-4"
+              icon={ShoppingCart}
+              title="Your cart is empty"
+              message="Add products to your cart before checking out."
+              action={<ButtonLink to="/products" icon={ArrowRight}>Browse products</ButtonLink>}
+            />
+          </div>
+        </div>
+      </main>
+    );
   }
 
+  const unitCount = items.reduce((s, it) => s + it.quantity, 0);
+
   return (
-    <main className="py-10">
-      <div className="mx-auto max-w-3xl px-4 sm:px-6">
-        <CheckoutSteps current={3} />
-        <h1 className="font-display text-2xl font-extrabold text-dark-900">Payment</h1>
-        <p className="mt-0.5 text-sm text-dark-500">Choose how you'd like to pay.</p>
+    <main className="section-sm">
+      <div className="shell">
+        <div>
+          <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Cart", to: "/cart" }, { label: "Checkout" }]} />
+          <CheckoutSteps current={3} className="mt-4" />
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
-          <div className="space-y-3">
-            {methodsError && <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{methodsError}</div>}
-            {methods === null && !methodsError && <div className="rounded-2xl border border-dark-100 p-4 text-sm text-dark-400">Loading payment methods…</div>}
-            {methods?.length === 0 && (
-              <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">No payment method is available right now. Please contact us to complete your order.</div>
-            )}
-            {methods?.map((m) => {
-              const Icon = ICON[m.key] ?? Banknote;
-              const active = paymentMethod === m.key;
-              return (
-                <label key={m.key} className={`flex cursor-pointer items-start gap-3 rounded-2xl border bg-white p-4 ${active ? "border-primary-500 ring-1 ring-primary-200" : "border-dark-200 hover:border-dark-300"}`}>
-                  <input type="radio" name="pay" checked={active} onChange={() => setPaymentMethod(m.key as CheckoutPaymentMethod)} className="mt-1 accent-primary-600" />
-                  <div className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2 font-bold text-dark-900"><Icon className="h-4 w-4 text-primary-600" /> {m.displayName}</span>
-                    <p className="text-sm text-dark-500">{m.description}</p>
-                    {m.key === "cod" && (m.config.codChargeMinor ?? 0) > 0 && <p className="mt-0.5 text-xs text-dark-500">COD charge: {inr(m.config.codChargeMinor ?? 0)}</p>}
-                    {m.key === "cod" && (m.config.minOrderMinor != null || m.config.maxOrderMinor != null) && (
-                      <p className="mt-0.5 text-xs text-dark-400">
-                        Available for orders {m.config.minOrderMinor != null ? `from ${inr(m.config.minOrderMinor)}` : ""}{m.config.minOrderMinor != null && m.config.maxOrderMinor != null ? " " : ""}{m.config.maxOrderMinor != null ? `up to ${inr(m.config.maxOrderMinor)}` : ""}
-                      </p>
-                    )}
-                    {active && m.key === "upi" && (
-                      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-dark-50 p-3 text-xs text-dark-600">
-                        {m.config.qrUrl && <img src={m.config.qrUrl} alt="UPI QR code" className="h-24 w-24 rounded-md bg-white object-contain p-0.5" />}
-                        <div>
-                          {m.config.upiId && <p>UPI ID: <span className="font-mono font-bold text-dark-900">{m.config.upiId}</span></p>}
-                          <p className="mt-1">After placing the order you'll get a secure link to pay the exact amount and share your UPI transaction ID. Your order is confirmed once we verify it.</p>
-                        </div>
-                      </div>
-                    )}
-                    {active && m.key === "bank_transfer" && (
-                      <p className="mt-2 rounded-xl bg-dark-50 p-3 text-xs text-dark-600">Bank details and a secure link to share your UTR are sent after you place the order.</p>
-                    )}
-                    {active && quote?.paymentError && <p className="mt-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">{quote.paymentError}</p>}
+          <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+            {/* Methods */}
+            <section className="card p-5 sm:p-6">
+              <h1 className="h3 text-dark-900">Payment</h1>
+              <p className="mt-1 text-sm text-dark-500">Choose how you'd like to pay.</p>
+
+              <div className="mt-5 space-y-3">
+                {methodsError && (
+                  <div className="rounded-[12px] border border-red-200 bg-red-50 p-4" role="alert">
+                    <p className="text-sm font-semibold text-red-700">We couldn't load the payment methods.</p>
+                    <p className="mt-0.5 text-xs text-red-700/80">Check your connection and try again.</p>
+                    <Button variant="outline" size="sm" className="mt-3" onClick={loadMethods}>Try again</Button>
                   </div>
-                </label>
-              );
-            })}
-          </div>
-
-          {/* Summary */}
-          <aside className="h-fit rounded-2xl border border-dark-100 bg-white p-5 lg:sticky lg:top-20">
-            <h2 className="font-bold text-dark-900">Order total</h2>
-            <dl className="mt-3 space-y-2 text-sm">
-              <Row label="Subtotal" value={inr(quote?.subtotalMinor ?? 0)} />
-              {quote && quote.discountMinor > 0 && <Row label="Discount" value={`− ${inr(quote.discountMinor)}`} />}
-              <Row label="GST (18%)" value={inr(quote?.taxMinor ?? 0)} />
-              <Row label="Shipping" value={quote && quote.shippingMinor > 0 ? inr(quote.shippingMinor) : "Free"} />
-              {quote && quote.codChargeMinor > 0 && <Row label="COD charge" value={inr(quote.codChargeMinor)} />}
-              <div className="border-t border-dark-100 pt-2">
-                <Row label={<span className="font-bold text-dark-900">Total payable</span>} value={<span className="font-extrabold text-dark-900">{inr(quote?.grandTotalMinor ?? 0)}</span>} />
+                )}
+                {methods === null && !methodsError && (
+                  <div className="space-y-3" aria-busy="true" aria-label="Loading payment methods">
+                    <div className="skeleton h-20" />
+                    <div className="skeleton h-20" />
+                  </div>
+                )}
+                {methods?.length === 0 && (
+                  <div className="rounded-[12px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                    No payment method is available right now. Please contact us to complete your order.
+                  </div>
+                )}
+                {methods?.map((m) => {
+                  const Icon = ICON[m.key] ?? Banknote;
+                  const active = paymentMethod === m.key;
+                  return (
+                    <label
+                      key={m.key}
+                      className={cx(
+                        "card-flat flex cursor-pointer items-start gap-3 p-4 transition-colors",
+                        active ? "border-green-500 bg-green-50 ring-2 ring-green-200" : "hover:border-dark-300",
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="pay"
+                        checked={active}
+                        onChange={() => setPaymentMethod(m.key as CheckoutPaymentMethod)}
+                        className="mt-1 h-4 w-4 shrink-0 accent-green-600"
+                      />
+                      <span className={cx("flex h-9 w-9 shrink-0 items-center justify-center rounded-full", active ? "bg-green-100 text-green-600" : "bg-dark-100 text-dark-600")}>
+                        <Icon className="h-4 w-4" aria-hidden />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <span className="block font-semibold text-dark-900">{m.displayName}</span>
+                        <p className="mt-0.5 text-sm text-dark-500">{m.description}</p>
+                        {m.key === "cod" && (m.config.codChargeMinor ?? 0) > 0 && <p className="mt-1 text-xs text-dark-500">COD charge: {inr(m.config.codChargeMinor ?? 0)}</p>}
+                        {m.key === "cod" && (m.config.minOrderMinor != null || m.config.maxOrderMinor != null) && (
+                          <p className="mt-0.5 text-xs text-dark-500">
+                            Available for orders {m.config.minOrderMinor != null ? `from ${inr(m.config.minOrderMinor)}` : ""}{m.config.minOrderMinor != null && m.config.maxOrderMinor != null ? " " : ""}{m.config.maxOrderMinor != null ? `up to ${inr(m.config.maxOrderMinor)}` : ""}
+                          </p>
+                        )}
+                        {active && m.key === "upi" && (
+                          <div className="card-flat mt-3 flex flex-wrap items-center gap-3 bg-cream-50 p-3 text-xs text-dark-600">
+                            {m.config.qrUrl && <img src={m.config.qrUrl} alt="UPI QR code" className="h-24 w-24 rounded-[8px] bg-white object-contain p-0.5" />}
+                            <div className="min-w-0 flex-1">
+                              {m.config.upiId && <p>UPI ID: <span className="font-mono font-bold text-dark-900">{m.config.upiId}</span></p>}
+                              <p className="mt-1">After placing the order you'll get a secure link to pay the exact amount and share your UPI transaction ID. Your order is confirmed once we verify it.</p>
+                            </div>
+                          </div>
+                        )}
+                        {active && m.key === "bank_transfer" && (
+                          <p className="card-flat mt-3 bg-cream-50 p-3 text-xs text-dark-600">Bank details and a secure link to share your UTR are sent after you place the order.</p>
+                        )}
+                        {active && quote?.paymentError && <p className="field-error rounded-[8px] bg-red-50 px-3 py-2">{quote.paymentError}</p>}
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
-            </dl>
-            <button onClick={placeOrder} disabled={placing || blocked} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-primary-500 py-3 text-sm font-bold text-white hover:bg-primary-600 disabled:opacity-60">
-              {placing ? <><Loader2 className="h-4 w-4 animate-spin" /> Placing order…</> : <>Place order{selected ? ` (${selected.key === "cod" ? "COD" : selected.displayName})` : ""}</>}
-            </button>
-            <p className="mt-2 flex items-center justify-center gap-1 text-[11px] text-dark-400"><Lock className="h-3 w-3" /> Amount confirmed by the server.</p>
-          </aside>
+            </section>
+
+            {/* Summary */}
+            <aside className="card h-fit p-5 lg:sticky lg:top-24">
+              <h2 className="h3 text-dark-900">Order summary</h2>
+              <p className="mt-1 text-xs text-dark-500">{items.length} item{items.length === 1 ? "" : "s"} · {unitCount} unit{unitCount === 1 ? "" : "s"}</p>
+              <dl className="mt-4 divide-y divide-dark-100 text-sm">
+                <SummaryRow label="Subtotal" value={inr(quote?.subtotalMinor ?? 0)} />
+                <SummaryRow label="Shipping" value={quote && quote.shippingMinor > 0 ? inr(quote.shippingMinor) : <span className="font-semibold text-green-600">Free</span>} />
+                <SummaryRow label="GST (18%)" value={inr(quote?.taxMinor ?? 0)} />
+                {quote && quote.discountMinor > 0 && <SummaryRow label="Discount" value={<span className="text-green-600">− {inr(quote.discountMinor)}</span>} />}
+                {quote && quote.codChargeMinor > 0 && <SummaryRow label="COD charge" value={inr(quote.codChargeMinor)} />}
+                <SummaryRow
+                  label={<span className="font-bold text-dark-900">Total payable</span>}
+                  value={<span className="text-lg font-bold text-dark-900">{inr(quote?.grandTotalMinor ?? 0)}</span>}
+                  className="pt-3"
+                />
+              </dl>
+              <Button size="lg" className="mt-5 w-full" onClick={placeOrder} disabled={placing || blocked}>
+                {placing
+                  ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Placing order…</>
+                  : <>Place order{selected ? ` (${selected.key === "cod" ? "COD" : selected.displayName})` : ""}</>}
+              </Button>
+              <p className="mt-2 flex items-center justify-center gap-1 text-[11px] text-dark-500"><Lock className="h-3 w-3" aria-hidden /> Amount confirmed by the server.</p>
+            </aside>
+          </div>
         </div>
       </div>
     </main>
   );
-}
-
-function Row({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
-  return <div className="flex items-center justify-between"><dt className="text-dark-500">{label}</dt><dd className="tabular-nums text-dark-800">{value}</dd></div>;
 }

@@ -93,17 +93,17 @@ export function RfqChat({ rfqId, admin = false, onQuoteAccepted }: { rfqId: stri
   const headerName = admin ? chat.context?.customer?.name ?? "Customer" : "ZOLO Packaging";
 
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-2xl border border-dark-100 bg-white">
+    <div className="card-flat flex h-full min-h-0 flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-dark-100 p-3 sm:p-4">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-dark-200 p-3 sm:p-4">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-500 text-sm font-bold text-white">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-sm font-bold text-green-600">
             {admin ? (headerName[0] || "C").toUpperCase() : "Z"}
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-bold text-dark-900">{headerName}</p>
             <p className="flex items-center gap-1.5 text-xs text-dark-500">
-              <span className={`h-2 w-2 rounded-full ${otherOnline ? "bg-emerald-500" : "bg-dark-300"}`} />
+              <span className={`h-2 w-2 rounded-full ${otherOnline ? "bg-green-500" : "bg-dark-300"}`} />
               {otherOnline ? "Online" : "Offline"}
               {chat.context && <span className="hidden sm:inline">· {chat.context.rfqNumber} · {chat.context.status.replace(/_/g, " ").toLowerCase()}</span>}
             </p>
@@ -111,11 +111,11 @@ export function RfqChat({ rfqId, admin = false, onQuoteAccepted }: { rfqId: stri
         </div>
         <div className="flex items-center gap-2">
           {admin && chat.context && !closed && (
-            <button type="button" onClick={() => setShowQuote((v) => !v)} className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-dark-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-dark-800">
+            <button type="button" onClick={() => setShowQuote((v) => !v)} className="btn btn-navy btn-sm hidden sm:inline-flex">
               <QuoteIcon className="h-3.5 w-3.5" /> Send Revised Quote
             </button>
           )}
-          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold ${chat.conn === "connected" ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`}>
+          <span className={`badge ${chat.conn === "connected" ? "bg-green-100 text-green-600" : "bg-amber-50 text-amber-700"}`}>
             {chat.conn === "connected" ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
             {chat.conn === "connected" ? "Live" : chat.conn === "reconnecting" ? "Reconnecting…" : chat.conn === "connecting" ? "Connecting…" : "Offline"}
           </span>
@@ -139,12 +139,12 @@ export function RfqChat({ rfqId, admin = false, onQuoteAccepted }: { rfqId: stri
         ) : chat.error ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
             <p className="text-sm font-semibold text-red-600">{chat.error}</p>
-            <button type="button" onClick={() => void chat.reload()} className="rounded-lg border border-dark-200 px-3 py-1.5 text-xs font-bold">Retry</button>
+            <button type="button" onClick={() => void chat.reload()} className="btn btn-outline btn-sm">Retry</button>
           </div>
         ) : chat.messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-            <QuoteIcon className="h-8 w-8 text-dark-200" />
-            <p className="text-sm font-bold text-dark-800">Start a conversation with ZOLO Packaging</p>
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600"><QuoteIcon className="h-5 w-5" aria-hidden /></span>
+            <p className="text-sm font-bold text-dark-900">Start a conversation with ZOLO Packaging</p>
             <p className="text-xs text-dark-400">Ask about price, MOQ, customization, delivery or your packaging requirements.</p>
           </div>
         ) : (
@@ -152,7 +152,7 @@ export function RfqChat({ rfqId, admin = false, onQuoteAccepted }: { rfqId: stri
             {chat.loadingOlder && <div className="py-2 text-center"><Loader2 className="mx-auto h-4 w-4 animate-spin text-dark-300" /></div>}
             {grouped.map((g) => (
               <div key={g.day}>
-                <div className="my-3 flex items-center justify-center"><span className="rounded-full bg-dark-50 px-3 py-1 text-[10px] font-semibold text-dark-500">{g.day}</span></div>
+                <div className="my-3 flex items-center justify-center"><span className="rounded-full bg-dark-100 px-3 py-1 text-[10px] font-semibold text-dark-500">{g.day}</span></div>
                 {g.items.map((m) => (
                   <MessageBubble key={m.id} m={m} admin={admin} meId={user?.id} onQuoteAccepted={onQuoteAccepted} />
                 ))}
@@ -174,13 +174,13 @@ export function RfqChat({ rfqId, admin = false, onQuoteAccepted }: { rfqId: stri
       </div>
 
       {/* Input */}
-      <div className="shrink-0 border-t border-dark-100 p-2 sm:p-3">
+      <div className="shrink-0 border-t border-dark-200 p-2 sm:p-3">
         {closed ? (
           <p className="py-2 text-center text-xs text-dark-400">This conversation is closed. History remains available.</p>
         ) : (
           <div className="flex items-end gap-2">
             <input ref={fileRef} type="file" accept={ACCEPT} className="sr-only" onChange={(e) => onPickFile(e.target.files?.[0] ?? null)} />
-            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} aria-label="Attach file" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-dark-500 hover:bg-dark-50 disabled:opacity-50">
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} aria-label="Attach file" className="btn btn-ghost btn-sm w-[2.375rem] shrink-0 px-0">
               {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Paperclip className="h-5 w-5" />}
             </button>
             <textarea
@@ -189,9 +189,9 @@ export function RfqChat({ rfqId, admin = false, onQuoteAccepted }: { rfqId: stri
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doSend(); } }}
               rows={1}
               placeholder="Type your message…"
-              className="max-h-28 min-h-[2.5rem] flex-1 resize-none rounded-2xl border border-dark-200 px-4 py-2.5 text-sm focus:border-primary-500 focus:outline-none"
+              className="input max-h-28 min-h-[2.375rem] flex-1 resize-none py-2 text-sm"
             />
-            <button type="button" onClick={doSend} disabled={!text.trim()} aria-label="Send" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-40">
+            <button type="button" onClick={doSend} disabled={!text.trim()} aria-label="Send" className="btn btn-primary btn-sm shrink-0">
               <Send className="h-4 w-4" />
             </button>
           </div>
@@ -205,7 +205,7 @@ function MessageBubble({ m, admin, meId, onQuoteAccepted }: { m: ChatMessage; ad
   const mineType = admin ? "ADMIN" : "CUSTOMER";
   const mine = m.senderId === meId || m.senderId === "me" || m.senderType === mineType;
   if (m.type === "SYSTEM") {
-    return <div className="my-2 text-center"><span className="rounded-full bg-dark-50 px-3 py-1 text-[11px] text-dark-500">{m.body}</span></div>;
+    return <div className="my-2 text-center"><span className="rounded-full bg-dark-100 px-3 py-1 text-[11px] text-dark-500">{m.body}</span></div>;
   }
   return (
     <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-1.5`}>
@@ -215,13 +215,13 @@ function MessageBubble({ m, admin, meId, onQuoteAccepted }: { m: ChatMessage; ad
         ) : m.type === "FILE" && m.file ? (
           <FileBubble m={m} mine={mine} />
         ) : (
-          <div className={`rounded-2xl px-3.5 py-2 text-sm ${mine ? "rounded-br-md bg-primary-500 text-white" : "rounded-bl-md bg-dark-50 text-dark-900"}`}>
+          <div className={`rounded-[12px] px-3.5 py-2 text-sm ${mine ? "bg-green-500 text-white" : "bg-dark-50 text-dark-900"}`}>
             <p className="whitespace-pre-wrap break-words">{m.body}</p>
           </div>
         )}
         <div className={`mt-0.5 flex items-center gap-1 px-1 text-[10px] text-dark-400 ${mine ? "justify-end" : "justify-start"}`}>
           <span>{time(m.createdAt)}</span>
-          {mine && m.type !== "QUOTE" && (m.readAt ? <CheckCheck className="h-3 w-3 text-primary-500" /> : <Check className="h-3 w-3" />)}
+          {mine && m.type !== "QUOTE" && (m.readAt ? <CheckCheck className="h-3 w-3 text-green-500" /> : <Check className="h-3 w-3" />)}
         </div>
       </div>
     </div>
@@ -243,8 +243,8 @@ function FileBubble({ m, mine }: { m: ChatMessage; mine: boolean }) {
     }
   };
   return (
-    <button type="button" onClick={dl} className={`flex items-center gap-2 rounded-2xl px-3.5 py-2.5 text-left text-sm ${mine ? "rounded-br-md bg-primary-500 text-white" : "rounded-bl-md bg-dark-50 text-dark-900"}`}>
-      <FileText className={`h-5 w-5 shrink-0 ${mine ? "text-white" : "text-primary-500"}`} />
+    <button type="button" onClick={dl} className={`flex items-center gap-2 rounded-[12px] px-3.5 py-2.5 text-left text-sm transition-colors duration-150 ${mine ? "bg-green-500 text-white hover:bg-green-600" : "bg-dark-50 text-dark-900 hover:bg-dark-100"}`}>
+      <FileText className={`h-5 w-5 shrink-0 ${mine ? "text-white" : "text-green-600"}`} />
       <span className="min-w-0">
         <span className="block max-w-[200px] truncate font-semibold">{m.file?.fileName}</span>
         {m.file && <span className={`text-[10px] ${mine ? "text-white/70" : "text-dark-400"}`}>{prettySize(m.file.size)} · tap to download</span>}
@@ -274,9 +274,9 @@ function QuoteCard({ quote, mine, admin, onAccepted }: { quote: ChatQuoteRef; mi
   };
 
   return (
-    <div className={`rounded-2xl border-2 p-4 ${mine ? "border-primary-200 bg-primary-50/60" : "border-dark-200 bg-white"}`}>
-      <div className="mb-2 flex items-center justify-between">
-        <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-primary-600"><QuoteIcon className="h-3.5 w-3.5" /> Revised quotation</span>
+    <div className={`card-flat p-4 ${mine ? "border-green-200 bg-green-50" : ""}`}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="eyebrow inline-flex items-center gap-1.5 tracking-wide"><QuoteIcon className="h-3.5 w-3.5" /> Revised quotation</span>
         <span className="text-[10px] font-semibold text-dark-400">{quote.quotationNumber} · v{quote.version}</span>
       </div>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
@@ -289,15 +289,15 @@ function QuoteCard({ quote, mine, admin, onAccepted }: { quote: ChatQuoteRef; mi
       {!admin && (
         <div className="mt-3 flex gap-2">
           {accepted ? (
-            <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700"><Check className="h-3.5 w-3.5" /> Accepted</span>
+            <span className="badge bg-green-100 text-green-600"><Check className="h-3 w-3" aria-hidden /> Accepted</span>
           ) : (
-            <button type="button" onClick={accept} disabled={busy} className="flex-1 rounded-lg bg-primary-500 px-4 py-2 text-xs font-bold text-white hover:bg-primary-600 disabled:opacity-50">
+            <button type="button" onClick={accept} disabled={busy} className="btn btn-primary btn-sm flex-1">
               {busy ? "Accepting…" : "Accept Quote"}
             </button>
           )}
         </div>
       )}
-      {admin && accepted && <p className="mt-2 text-xs font-semibold text-emerald-600">Accepted by customer</p>}
+      {admin && accepted && <p className="mt-2 text-xs font-semibold text-green-600">Accepted by customer</p>}
     </div>
   );
 }
@@ -336,27 +336,27 @@ function QuoteComposer({ rfqId, items, onClose, onSent }: {
   };
 
   return (
-    <div className="shrink-0 border-b border-primary-100 bg-primary-50/40 p-3 sm:p-4">
+    <div className="shrink-0 border-b border-dark-200 bg-cream-50 p-3 sm:p-4">
       <div className="mb-2 flex items-center justify-between">
         <p className="text-sm font-bold text-dark-900">Send a revised quotation</p>
-        <button type="button" onClick={onClose} aria-label="Close" className="rounded p-1 text-dark-400 hover:text-dark-700"><X className="h-4 w-4" /></button>
+        <button type="button" onClick={onClose} aria-label="Close" className="rounded-[8px] p-1 text-dark-400 transition-colors duration-150 hover:bg-dark-50 hover:text-dark-700"><X className="h-4 w-4" /></button>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <label className="text-xs font-bold text-dark-700">Price / piece (₹)
-          <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className="mt-1 w-full rounded-lg border border-dark-200 px-2 py-1.5 text-sm font-normal" />
+        <label className="label mb-0">Price / piece (₹)
+          <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className="input mt-1 font-normal" />
         </label>
-        <label className="text-xs font-bold text-dark-700">Lead time (days)
-          <input type="number" min={0} value={leadTimeDays} onChange={(e) => setLead(e.target.value)} className="mt-1 w-full rounded-lg border border-dark-200 px-2 py-1.5 text-sm font-normal" />
+        <label className="label mb-0">Lead time (days)
+          <input type="number" min={0} value={leadTimeDays} onChange={(e) => setLead(e.target.value)} className="input mt-1 font-normal" />
         </label>
-        <label className="text-xs font-bold text-dark-700">Valid (days)
-          <input type="number" min={1} value={validDays} onChange={(e) => setValidDays(e.target.value)} className="mt-1 w-full rounded-lg border border-dark-200 px-2 py-1.5 text-sm font-normal" />
+        <label className="label mb-0">Valid (days)
+          <input type="number" min={1} value={validDays} onChange={(e) => setValidDays(e.target.value)} className="input mt-1 font-normal" />
         </label>
-        <label className="text-xs font-bold text-dark-700 sm:col-span-1 col-span-2">Note
-          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" className="mt-1 w-full rounded-lg border border-dark-200 px-2 py-1.5 text-sm font-normal" />
+        <label className="label col-span-2 mb-0 sm:col-span-1">Note
+          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" className="input mt-1 font-normal" />
         </label>
       </div>
       <p className="mt-2 text-[11px] text-dark-500">Applies the price to all {items.length} product line{items.length === 1 ? "" : "s"} at their requested quantities. Creates a new quotation version.</p>
-      <button type="button" onClick={submit} disabled={busy} className="mt-2 rounded-lg bg-dark-900 px-4 py-2 text-xs font-bold text-white hover:bg-dark-800 disabled:opacity-50">
+      <button type="button" onClick={submit} disabled={busy} className="btn btn-navy btn-sm mt-3">
         {busy ? "Sending…" : "Send quote to customer"}
       </button>
     </div>

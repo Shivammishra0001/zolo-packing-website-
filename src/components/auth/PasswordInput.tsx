@@ -23,8 +23,8 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
     const errorId = `${inputId}-error`;
 
     return (
-      <div className="space-y-1.5">
-        <label htmlFor={inputId} className="block text-sm font-semibold text-dark-700 dark:text-dark-200">
+      <div>
+        <label htmlFor={inputId} className="label">
           {label}
         </label>
         <div className="relative">
@@ -40,20 +40,12 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
             autoComplete={props.autoComplete ?? "current-password"}
             aria-invalid={!!error}
             aria-describedby={cn(error && errorId, describedById) || undefined}
-            className={cn(
-              "h-11 w-full rounded-xl border bg-white/70 pl-10 pr-11 text-sm text-dark-900 outline-none transition-all placeholder:text-dark-400",
-              "focus:border-primary-500 focus:ring-2 focus:ring-primary-100",
-              "dark:bg-dark-800/60 dark:text-white dark:placeholder:text-dark-500 dark:focus:ring-primary-500/20",
-              error
-                ? "border-red-400 focus:border-red-500 focus:ring-red-100 dark:focus:ring-red-500/20"
-                : "border-dark-200 dark:border-dark-700",
-              className,
-            )}
+            className={cn("input pl-10 pr-11", className)}
           />
           <button
             type="button"
             onClick={() => setVisible((v) => !v)}
-            className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-dark-400 transition-colors hover:bg-dark-50 hover:text-dark-600 dark:hover:bg-dark-700"
+            className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[8px] text-dark-400 transition-colors duration-150 hover:bg-dark-50 hover:text-dark-700"
             aria-label={visible ? "Hide password" : "Show password"}
             aria-pressed={visible}
             tabIndex={-1}
@@ -62,7 +54,7 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
           </button>
         </div>
         {error && (
-          <p id={errorId} className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
+          <p id={errorId} className="field-error" role="alert">
             {error}
           </p>
         )}

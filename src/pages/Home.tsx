@@ -6,35 +6,33 @@ import {
   Truck,
   ShieldCheck,
   Headphones,
-  Mail,
-  Quote,
+  ChevronLeft,
+  ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import { useBuyerProducts } from "../lib/products";
+import { isCatalogHydrated, onCatalogPersistError } from "@/admin/catalog-store";
 import { ProductGrid } from "../components/ProductGrid";
 import { PackagingCategorySection } from "../components/packaging/PackagingCategorySection";
 import TrustedCustomers from "../components/TrustedCustomers";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { EmptyState, SectionHeader, SkeletonGrid } from "../components/UI";
 import heroVideo from "../../images/banner-video .mp4";
 import heroBg3 from "../../images/banner1-2.png";
 
-// Hero slideshow: slide 1 is a video (headline/CTAs + overlay) that plays fully
-// before advancing; slides 2–3 are clean full-bleed images (no text, no overlay)
-// that auto-advance every 5s. Left/right arrows + dots for manual control. Loops.
+// Hero slideshow: slide 1 is a video that carries the headline + CTAs; slide 2
+// is a clean full-bleed image (no text). Left/right arrows + dots for manual
+// control. Loops.
 const heroSlides = [
   { type: "video" as const, src: heroVideo, showContent: true },
   { type: "image" as const, src: heroBg3, showContent: false },
 ];
 import { useEffect, useRef, useState } from "react";
 
-// Import category images
-
 const benefits = [
   { icon: Truck, title: "Fast shipping", desc: "Worldwide delivery in 5-10 days" },
   { icon: ShieldCheck, title: "Quality guaranteed", desc: "Rigorous QC on every order" },
   { icon: Headphones, title: "24/7 support", desc: "Expert help anytime" },
 ];
-
-
 
 const processSteps = [
   { n: "01", title: "Choose Packaging", desc: "Browse our catalog of packaging solutions" },
@@ -47,11 +45,29 @@ const processSteps = [
 // invented quotes. Real customer testimonials belong here once collected —
 // never fabricated ones.
 
+/** Subtle section reveal: fade + 10px, 350ms (design-system motion). */
+const reveal = {
+  initial: { opacity: 0, y: 10 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, margin: "-40px" },
+  transition: { duration: 0.35 },
+} as const;
+
 export default function Home() {
   // Real product source only — the unified catalog store (API-backed when
   // reachable). No hardcoded demo array fallback: an empty catalog shows an
   // empty state rather than fake products.
   const source = useBuyerProducts();
+  // Loading = the catalog store has not hydrated from the API yet. A failed
+  // hydration flips this off so the rails show their real empty states instead
+  // of shimmering forever.
+  const [catalogFailed, setCatalogFailed] = useState(false);
+  useEffect(() => {
+    const off = onCatalogPersistError(() => setCatalogFailed(true));
+    return () => { off(); };
+  }, []);
+  const catalogLoading = !isCatalogHydrated() && !catalogFailed;
+
   // Both rails are chosen by the admin (Add/Edit product → Homepage
   // visibility) and stored in PostgreSQL. `source` is already active-only.
   // Nothing here depends on API order, createdAt or position, and there is NO
@@ -96,17 +112,25 @@ export default function Home() {
     v.play().catch(() => {});
   }, [currentSlide]);
 
+  const showHeroCopy = heroSlides[currentSlide].showContent;
+
   return (
     <main>
       <CampaignPopup />
-      {/* HERO */}
-      <section className="relative w-full aspect-[16/10] sm:aspect-[16/8] lg:aspect-[21/9] max-h-[88vh] flex items-center overflow-hidden bg-dark-950">
+
+      {/* HERO — bounded height carousel (the header is solid white and sits
+          above it, so no top padding / scrim is needed). */}
+      <section
+        className="relative w-full overflow-hidden bg-navy-900 aspect-[4/3] min-h-[460px] sm:min-h-0 sm:aspect-[16/9] lg:aspect-[16/7] max-h-[520px]"
+        aria-label="Zolo Packaging highlights"
+      >
         {/* Background slides */}
         <div className="absolute inset-0">
           {heroSlides.map((slide, index) => (
             <div
               key={index}
-              className={`absolute inset-0 transition-opacity duration-700 ${currentSlide === index ? "opacity-100" : "opacity-0"}`}
+              className={`absolute inset-0 transition-opacity duration-500 ${currentSlide === index ? "opacity-100" : "opacity-0"}`}
+              aria-hidden={currentSlide !== index}
             >
               {slide.type === "video" ? (
                 <video
@@ -123,9 +147,9 @@ export default function Home() {
                 />
               ) : (
                 <>
-                  {/* Blurred fill of the same banner so its full artwork is shown
-                      (object-contain) without black letterbox bars — the banners
-                      have differing aspect ratios, so cover would crop them. */}
+                  {/* Soft fill of the same banner behind an object-contain copy,
+                      so the full artwork shows without letterbox bars (the
+                      banners have differing aspect ratios). */}
                   <img
                     src={slide.src}
                     alt=""
@@ -143,57 +167,69 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Bottom scrim seats the CTAs; navbar now sits above the hero so the
-            full top of the video is visible (no top scrim needed). */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-40 bg-gradient-to-t from-black/40 to-transparent" />
+        {/* Readability scrim under the message (only while copy is shown). */}
+        <div
+          className={`pointer-events-none absolute inset-0 z-10 bg-navy-950/45 transition-opacity duration-500 lg:bg-gradient-to-r lg:from-navy-950/75 lg:via-navy-950/40 lg:to-navy-950/5 ${showHeroCopy ? "opacity-100" : "opacity-0"}`}
+          aria-hidden
+        />
 
-        {/* Hero CTAs — only on the first slide (re-animates each loop). The banner
-            artwork already carries the headline, so we keep just the actions. */}
-        {currentSlide === 0 && (
-          <div className="absolute inset-x-0 bottom-10 z-20 shell">
-            <motion.div
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.2 }}
-              className="flex flex-wrap items-center gap-3"
-            >
-              <Link to="/rfq">
-                <button className="rounded-full bg-primary-500 px-7 py-3 text-sm font-bold text-white shadow-lg shadow-primary-500/30 transition-all hover:bg-primary-600 hover:shadow-primary-500/40">
-                  Get Custom Quote
-                </button>
-              </Link>
-              <Link to="/products">
-                <button className="rounded-full bg-white/90 px-7 py-3 text-sm font-bold text-dark-900 backdrop-blur transition-all hover:bg-white">
-                  Explore Packaging
-                </button>
-              </Link>
-            </motion.div>
+        {/* Hero message — compact two-column: copy left, artwork breathes right. */}
+        {showHeroCopy && (
+          <div className="absolute inset-0 z-20 flex items-center">
+            <div className="shell">
+              <div className="grid items-center gap-6 lg:grid-cols-2">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35 }}
+                  className="max-w-xl"
+                >
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-cream-100">Premium packaging, made in India</p>
+                  <h1 className="h1 mt-2 text-white">Packaging that sells your brand</h1>
+                  <p className="mt-3 max-w-md text-[15px] leading-relaxed text-white/85 sm:text-[17px]">
+                    Custom boxes, pouches and sustainable packaging — designed, printed and delivered.
+                  </p>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <Link to="/rfq" className="btn btn-primary btn-lg">
+                      Get Custom Quote <ArrowRight className="h-4 w-4" aria-hidden />
+                    </Link>
+                    <Link to="/products" className="btn btn-white btn-lg">
+                      Explore Packaging
+                    </Link>
+                  </div>
+                </motion.div>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Prev / Next arrows */}
         <button
+          type="button"
           onClick={prevSlide}
           aria-label="Previous slide"
-          className="absolute right-16 top-4 z-30 flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur sm:left-4 sm:right-auto sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2 transition-all hover:bg-white/40 sm:h-12 sm:w-12"
+          className="absolute right-16 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/90 text-dark-900 transition-colors hover:bg-white sm:left-4 sm:right-auto sm:top-1/2 sm:-translate-y-1/2"
         >
-          <ChevronLeft className="h-6 w-6" />
+          <ChevronLeft className="h-5 w-5" aria-hidden />
         </button>
         <button
+          type="button"
           onClick={nextSlide}
           aria-label="Next slide"
-          className="absolute right-4 top-4 z-30 flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2 transition-all hover:bg-white/40 sm:h-12 sm:w-12"
+          className="absolute right-4 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/90 text-dark-900 transition-colors hover:bg-white sm:top-1/2 sm:-translate-y-1/2"
         >
-          <ChevronRight className="h-6 w-6" />
+          <ChevronRight className="h-5 w-5" aria-hidden />
         </button>
 
         {/* Slide dots */}
-        <div className="absolute bottom-6 right-6 z-30 flex gap-2 sm:right-10">
+        <div className="absolute bottom-4 right-4 z-30 flex gap-2 sm:bottom-6 sm:right-8">
           {heroSlides.map((_, index) => (
             <button
               key={index}
+              type="button"
               onClick={() => setCurrentSlide(index)}
               aria-label={`Go to slide ${index + 1}`}
+              aria-current={currentSlide === index}
               className={`h-2 rounded-full transition-all duration-300 ${
                 currentSlide === index ? "w-8 bg-white" : "w-2 bg-white/50 hover:bg-white/80"
               }`}
@@ -206,126 +242,105 @@ export default function Home() {
           when no campaign is live for its placement. */}
       <HomepageCampaignBanner />
 
-      {/* TRUST BAR */}
-      <section className="bg-white border-y border-dark-100 py-8">
+      {/* TRUST STRIP */}
+      <section className="section-sm bg-white">
         <div className="shell">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            {benefits.map((b, i) => (
-              <motion.div
-                key={b.title}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.05 }}
-                className="flex items-center gap-4"
-              >
-                <div className="h-12 w-12 rounded-2xl bg-primary-50 flex items-center justify-center shrink-0">
-                  <b.icon className="h-5 w-5 text-primary-600" />
-                </div>
+          <motion.div {...reveal} className="card-flat grid grid-cols-1 divide-y divide-dark-200 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            {benefits.map((b) => (
+              <div key={b.title} className="flex items-center gap-3 px-5 py-4">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-500">
+                  <b.icon className="h-5 w-5" aria-hidden />
+                </span>
                 <div className="min-w-0">
-                  <div className="font-display font-bold text-sm text-dark-900">{b.title}</div>
-                  <div className="text-xs text-dark-500 mt-0.5">{b.desc}</div>
+                  <div className="text-sm font-bold text-dark-900">{b.title}</div>
+                  <div className="mt-0.5 text-xs text-dark-500">{b.desc}</div>
                 </div>
-              </motion.div>
+              </div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
-    
-
       <PromotionCards />
 
-      {/* CATEGORIES — premium circular showcase, API-driven (see
-          components/packaging/PackagingCategorySection). */}
+      {/* CATEGORIES — API-driven (see components/packaging/PackagingCategorySection). */}
       <PackagingCategorySection />
 
-      {/* BESTSELLERS */}
-      <section className="py-20 bg-dark-50">
+      {/* FEATURED */}
+      <section className="section bg-white">
         <div className="shell">
-          <div className="flex items-end justify-between flex-wrap gap-4 mb-10">
-            <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600 mb-3">
-                <span className="inline-block h-1 w-6 rounded-full bg-primary-500 mr-2" />
-                Featured
-              </div>
-              <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-dark-900 leading-[1.05]">
-                Featured <span className="grad-text">products</span>
-              </h2>
-              <p className="mt-3 text-lg text-dark-500">A selection from our packaging catalog</p>
-            </div>
-            <Link to="/products" className="text-sm font-bold text-dark-900 hover:text-primary-600 inline-flex items-center gap-1">
-              View all <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
+          <SectionHeader
+            eyebrow="Featured"
+            title="Featured products"
+            subtitle="A selection from our packaging catalog"
+            action={
+              <Link to="/products" className="btn btn-ghost btn-sm">
+                View all <ArrowRight className="h-4 w-4" aria-hidden />
+              </Link>
+            }
+            className="mb-6"
+          />
 
-          {featured.length === 0 ? (
-            <div className="rounded-2xl border border-dark-100 bg-white p-12 text-center">
-              <div className="text-5xl mb-3">📦</div>
-              <p className="font-display text-lg font-bold text-dark-900">No featured products yet</p>
-              <p className="mt-1 text-sm text-dark-500">Products marked as Featured in the catalog will appear here.</p>
-            </div>
+          {catalogLoading ? (
+            <SkeletonGrid count={4} />
+          ) : featured.length === 0 ? (
+            <EmptyState
+              title="No featured products yet"
+              message="Products marked as Featured in the catalog will appear here."
+              action={<Link to="/products" className="btn btn-secondary btn-sm">Browse all products</Link>}
+            />
           ) : (
             <ProductGrid products={featured} maxRows={2} />
           )}
         </div>
       </section>
 
-      {/* NEW ARRIVALS */}
-      {newArrivals.length > 0 && (
-      <section className="py-20 bg-white">
-        <div className="shell">
-          <div className="flex items-end justify-between flex-wrap gap-4 mb-10">
-            <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600 mb-3">
-                <span className="inline-block h-1 w-6 rounded-full bg-primary-500 mr-2" />
-                New Arrivals
-              </div>
-              <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-dark-900 leading-[1.05]">
-                Fresh on the <span className="grad-text">market</span>
-              </h2>
-            </div>
-            <Link to="/products?sort=new" className="text-sm font-bold text-dark-900 hover:text-primary-600 inline-flex items-center gap-1">
-              View all <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
+      {/* NEW ARRIVALS — hidden entirely once loaded with nothing selected. */}
+      {(catalogLoading || newArrivals.length > 0) && (
+        <section className="section bg-cream-50">
+          <div className="shell">
+            <SectionHeader
+              eyebrow="New arrivals"
+              title="Fresh on the market"
+              subtitle="The latest additions to our range"
+              action={
+                <Link to="/products?sort=new" className="btn btn-ghost btn-sm">
+                  View all <ArrowRight className="h-4 w-4" aria-hidden />
+                </Link>
+              }
+              className="mb-6"
+            />
+            {catalogLoading ? <SkeletonGrid count={4} /> : <ProductGrid products={newArrivals} maxRows={1} />}
           </div>
-          <ProductGrid products={newArrivals} maxRows={1} />
-        </div>
-      </section>
+        </section>
       )}
 
       {/* TRUSTED CUSTOMERS — logo marquee */}
       <TrustedCustomers />
 
-      {/* WHY CHOOSE US / PROCESS */}
-      <section className="py-20 bg-dark-950 text-white relative overflow-hidden">
-        <div className="absolute inset-0 grid-bg-light opacity-20" />
-        <div className="absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full bg-primary-500/20 blur-3xl" />
-        <div className="relative shell">
-          <div className="text-center max-w-3xl mx-auto mb-14">
-            <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary-400 mb-3">
-              <span className="inline-block h-1 w-6 rounded-full bg-primary-500 mr-2" />
-              How it works
-            </div>
-            <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-[1.05]">
-              Your packaging, <span className="grad-text">in 4 simple steps</span>
-            </h2>
-            <p className="mt-4 text-lg text-dark-300">From idea to doorstep in days, not months</p>
-          </div>
+      {/* HOW IT WORKS — dark navy band. SectionHeader hard-codes dark text, so
+          the heading is composed inline here with the same scale. */}
+      <section className="section bg-navy-900 text-white">
+        <div className="shell">
+          <motion.div {...reveal} className="mx-auto max-w-2xl text-center">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-green-400">How it works</p>
+            <h2 className="h2 mt-2 text-white">Your packaging, in 4 simple steps</h2>
+            <p className="mt-2 text-[15px] leading-relaxed text-white/75 sm:text-[17px]">From idea to doorstep in days, not months</p>
+          </motion.div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
+          <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 sm:gap-4">
             {processSteps.map((step, i) => (
               <motion.div
                 key={step.n}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 10 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                className="glass-dark rounded-2xl p-6 relative"
+                viewport={{ once: true, margin: "-40px" }}
+                transition={{ duration: 0.35, delay: i * 0.05 }}
+                className="rounded-[12px] border border-white/10 bg-white/5 p-5"
               >
-                <div className="font-display text-5xl font-extrabold grad-text mb-3">{step.n}</div>
-                <h3 className="font-display text-lg font-bold mb-2">{step.title}</h3>
-                <p className="text-sm text-dark-300">{step.desc}</p>
+                <div className="font-display text-2xl font-extrabold text-green-400">{step.n}</div>
+                <h3 className="mt-3 text-base font-bold text-white">{step.title}</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-white/70">{step.desc}</p>
               </motion.div>
             ))}
           </div>
@@ -335,35 +350,26 @@ export default function Home() {
       {/* Testimonials section removed — the cards showed fictitious customers
           with invented quotes. Reinstate it when real testimonials exist. */}
 
-
-      {/* CTA */}
-      <section className="py-20 bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 text-white relative overflow-hidden">
-        <div className="absolute inset-0 grid-bg-light opacity-10" />
-        <div className="absolute -top-40 -right-40 w-[400px] h-[400px] rounded-full bg-white/10 blur-3xl" />
-        <div className="relative mx-auto max-w-4xl px-4 sm:px-6 text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 backdrop-blur px-4 py-1.5 text-xs font-bold mb-6">
-            <Quote className="h-3 w-3" /> Request a quote today
-          </div>
-          <h2 className="font-display text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-tight">
-            Ready to design your
-            <br />
-            <span className="text-white">first box?</span>
-          </h2>
-          <p className="mt-5 text-lg text-white/90 max-w-2xl mx-auto">
-            Ship premium packaging for your brand with Zolo Packing.
-          </p>
-          <div className="mt-9 flex flex-wrap gap-3 justify-center">
-            <Link to="/rfq">
-              <button className="inline-flex items-center gap-2 px-7 py-4 rounded-full bg-white text-primary-600 text-sm font-bold hover:bg-dark-50 transition-all shadow-lg">
-                <Mail className="h-4 w-4" /> Get Free Quote <ArrowRight className="h-4 w-4" />
-              </button>
-            </Link>
-            <Link to="/products">
-              <button className="inline-flex items-center gap-2 px-7 py-4 rounded-full bg-white/15 backdrop-blur text-white text-sm font-bold border border-white/30 hover:bg-white/25 transition-all">
+      {/* FINAL CTA */}
+      <section className="section bg-green-800 text-white">
+        <div className="shell">
+          <motion.div {...reveal} className="mx-auto max-w-2xl text-center">
+            <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.18em] text-green-300">
+              <Sparkles className="h-3.5 w-3.5" aria-hidden /> Request a quote today
+            </p>
+            <h2 className="h2 mt-2 text-white">Ready to design your first box?</h2>
+            <p className="mt-2 text-[15px] leading-relaxed text-white/80 sm:text-[17px]">
+              Ship premium, sustainable packaging for your brand with Zolo Packing.
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <Link to="/rfq" className="btn btn-primary">
+                Get Free Quote <ArrowRight className="h-4 w-4" aria-hidden />
+              </Link>
+              <Link to="/products" className="btn btn-white">
                 Browse catalog
-              </button>
-            </Link>
-          </div>
+              </Link>
+            </div>
+          </motion.div>
         </div>
       </section>
     </main>

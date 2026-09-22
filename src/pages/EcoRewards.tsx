@@ -51,19 +51,22 @@ import { ecoCreditsApi, fmtQty, recyclingApi, type RecyclingProgram } from "../l
                Contact page (partnership topic) rather than a fake form.
 ========================================================= */
 
-/* Page-scoped palette sampled from the reference (never global). */
+/* The palette this page was designed with is now the GLOBAL design system
+   (src/index.css @theme). These aliases keep the page's class names readable
+   while pointing at the shared tokens, so the page and the rest of the site
+   can never drift apart again. */
 const palette = {
-  "--zolo-orange": "#f97316",
-  "--zolo-orange-dark": "#ea580c",
-  "--zolo-navy": "#0f172a",
-  "--zolo-green": "#15803d",
-  "--zolo-green-deep": "#0b4a2b",
-  "--zolo-green-band": "#0d3f26",
-  "--zolo-light-green": "#eef8f0",
-  "--zolo-light-orange": "#fff6ec",
-  "--zolo-text": "#0f172a",
-  "--zolo-muted": "#64748b",
-  "--zolo-border": "#e5e7eb",
+  "--zolo-orange": "var(--color-primary-500)",
+  "--zolo-orange-dark": "var(--color-primary-600)",
+  "--zolo-navy": "var(--color-navy-900)",
+  "--zolo-green": "var(--color-green-500)",
+  "--zolo-green-deep": "var(--color-green-700)",
+  "--zolo-green-band": "var(--color-green-800)",
+  "--zolo-light-green": "var(--color-green-100)",
+  "--zolo-light-orange": "var(--color-cream-200)",
+  "--zolo-text": "var(--color-dark-900)",
+  "--zolo-muted": "var(--color-dark-500)",
+  "--zolo-border": "var(--color-dark-200)",
   "--zolo-white": "#ffffff",
 } as CSSProperties;
 
@@ -108,14 +111,13 @@ const tierLook: Record<string, { card: string; circle: string; name: string; ico
   "Eco Platinum": { card: "border-[var(--zolo-border)] bg-white", circle: "bg-[#1e293b] text-white", name: "text-[var(--zolo-text)]", icon: Crown },
 };
 
-/* ---------- Buttons (reference: 42px tall, 8px radius, 15px bold) ---------- */
-const btn = "inline-flex h-[42px] items-center justify-center gap-2 whitespace-nowrap rounded-lg px-[18px] text-[15px] font-bold lg:h-[40px] lg:px-3.5 lg:text-[14px] xl:h-[42px] xl:px-[18px] xl:text-[15px] transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
-const btnOrange = `${btn} bg-[var(--zolo-orange)] text-white shadow-[0_6px_16px_rgba(249,115,22,0.28)] hover:bg-[var(--zolo-orange-dark)] focus-visible:ring-[var(--zolo-orange)]`;
-const btnNavy = `${btn} bg-[var(--zolo-navy)] text-white hover:bg-[#1e293b] focus-visible:ring-[var(--zolo-navy)]`;
-const btnOutline = `${btn} border border-[#cbd5e1] bg-white text-[var(--zolo-text)] hover:border-[var(--zolo-navy)] focus-visible:ring-[var(--zolo-navy)]`;
-const btnOutlineOrange = `${btn} border-[1.5px] border-[var(--zolo-orange)] bg-white text-[var(--zolo-orange-dark)] hover:bg-[var(--zolo-light-orange)] focus-visible:ring-[var(--zolo-orange)]`;
-const btnGreen = `${btn} bg-[var(--zolo-green)] text-white shadow-[0_6px_16px_rgba(21,128,61,0.28)] hover:bg-[#166534] focus-visible:ring-[var(--zolo-green)]`;
-const btnSm = "h-[38px] px-4 text-[14px]";
+/* ---------- Buttons: the shared .btn system (44px, 8px radius, 15px bold) ---------- */
+const btnOrange = "btn btn-primary";
+const btnNavy = "btn btn-navy";
+const btnOutline = "btn btn-outline";
+const btnOutlineOrange = "btn border-[1.5px] border-primary-500 bg-white text-primary-600 hover:bg-cream-200";
+const btnGreen = "btn btn-green";
+const btnSm = "btn-sm";
 
 function Eyebrow({ children, tone = "green" }: { children: React.ReactNode; tone?: "green" | "orange" }) {
   return <p className={`text-[12px] font-bold uppercase tracking-[0.18em] ${tone === "orange" ? "text-[var(--zolo-orange)]" : "text-[var(--zolo-green)]"}`}>{children}</p>;
@@ -464,7 +466,7 @@ export default function EcoRewards() {
             </ul>
             <div className="mt-5 flex flex-wrap gap-3 lg:justify-end">
               <button type="button" onClick={startRecycling} className={`${btnOrange} ${btnSm}`}>Start Recycling <ArrowRight className="h-4 w-4" aria-hidden /></button>
-              <a href="#how-it-works" className={`${btn} ${btnSm} border border-white/60 bg-transparent text-white hover:bg-white/10 focus-visible:ring-white/70`}>Learn More</a>
+              <a href="#how-it-works" className={`btn ${btnSm} border border-white/60 bg-transparent text-white hover:bg-white/10 focus-visible:ring-white/70`}>Learn More</a>
             </div>
           </div>
         </div>

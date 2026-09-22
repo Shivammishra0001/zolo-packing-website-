@@ -50,7 +50,9 @@ export function ProductGrid({
   }, [products, cols, maxRows]);
 
   return (
-    <div ref={ref} className={`${large ? "grid-cards-lg" : "grid-cards"} ${className}`.trim()}>
+    // items-stretch: every card in a row is the same height (NewProductCard is
+    // `h-full flex-col`, so its CTA row pins to the bottom).
+    <div ref={ref} className={`${large ? "grid-cards-lg" : "grid-cards"} items-stretch ${className}`.trim()}>
       {visible.map((p, i) => (
         <ProductCard key={p.id} product={p} index={i} />
       ))}

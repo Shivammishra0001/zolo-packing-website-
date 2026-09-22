@@ -1,12 +1,9 @@
 import { useState } from "react";
-import { Package, ShieldCheck, Users } from "lucide-react";
 import LogoLoop, { type LogoItem } from "./LogoLoop";
-// Branded cream backdrop (leaves, kraft boxes, zolo mark) — supplies the
-// section's decoration, so no extra decorative elements are added over it.
-import customerBg from "../../images/customer-section.png";
+import { SectionHeader } from "./UI";
 
 // ============================================================
-// Trusted by Leading Brands — customer-logo marquee.
+// Trusted by Leading Brands — customer-logo marquee on the cream band.
 //
 // IMAGE-ONLY: each card shows the brand's real logo from /logos/<file>. Drop
 // the PNG/JPG into public/logos/ (Vite serves that folder at the site root).
@@ -28,6 +25,10 @@ const CUSTOMERS: Customer[] = [
   { name: "ACI gold", src: "/logos/aci-gold.png" },
 ];
 
+// Must match `bg-cream-50` (--color-cream-50) so the marquee's edge fade
+// dissolves into the section surface.
+const CREAM_50 = "#fcfaf2";
+
 /** A single logo image. On load failure it calls `onFail` so the parent can
  *  remove it from the marquee entirely — otherwise a missing file would leave
  *  an empty slot that still reserves a gap and breaks even spacing. */
@@ -44,12 +45,6 @@ function LogoImg({ customer, onFail }: { customer: Customer; onFail: () => void 
   );
 }
 
-const TRUST_POINTS = [
-  { icon: Package, label: "Custom Packaging" },
-  { icon: ShieldCheck, label: "Trusted Quality" },
-  { icon: Users, label: "Growing Together" },
-];
-
 export default function TrustedCustomers() {
   // Track which logo files fail to load and drop them from the marquee, so a
   // missing file never leaves an empty gap.
@@ -65,64 +60,31 @@ export default function TrustedCustomers() {
   }));
 
   return (
-    <section
-      className="relative overflow-hidden py-14 sm:py-20"
-      // The artwork is a wide 3:1 banner. `100% auto` shows it at full width and
-      // its true proportions (no zoom/crop) anchored to the top; the cream
-      // fallback fills any area the banner doesn't reach so the section reads as
-      // one surface on every screen size.
-      style={{
-        backgroundImage: `url(${customerBg})`,
-        backgroundColor: "#f6efe2",
-        backgroundSize: "100% auto",
-        backgroundPosition: "center top",
-        backgroundRepeat: "no-repeat",
-      }}
-    >
+    <section className="section-sm overflow-hidden bg-cream-50" aria-label="Trusted by leading brands">
       {/* Heading — constrained to the readable column */}
-      <div className="relative shell">
-        <div className="mx-auto max-w-2xl text-center">
-          <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600">
-            <span className="mr-2 inline-block h-1 w-6 rounded-full bg-primary-500" />
-            Trusted by Leading Brands
-          </div>
-          <h2 className="font-display text-3xl font-extrabold leading-[1.1] tracking-tight text-dark-900 sm:text-4xl lg:text-5xl">
-            Our Valued <span className="grad-text">Customers</span>
-          </h2>
-          <p className="mx-auto mt-3 max-w-xl text-base text-dark-500 sm:text-lg">
-            Proud to deliver packaging solutions for businesses across industries
-          </p>
-        </div>
+      <div className="shell">
+        <SectionHeader
+          align="center"
+          eyebrow="Trusted by leading brands"
+          title="Our valued customers"
+          subtitle="Proud to deliver packaging solutions for businesses across industries"
+        />
       </div>
 
       {/* Logo marquee — full-bleed: spans edge-to-edge of the viewport */}
-      <div className="relative mt-8 w-full sm:mt-10">
+      <div className="mt-6 w-full sm:mt-8">
         <LogoLoop
           logos={logos}
           speed={70}
           direction="left"
-          logoHeight={92}
+          logoHeight={72}
           gap={28}
           hoverSpeed={0}
           scaleOnHover
           fadeOut
-          fadeOutColor="#f6efe2"
+          fadeOutColor={CREAM_50}
           ariaLabel="Zolo Packaging customers"
         />
-      </div>
-
-      {/* Trust indicators — back inside the readable column */}
-      <div className="relative shell">
-        <div className="mx-auto mt-10 grid max-w-2xl grid-cols-3 gap-4 sm:mt-12 sm:gap-8">
-          {TRUST_POINTS.map(({ icon: Icon, label }) => (
-            <div key={label} className="flex flex-col items-center gap-2 text-center sm:flex-row sm:justify-center sm:gap-2.5">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-primary-600 shadow-sm ring-1 ring-dark-100">
-                <Icon className="h-4 w-4" aria-hidden />
-              </span>
-              <span className="text-xs font-semibold text-dark-700 sm:text-sm">{label}</span>
-            </div>
-          ))}
-        </div>
       </div>
     </section>
   );

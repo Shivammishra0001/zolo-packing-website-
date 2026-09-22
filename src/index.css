@@ -111,8 +111,8 @@
   --tile-min: 118px;
 }
 @media (min-width: 640px)  { :root { --card-min: 200px; --tile-min: 150px; } }
-@media (min-width: 1024px) { :root { --card-min: 230px; --tile-min: 170px; } }
-@media (min-width: 1920px) { :root { --card-min: 260px; --tile-min: 190px; } }
+/* 280px at desktop ⇒ 4 columns in the 1320px shell, 3 beside a filter sidebar. */
+@media (min-width: 1024px) { :root { --card-min: 280px; --tile-min: 170px; } }
 
 @utility shell {
   width: 100%;
@@ -132,8 +132,12 @@
 }
 @utility grid-cards {
   display: grid;
-  gap: clamp(0.75rem, 1.25vw, 1.5rem);
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--card-min)), 1fr));
+  gap: 1rem;
+  align-items: stretch;
+  /* auto-fit (not auto-fill): a short row never leaves an empty track; the
+     child cap keeps a lone product from stretching across the page. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--card-min)), 1fr));
+  & > * { max-width: 440px; width: 100%; }
 }
 @utility grid-cards-lg {
   display: grid;

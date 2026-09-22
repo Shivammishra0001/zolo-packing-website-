@@ -1,16 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { BadgeCheck, Download, FileText, Loader2, MapPin, MessageSquare, Paperclip, Plus, RefreshCw, Send, Users } from "lucide-react";
+import { BadgeCheck, Download, FileText, Loader2, MapPin, MessageSquare, Paperclip, Plus, Send, Users } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { rfqApi, chatApi, type Rfq, type Quotation, type RfqMessage } from "@/lib/api/rfq";
 import { describeApiError, saveBlob } from "@/lib/api/client";
 import { useAuthSession } from "@/components/auth/AuthContext";
 import { RfqChat } from "@/components/rfq/RfqChat";
 import { inrMinor } from "@/admin/format";
+import { Badge, Button, ButtonLink, EmptyState, ErrorState } from "@/components/UI";
 
 // The buyer's quotation history: every RFQ they sent, the quotations received
 // (house + competing sellers), a comparison view, and accept / reject /
 // request-changes. Rendered inside the buyer portal at /account/quotations.
+
+type BadgeTone = "green" | "orange" | "navy" | "neutral" | "red" | "amber";
+
+/** Status → badge tone: pending = amber, quoted/accepted = green, rejected = red. */
+function statusTone(status: string): BadgeTone {
+  const s = status.toUpperCase();
+  if (s.includes("REJECT") || s.includes("CANCEL") || s.includes("EXPIRED")) return "red";
+  if (s.includes("ACCEPT") || s.includes("QUOTED") || s === "SENT" || s.includes("ORDER")) return "green";
+  if (s.includes("PENDING") || s.includes("SUBMIT") || s.includes("OPEN") || s.includes("REVIEW") || s.includes("CHANGES")) return "amber";
+  return "neutral";
+}
+
+const prettyStatus = (status: string) => status.replace(/_/g, " ").toLowerCase();
+
 export default function MyQuotations() {
   const [rfqs, setRfqs] = useState<Rfq[] | null>(null);
   const [error, setError] = useState<{ kind: string; message: string } | null>(null);
@@ -63,47 +77,53 @@ export default function MyQuotations() {
 
   if (error) {
     return (
-      <div className="py-16">
-        <div className="mx-auto max-w-3xl px-4 text-center">
-          <p className="text-sm font-semibold text-red-600">{error.message}</p>
-          {error.kind === "unauthorized" ? (
-            <Link to="/" className="mt-4 inline-block rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-bold text-white">
-              Go to sign in
-            </Link>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-dark-200 px-4 py-2 text-sm font-bold"
-            >
-              <RefreshCw className="h-4 w-4" /> Try again
-            </button>
-          )}
-        </div>
+      <div className="mx-auto max-w-3xl py-8">
+        {error.kind === "unauthorized" ? (
+          <EmptyState icon={FileText} title="Please sign in" message={error.message} action={<ButtonLink to="/" variant="outline">Go to sign in</ButtonLink>} />
+        ) : (
+          <ErrorState title="Couldn't load your quotations" message={error.message} onRetry={() => void load()} />
+        )}
       </div>
     );
   }
 
   if (rfqs === null) {
     return (
-      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-2">
-        <Loader2 className="h-6 w-6 animate-spin text-dark-300" />
-        <p className="text-xs erp-text-muted">Loading your quotation requests…</p>
+      <div className="mx-auto max-w-5xl" aria-busy="true" aria-label="Loading your quotation requests">
+        <div className="flex items-center justify-between gap-3">
+          <div className="skeleton h-8 w-40" />
+          <div className="skeleton h-11 w-44" />
+        </div>
+        <div className="mt-6 space-y-4">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="card p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-2">
+                  <div className="skeleton h-4 w-32" />
+                  <div className="skeleton h-3 w-52" />
+                </div>
+                <div className="skeleton h-6 w-20 rounded-full" />
+              </div>
+              <div className="mt-4 space-y-2">
+                <div className="skeleton h-3 w-3/4" />
+                <div className="skeleton h-3 w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   if (rfqs.length === 0) {
     return (
-      <div className="py-16">
-        <div className="mx-auto max-w-3xl px-4 text-center">
-          <FileText className="mx-auto h-12 w-12 text-dark-300" />
-          <h1 className="mt-4 text-2xl font-bold erp-text">No quotation requests yet</h1>
-          <p className="mt-2 text-sm erp-text-muted">Request a bulk quote and the sellers' offers will appear here.</p>
-          <Link to="/rfq" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary-500 px-5 py-3 text-sm font-bold text-white">
-            <Plus className="h-4 w-4" /> Create Bulk Quote
-          </Link>
-        </div>
+      <div className="mx-auto max-w-3xl py-8">
+        <EmptyState
+          icon={FileText}
+          title="No quotation requests yet"
+          message="Request a bulk quote and the sellers' offers will appear here."
+          action={<ButtonLink to="/rfq" variant="primary" icon={Plus}>Request a quote</ButtonLink>}
+        />
       </div>
     );
   }
@@ -111,21 +131,23 @@ export default function MyQuotations() {
   return (
     <div className="mx-auto max-w-5xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold erp-text">My Quotes</h1>
-        <Link to="/rfq" className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-primary-600">
-          <Plus className="h-4 w-4" /> Create Bulk Quote
-        </Link>
+        <div>
+          <p className="eyebrow">Quotations</p>
+          <h1 className="h2 mt-1 text-dark-900">My quotes</h1>
+        </div>
+        <ButtonLink to="/rfq" variant="secondary" icon={Plus}>Request a quote</ButtonLink>
       </div>
 
       <div className="mt-6 space-y-4">
         {rfqs.map((r) => {
           const sent = r.quotations.filter((q) => q.status === "SENT");
+          const chatOpen = openChat === r.id;
           return (
-            <section key={r.id} className="rounded-xl border erp-border erp-surface p-4">
-              <header className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="font-bold erp-text">{r.rfqNumber}</p>
-                  <p className="text-xs erp-text-muted">
+            <section key={r.id} className="card p-4 sm:p-5">
+              <header className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-bold text-dark-900">{r.rfqNumber}</p>
+                  <p className="mt-0.5 text-xs text-dark-500">
                     {r.itemCount} product{r.itemCount === 1 ? "" : "s"} · {r.totalQuantity.toLocaleString("en-IN")} units
                     {r.ship.city && (
                       <span className="ml-2 inline-flex items-center gap-0.5">
@@ -134,24 +156,21 @@ export default function MyQuotations() {
                     )}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {r.matchCount > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-dark-50 px-2.5 py-1 text-[11px] font-bold erp-text-muted dark:bg-white/5">
+                    <Badge tone="neutral">
                       <Users className="h-3 w-3" aria-hidden /> {r.matchCount} seller{r.matchCount === 1 ? "" : "s"} matched
-                    </span>
+                    </Badge>
                   )}
-                  <span className="rounded-full bg-dark-50 px-3 py-1 text-xs font-bold erp-text dark:bg-white/10">
-                    {r.status.replace(/_/g, " ").toLowerCase()}
-                  </span>
+                  <Badge tone={statusTone(r.status)}>{prettyStatus(r.status)}</Badge>
                   <button
                     type="button"
                     onClick={() => toggleChat(r.id)}
-                    className={`relative inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                      openChat === r.id ? "bg-primary-500 text-white" : "bg-primary-50 text-primary-700 hover:bg-primary-100"
-                    }`}
+                    aria-pressed={chatOpen}
+                    className={`chip relative ${chatOpen ? "chip-active" : ""}`}
                   >
                     <MessageSquare className="h-3.5 w-3.5" aria-hidden /> Chat / Negotiate
-                    {(unread[r.id] ?? 0) > 0 && openChat !== r.id && (
+                    {(unread[r.id] ?? 0) > 0 && !chatOpen && (
                       <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
                         {unread[r.id]}
                       </span>
@@ -160,15 +179,15 @@ export default function MyQuotations() {
                 </div>
               </header>
 
-              <div className={openChat === r.id ? "mt-3 lg:grid lg:grid-cols-[1fr_minmax(320px,26rem)] lg:gap-4" : ""}>
+              <div className={chatOpen ? "mt-3 lg:grid lg:grid-cols-[1fr_minmax(320px,26rem)] lg:gap-4" : ""}>
               <div className="min-w-0">
-              <ul className="mt-3 space-y-1 text-sm erp-text-muted">
+              <ul className="mt-3 divide-y divide-dark-100 text-sm text-dark-700">
                 {r.items.map((i) => (
-                  <li key={i.id} className="flex justify-between gap-4">
+                  <li key={i.id} className="flex justify-between gap-4 py-1.5 first:pt-0">
                     <span className="min-w-0">
-                      <span className="truncate">{i.productName}</span>
+                      <span className="block truncate font-medium text-dark-900">{i.productName}</span>
                       {Object.entries(i.specs ?? {}).filter(([, v]) => v).length > 0 && (
-                        <span className="block truncate text-xs erp-text-faint">
+                        <span className="block truncate text-xs text-dark-500">
                           {Object.entries(i.specs ?? {})
                             .filter(([, v]) => v)
                             .map(([k, v]) => `${k}: ${String(v)}`)
@@ -176,7 +195,7 @@ export default function MyQuotations() {
                         </span>
                       )}
                     </span>
-                    <span className="shrink-0 erp-text-faint">
+                    <span className="shrink-0 text-dark-500">
                       {i.quantity.toLocaleString("en-IN")} {i.unit}
                     </span>
                   </li>
@@ -190,10 +209,11 @@ export default function MyQuotations() {
                       key={f.id}
                       type="button"
                       onClick={() => void downloadFile(r.id, f.id, f.fileName)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border erp-border px-2.5 py-1.5 text-xs font-semibold erp-text-muted hover:erp-surface-2"
+                      className="btn btn-outline btn-sm max-w-full"
                     >
-                      <Paperclip className="h-3.5 w-3.5" aria-hidden /> {f.fileName}
-                      <Download className="h-3 w-3" aria-hidden />
+                      <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      <span className="truncate">{f.fileName}</span>
+                      <Download className="h-3 w-3 shrink-0" aria-hidden />
                     </button>
                   ))}
                 </div>
@@ -201,11 +221,11 @@ export default function MyQuotations() {
 
               {/* Comparison strip when several sellers are competing. */}
               {sent.length > 1 && (
-                <div className="mt-4 overflow-x-auto rounded-lg border erp-border">
+                <div className="card-flat mt-4 overflow-x-auto">
                   <table className="w-full min-w-[32rem] text-left text-xs">
                     <caption className="sr-only">Compare quotations for {r.rfqNumber}</caption>
                     <thead>
-                      <tr className="border-b erp-border-soft erp-text-muted">
+                      <tr className="border-b border-dark-200 bg-dark-50 text-dark-500">
                         <th className="px-3 py-2 font-bold">Seller</th>
                         <th className="px-3 py-2 font-bold">Total</th>
                         <th className="px-3 py-2 font-bold">Shipping</th>
@@ -216,13 +236,13 @@ export default function MyQuotations() {
                     </thead>
                     <tbody>
                       {sent.map((q) => (
-                        <tr key={q.id} className="border-b erp-border-soft last:border-0">
-                          <td className="px-3 py-2 font-semibold erp-text">{q.seller?.name ?? "Zolo Packaging"}</td>
-                          <td className="px-3 py-2 font-bold erp-text">{inrMinor(q.grandTotalMinor)}</td>
-                          <td className="px-3 py-2 erp-text-muted">{inrMinor(q.shippingMinor)}</td>
-                          <td className="px-3 py-2 erp-text-muted">{inrMinor(q.taxMinor)}</td>
-                          <td className="px-3 py-2 erp-text-muted">{q.leadTimeDays != null ? `${q.leadTimeDays} days` : "—"}</td>
-                          <td className="px-3 py-2 erp-text-muted">{q.validUntil ? new Date(q.validUntil).toLocaleDateString("en-IN") : "—"}</td>
+                        <tr key={q.id} className="border-b border-dark-100 last:border-0">
+                          <td className="px-3 py-2 font-semibold text-dark-900">{q.seller?.name ?? "Zolo Packaging"}</td>
+                          <td className="px-3 py-2 font-bold text-dark-900">{inrMinor(q.grandTotalMinor)}</td>
+                          <td className="px-3 py-2 text-dark-600">{inrMinor(q.shippingMinor)}</td>
+                          <td className="px-3 py-2 text-dark-600">{inrMinor(q.taxMinor)}</td>
+                          <td className="px-3 py-2 text-dark-600">{q.leadTimeDays != null ? `${q.leadTimeDays} days` : "—"}</td>
+                          <td className="px-3 py-2 text-dark-600">{q.validUntil ? new Date(q.validUntil).toLocaleDateString("en-IN") : "—"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -234,7 +254,7 @@ export default function MyQuotations() {
                 <QuotationCard key={q.id} q={q} rfqId={r.id} busy={busy} act={act} toast={toast} />
               ))}
               </div>
-              {openChat === r.id && (
+              {chatOpen && (
                 <div className="mt-4 h-[560px] lg:mt-0">
                   <RfqChat rfqId={r.id} onQuoteAccepted={() => void load()} />
                 </div>
@@ -263,27 +283,27 @@ function QuotationCard({
 }) {
   const [chatOpen, setChatOpen] = useState(false);
   return (
-    <div className="mt-4 rounded-lg border erp-border bg-dark-50/50 p-3 dark:bg-white/5">
+    <div className="card-flat mt-4 bg-dark-50/60 p-3 sm:p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-bold erp-text">
+          <p className="text-sm font-bold text-dark-900">
             {q.quotationNumber}
-            {q.version > 1 && <span className="ml-1 text-xs erp-text-faint">v{q.version}</span>}
+            {q.version > 1 && <span className="ml-1 text-xs font-medium text-dark-400">v{q.version}</span>}
           </p>
-          <p className="mt-0.5 flex items-center gap-1 text-xs erp-text-muted">
+          <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-dark-500">
             {q.seller?.name ?? "Zolo Packaging"}
             {(q.seller == null || q.seller.verificationStatus === "VERIFIED") && (
-              <span className="inline-flex items-center gap-0.5 font-semibold text-emerald-600 dark:text-emerald-400">
+              <span className="inline-flex items-center gap-0.5 font-semibold text-green-600">
                 <BadgeCheck className="h-3.5 w-3.5" aria-hidden /> Verified
               </span>
             )}
           </p>
         </div>
-        <p className="text-sm font-bold erp-text">{inrMinor(q.grandTotalMinor)}</p>
+        <p className="text-sm font-bold text-dark-900">{inrMinor(q.grandTotalMinor)}</p>
       </div>
 
       {q.items.length > 0 && (
-        <ul className="mt-2 space-y-0.5 text-xs erp-text-muted">
+        <ul className="mt-2 space-y-0.5 text-xs text-dark-600">
           {q.items.map((i) => (
             <li key={i.id} className="flex justify-between gap-3">
               <span className="truncate">{i.productName} × {i.quantity.toLocaleString("en-IN")}</span>
@@ -293,7 +313,7 @@ function QuotationCard({
         </ul>
       )}
 
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs erp-text-muted">
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-dark-500">
         {q.leadTimeDays != null && <span>Lead time {q.leadTimeDays} days</span>}
         {q.shippingMinor > 0 && <span>Shipping {inrMinor(q.shippingMinor)}</span>}
         {q.taxMinor > 0 && <span>Tax {inrMinor(q.taxMinor)}</span>}
@@ -302,9 +322,10 @@ function QuotationCard({
       </div>
 
       {q.status === "SENT" && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <Button
+            variant="primary"
+            size="sm"
             disabled={busy === q.id}
             onClick={() =>
               act(
@@ -316,40 +337,40 @@ function QuotationCard({
                 "Quotation accepted",
               )
             }
-            className="rounded-lg bg-primary-500 px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
           >
             Accept &amp; create order
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             disabled={busy === q.id}
             onClick={() => act(() => rfqApi.respond(q.id, "request_changes"), q.id, "Changes requested")}
-            className="rounded-lg border erp-border px-4 py-2 text-xs font-bold erp-text disabled:opacity-50"
           >
             Request changes
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-red-600 hover:bg-red-50"
             disabled={busy === q.id}
             onClick={() => act(() => rfqApi.respond(q.id, "reject"), q.id, "Quotation rejected")}
-            className="rounded-lg border erp-border px-4 py-2 text-xs font-bold text-red-600 disabled:opacity-50"
           >
             Reject
-          </button>
+          </Button>
         </div>
       )}
       {q.status !== "SENT" && (
-        <p className="mt-2 text-xs font-semibold erp-text-muted">{q.status.replace(/_/g, " ").toLowerCase()}</p>
+        <div className="mt-2"><Badge tone={statusTone(q.status)}>{prettyStatus(q.status)}</Badge></div>
       )}
 
       {/* Negotiate / message the seller (buyer↔seller thread). House quotes
           (no seller) have no messaging thread. */}
       {q.seller && (
-        <div className="mt-3 border-t erp-border-soft pt-3">
+        <div className="mt-3 border-t border-dark-200 pt-3">
           <button
             type="button"
             onClick={() => setChatOpen((v) => !v)}
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-primary-600 hover:text-primary-700"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-green-600 transition-colors duration-150 hover:text-green-700"
           >
             <MessageSquare className="h-3.5 w-3.5" aria-hidden /> {chatOpen ? "Hide messages" : `Message ${q.seller.name}`}
           </button>
@@ -406,19 +427,19 @@ function MessageThread({
 
   return (
     <div className="mt-2">
-      <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border erp-border-soft bg-white p-3 dark:bg-white/5">
+      <div className="card-flat max-h-48 space-y-2 overflow-y-auto p-3">
         {messages === null ? (
-          <p className="text-center text-xs erp-text-faint">Loading…</p>
+          <p className="text-center text-xs text-dark-400">Loading…</p>
         ) : messages.length === 0 ? (
-          <p className="text-center text-xs erp-text-faint">No messages yet — start the conversation.</p>
+          <p className="text-center text-xs text-dark-400">No messages yet — start the conversation.</p>
         ) : (
           messages.map((m) => {
             const mine = m.senderId === user?.id;
             return (
               <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[80%] rounded-lg px-3 py-1.5 text-xs ${mine ? "bg-primary-500 text-white" : "bg-dark-50 erp-text dark:bg-white/10"}`}>
+                <div className={`max-w-[80%] rounded-[12px] px-3 py-1.5 text-xs ${mine ? "bg-green-500 text-white" : "bg-dark-50 text-dark-900"}`}>
                   <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                  <p className={`mt-0.5 text-[10px] ${mine ? "text-white/70" : "erp-text-faint"}`}>
+                  <p className={`mt-0.5 text-[10px] ${mine ? "text-white/70" : "text-dark-400"}`}>
                     {new Date(m.createdAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                   </p>
                 </div>
@@ -435,15 +456,16 @@ function MessageThread({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
           placeholder="Type a message or negotiate…"
-          className="flex-1 rounded-lg border border-dark-200 px-3 py-2 text-xs focus:border-primary-500 focus:outline-none"
+          aria-label="Message"
+          className="input min-h-[2.375rem] flex-1 py-2 text-sm"
         />
         <button
           type="button"
           onClick={() => void send()}
           disabled={sending || !draft.trim()}
-          className="inline-flex items-center gap-1 rounded-lg bg-primary-500 px-3 py-2 text-xs font-bold text-white hover:bg-primary-600 disabled:opacity-50"
+          className="btn btn-primary btn-sm shrink-0"
         >
-          {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send
+          {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Send className="h-3.5 w-3.5" aria-hidden />} Send
         </button>
       </div>
     </div>

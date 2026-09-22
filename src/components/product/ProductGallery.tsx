@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 // ============================================================
-// ProductGallery — professional multi-image gallery for the Product Detail page.
+// ProductGallery — multi-image gallery for the Product Detail page.
 //
-// Layout (desktop): a vertical thumbnail rail on the left + a large main image
-// on the right. Mobile: thumbnails become a horizontal strip below the main
-// image. Preserves the existing ZOLO card styling (rounded, soft shadow,
-// off-white ground) — this only fixes the image AREA, not the page.
+// Layout: a square main stage (card-flat, mint ground, image contained and
+// never cropped) with a row of 64px thumbnails underneath. The selected
+// thumbnail uses the green "selected" state from the design system.
 //
 // Robustness the old single-<img> lacked:
 //  - shows EVERY product image with clickable thumbnails
 //  - per-image broken-URL handling (a bad image is skipped, never a blank box)
 //  - falls back to the packaging mockup only when NO real image renders
-//  - keyboard + arrow-key navigation, focus rings, aria-current
+//  - keyboard + arrow-key navigation, focus rings, aria-selected
 // ============================================================
 
 export function ProductGallery({
@@ -56,15 +55,35 @@ export function ProductGallery({
   const markBroken = (src: string) => setBroken((b) => (b[src] ? b : { ...b, [src]: true }));
 
   return (
-    <div className="flex flex-col-reverse gap-3 sm:flex-row sm:gap-4">
-      {/* Thumbnail rail — vertical on desktop, horizontal strip on mobile */}
+    <div className="flex flex-col gap-3">
+      {/* Main stage: square, mint ground, contained image. */}
+      <div className="card-flat relative flex aspect-square w-full items-center justify-center overflow-hidden bg-green-50 p-6 sm:p-10">
+        {hasImages ? (
+          <img
+            key={mainSrc}
+            src={mainSrc}
+            alt={name}
+            width={640}
+            height={640}
+            decoding="async"
+            onError={() => markBroken(mainSrc)}
+            className="product-gallery-main h-full w-full animate-[fadeIn_0.3s_ease] object-contain motion-reduce:animate-none"
+          />
+        ) : (
+          // No usable image → the packaging mockup (never a broken/blank box).
+          <div className="h-full w-full">{fallback}</div>
+        )}
+        {overlay}
+      </div>
+
+      {/* Thumbnail strip — 64px squares, horizontal scroll when many. */}
       {showThumbs && (
         <div
           ref={railRef}
           role="listbox"
           aria-label={`${name} images`}
           onKeyDown={onKey}
-          className="no-scrollbar flex shrink-0 gap-3 overflow-auto sm:max-h-[520px] sm:w-20 sm:flex-col md:w-24"
+          className="no-scrollbar flex gap-2 overflow-x-auto py-0.5"
         >
           {usable.map((src, i) => (
             <button
@@ -74,10 +93,10 @@ export function ProductGallery({
               aria-selected={i === active}
               aria-label={`View image ${i + 1} of ${usable.length}`}
               onClick={() => setActive(i)}
-              className={`group relative aspect-square w-16 shrink-0 overflow-hidden rounded-xl border bg-white p-1.5 outline-none transition sm:w-full ${
+              className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border bg-white p-1 outline-none transition-[border-color,box-shadow] duration-150 ${
                 i === active
-                  ? "border-primary-500 ring-2 ring-primary-200"
-                  : "border-dark-100 hover:border-primary-300 focus-visible:ring-2 focus-visible:ring-primary-300"
+                  ? "border-green-500 ring-2 ring-green-200"
+                  : "border-dark-200 hover:border-green-400 focus-visible:ring-2 focus-visible:ring-green-200"
               }`}
             >
               <img
@@ -92,26 +111,6 @@ export function ProductGallery({
           ))}
         </div>
       )}
-
-      {/* Main image */}
-      <div className="relative flex aspect-square flex-1 items-center justify-center overflow-hidden rounded-3xl bg-gradient-to-br from-dark-50 to-dark-100 p-8 card-shadow-lg sm:p-12">
-        {hasImages ? (
-          <img
-            key={mainSrc}
-            src={mainSrc}
-            alt={name}
-            width={640}
-            height={640}
-            decoding="async"
-            onError={() => markBroken(mainSrc)}
-            className="product-gallery-main h-full w-full animate-[fadeIn_0.3s_ease] object-contain p-2 motion-reduce:animate-none"
-          />
-        ) : (
-          // No usable image → the packaging mockup (never a broken/blank box).
-          <div className="h-full w-full">{fallback}</div>
-        )}
-        {overlay}
-      </div>
     </div>
   );
 }

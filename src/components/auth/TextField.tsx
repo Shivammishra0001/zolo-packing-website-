@@ -8,15 +8,15 @@ interface TextFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
   icon?: LucideIcon;
 }
 
-/** Labelled text/email/tel input shared by both auth forms */
+/** Labelled text/email/tel input shared by both auth forms (design-system `input`). */
 export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
   function TextField({ label, error, icon: Icon, id, className, ...props }, ref) {
     const autoId = useId();
     const inputId = id ?? autoId;
     const errorId = `${inputId}-error`;
     return (
-      <div className="space-y-1.5">
-        <label htmlFor={inputId} className="block text-sm font-semibold text-dark-700 dark:text-dark-200">
+      <div>
+        <label htmlFor={inputId} className="label">
           {label}
         </label>
         <div className="relative">
@@ -32,20 +32,11 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
             id={inputId}
             aria-invalid={!!error}
             aria-describedby={error ? errorId : undefined}
-            className={cn(
-              "h-11 w-full rounded-xl border bg-white/70 pr-3.5 text-sm text-dark-900 outline-none transition-all placeholder:text-dark-400",
-              Icon ? "pl-10" : "pl-3.5",
-              "focus:border-primary-500 focus:ring-2 focus:ring-primary-100",
-              "dark:bg-dark-800/60 dark:text-white dark:placeholder:text-dark-500 dark:focus:ring-primary-500/20",
-              error
-                ? "border-red-400 focus:border-red-500 focus:ring-red-100 dark:focus:ring-red-500/20"
-                : "border-dark-200 dark:border-dark-700",
-              className,
-            )}
+            className={cn("input", Icon && "pl-10", className)}
           />
         </div>
         {error && (
-          <p id={errorId} className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
+          <p id={errorId} className="field-error" role="alert">
             {error}
           </p>
         )}
@@ -69,8 +60,8 @@ export const SelectField = forwardRef<HTMLSelectElement, SelectFieldProps>(
     const selectId = id ?? autoId;
     const errorId = `${selectId}-error`;
     return (
-      <div className="space-y-1.5">
-        <label htmlFor={selectId} className="block text-sm font-semibold text-dark-700 dark:text-dark-200">
+      <div>
+        <label htmlFor={selectId} className="label">
           {label}
         </label>
         <div className="relative">
@@ -87,16 +78,7 @@ export const SelectField = forwardRef<HTMLSelectElement, SelectFieldProps>(
             aria-invalid={!!error}
             aria-describedby={error ? errorId : undefined}
             defaultValue=""
-            className={cn(
-              "h-11 w-full appearance-none rounded-xl border bg-white/70 pr-9 text-sm text-dark-900 outline-none transition-all",
-              Icon ? "pl-10" : "pl-3.5",
-              "focus:border-primary-500 focus:ring-2 focus:ring-primary-100",
-              "dark:bg-dark-800/60 dark:text-white dark:focus:ring-primary-500/20",
-              error
-                ? "border-red-400 focus:border-red-500 focus:ring-red-100 dark:focus:ring-red-500/20"
-                : "border-dark-200 dark:border-dark-700",
-              className,
-            )}
+            className={cn("input appearance-none pr-9", Icon && "pl-10", className)}
           >
             <option value="" disabled>
               {placeholder ?? "Select…"}
@@ -117,7 +99,7 @@ export const SelectField = forwardRef<HTMLSelectElement, SelectFieldProps>(
           </svg>
         </div>
         {error && (
-          <p id={errorId} className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
+          <p id={errorId} className="field-error" role="alert">
             {error}
           </p>
         )}

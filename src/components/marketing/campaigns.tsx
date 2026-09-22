@@ -57,7 +57,7 @@ export function HomepageCampaignBanner() {
   const [top] = useActiveCampaigns("homepage_hero");
   if (!top) return null;
   return (
-    <section className="bg-white pt-8 sm:pt-10" aria-label="Featured promotion">
+    <section className="bg-white pt-6 sm:pt-8" aria-label="Featured promotion">
       <div className="shell"><CampaignBannerView campaign={top} /></div>
     </section>
   );
@@ -68,7 +68,7 @@ export function PromotionCards({ max = 3 }: { max?: number }) {
   if (!cards.length) return null;
   const cols = cards.length === 1 ? "" : cards.length === 2 ? "md:grid-cols-2" : "md:grid-cols-2 xl:grid-cols-3";
   return (
-    <section className="bg-white py-12 sm:py-16" aria-label="Promotions">
+    <section className="section-sm bg-white" aria-label="Promotions">
       <div className="shell">
         <div className={`grid gap-6 ${cols} ${cards.length === 1 ? "mx-auto max-w-3xl" : ""}`}>
           {cards.map((c) => <PromotionCardView key={c.id} campaign={c} />)}

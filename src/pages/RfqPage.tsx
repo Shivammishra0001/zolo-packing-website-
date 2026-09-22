@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { Badge, Breadcrumb, Button, EmptyState, Field, Input, Select, Textarea } from "@/components/UI";
 import { rfqApi, fileToUploadPayload, type RfqAssistResult } from "@/lib/api/rfq";
 import { describeApiError } from "@/lib/api/client";
 import { addressApi } from "@/lib/api/commerce";
@@ -99,8 +100,11 @@ function resolveMime(file: File): string | null {
 const prettySize = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
-const inputCls = "w-full rounded-lg border border-dark-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none";
-const labelCls = "block text-xs font-bold text-dark-700";
+/** Selected-state pill (chip / chip-active) used for printing + colour toggles. */
+const chipCls = (on: boolean) => `chip ${on ? "chip-active" : ""}`;
+/** Dashed upload dropzone surface. */
+const dropzoneCls =
+  "flex w-full cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[12px] border border-dashed border-dark-300 bg-cream-50 text-sm font-semibold text-dark-700 transition-colors duration-150 hover:border-green-500 hover:text-green-600";
 
 // ---- Spec helpers --------------------------------------------------------
 
@@ -144,55 +148,55 @@ function DimensionsInput({ line }: { line: RfqCartLine }) {
   const num = (v: string) => v.replace(/[^\d.]/g, "");
 
   const field = (key: keyof DimensionValue, label: string) => (
-    <div>
-      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-dark-400">{label}</label>
-      <input
+    <Field key={key} label={label} htmlFor={`dim-${key}-${line.productId}`}>
+      <Input
+        id={`dim-${key}-${line.productId}`}
         type="text"
         inputMode="decimal"
         value={String(d[key] ?? "")}
         onChange={(e) => set({ [key]: num(e.target.value) } as Partial<DimensionValue>)}
-        className="w-full rounded-lg border border-dark-200 px-2 py-2 text-center text-sm focus:border-primary-500 focus:outline-none"
+        className="text-center"
         aria-label={`${label} for ${line.productName || "product"}`}
       />
-    </div>
+    </Field>
   );
 
   return (
     <div className="sm:col-span-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className={labelCls}>Dimensions</span>
-        <select
-          value={d.shape}
-          onChange={(e) => set({ shape: e.target.value as ProductShape })}
-          className="rounded-lg border border-dark-200 px-2 py-1 text-xs"
-          aria-label="Product shape"
-        >
-          {PRODUCT_SHAPES.map((s) => (
-            <option key={s.value} value={s.value}>{s.label}</option>
-          ))}
-        </select>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <span className="label mb-0">Dimensions</span>
+        <div className="w-full sm:w-52">
+          <Select
+            value={d.shape}
+            onChange={(e) => set({ shape: e.target.value as ProductShape })}
+            aria-label="Product shape"
+          >
+            {PRODUCT_SHAPES.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </Select>
+        </div>
       </div>
 
       {d.shape === "na" ? (
-        <p className="mt-2 rounded-lg bg-dark-50 px-3 py-2 text-xs text-dark-500">No dimensions needed for this product.</p>
+        <p className="mt-2 rounded-[8px] bg-dark-50 px-3 py-2 text-xs text-dark-500">No dimensions needed for this product.</p>
       ) : (
-        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {(d.shape === "box" || d.shape === "flat") && field("length", "Length")}
           {(d.shape === "box" || d.shape === "flat") && field("width", "Width")}
           {(d.shape === "circular" || d.shape === "bottle") && field("diameter", "Diameter")}
           {(d.shape === "box" || d.shape === "circular" || d.shape === "bottle") && field("height", "Height")}
           {d.shape === "bottle" && field("capacity", "Capacity")}
-          <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-dark-400">Unit</label>
-            <select
+          <Field label="Unit" htmlFor={`dim-unit-${line.productId}`}>
+            <Select
+              id={`dim-unit-${line.productId}`}
               value={d.unit}
               onChange={(e) => set({ unit: e.target.value as DimensionValue["unit"] })}
-              className="w-full rounded-lg border border-dark-200 px-2 py-2 text-sm"
               aria-label="Dimension unit"
             >
               {DIMENSION_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-            </select>
-          </div>
+            </Select>
+          </Field>
         </div>
       )}
     </div>
@@ -449,96 +453,113 @@ export default function RfqPage() {
   };
 
   // ---- Stepper -------------------------------------------------------------
+  // Compact horizontal stepper: 28px circles, hairline connectors, labels only
+  // for the current step on phones. Done = green, current = navy, upcoming = white.
   const stepper = (
-    <ol className="flex flex-wrap items-center gap-1 text-xs sm:gap-2" aria-label="Progress">
-      {STEPS.map((label, i) => (
-        <li key={label} className="flex items-center gap-1 sm:gap-2">
-          {i > 0 && <span className="h-px w-3 bg-dark-200 sm:w-6" aria-hidden />}
-          <button
-            type="button"
-            onClick={() => i < step && setStep(i)}
-            disabled={i > step}
-            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 font-bold transition sm:px-3 ${
-              i === step ? "bg-primary-500 text-white" : i < step ? "bg-primary-50 text-primary-700 hover:bg-primary-100" : "bg-dark-50 text-dark-400"
-            }`}
-            aria-current={i === step ? "step" : undefined}
-          >
-            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white/20 text-[10px]">
-              {i < step ? <Check className="h-3 w-3" /> : i + 1}
-            </span>
-            <span className="hidden sm:inline">{label}</span>
-          </button>
-        </li>
-      ))}
+    <ol className="flex items-center gap-1.5 sm:gap-2" aria-label="Progress">
+      {STEPS.map((label, i) => {
+        const done = i < step;
+        const current = i === step;
+        return (
+          <li key={label} className={`flex items-center gap-1.5 sm:gap-2 ${i < STEPS.length - 1 ? "flex-auto" : "flex-none"}`}>
+            <button
+              type="button"
+              onClick={() => done && setStep(i)}
+              disabled={i > step}
+              aria-current={current ? "step" : undefined}
+              className={`flex shrink-0 items-center gap-2 rounded-full text-left transition-colors duration-150 ${done ? "cursor-pointer" : ""} disabled:cursor-default`}
+            >
+              <span
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                  done ? "bg-green-500 text-white" : current ? "bg-navy-900 text-white" : "border border-dark-300 bg-white text-dark-400"
+                }`}
+              >
+                {done ? <Check className="h-3.5 w-3.5" aria-hidden /> : i + 1}
+              </span>
+              <span className={`whitespace-nowrap text-xs font-semibold ${current ? "text-dark-900" : done ? "hidden text-dark-700 sm:inline" : "hidden text-dark-400 sm:inline"}`}>
+                {label}
+              </span>
+            </button>
+            {i < STEPS.length - 1 && <span className="h-px min-w-2 flex-1 bg-dark-200" aria-hidden />}
+          </li>
+        );
+      })}
     </ol>
   );
 
-  // ---- Product card (step 1) ----------------------------------------------
+  const STEP_COPY: Record<number, { title: string; hint: string }> = {
+    0: { title: "What do you need?", hint: "Pick products from the store or describe a custom item. Everything goes out as one request." },
+    1: { title: "Requirements", hint: "Sizes, material, colour and printing for each product. Estimates are fine — we'll confirm with you." },
+    2: { title: "Requirement sheet", hint: `Optional. Attach a spec sheet (Excel, CSV, PDF, Word or images). Up to ${MAX_FILES} files, 10 MB each, shared with artwork.` },
+    3: { title: "Delivery & contact", hint: "Where should we quote delivery to, and who should we reach?" },
+    4: { title: "Review & submit", hint: "Check everything once — our team replies with a quotation shortly after." },
+  };
+
+  // ---- Product row (step 1) -----------------------------------------------
   const productCard = (l: RfqCartLine, index: number) => (
-    <div key={l.productId} className="rounded-xl border border-dark-100 bg-white p-4">
+    <div key={l.productId} className="card-flat p-4">
       <div className="flex items-start gap-3">
-        {l.image && /^(blob:|\/|https?:|data:)/.test(l.image) && (
-          <div className="hidden h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-dark-50 sm:flex">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-green-50">
+          {l.image && /^(blob:|\/|https?:|data:)/.test(l.image) ? (
             <img src={l.image} alt="" className="h-full w-full object-contain" />
-          </div>
-        )}
+          ) : (
+            <Package className="h-6 w-6 text-green-500" aria-hidden />
+          )}
+        </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-dark-400">Product {index + 1}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-dark-400">Product {index + 1}</p>
+            {isCustomLine(l) && <Badge tone="amber">Custom</Badge>}
+          </div>
           {isCustomLine(l) ? (
-            <input
+            <Input
               type="text"
               value={l.productName}
               onChange={(e) => updateRfqLine(l.productId, { productName: e.target.value })}
-              placeholder="e.g. Custom Pizza Box *"
-              className={`mt-1 ${inputCls} font-semibold`}
+              placeholder="e.g. Custom Pizza Box"
+              className="mt-1 font-semibold"
               aria-label={`Name for product ${index + 1}`}
             />
           ) : (
             <p className="mt-0.5 truncate font-semibold text-dark-900">{l.productName}</p>
           )}
-          {l.sku && <p className="text-xs text-dark-400">SKU {l.sku}</p>}
-          {isCustomLine(l) && (
-            <span className="mt-1 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">Custom request</span>
-          )}
+          {l.sku && <p className="mt-0.5 text-xs text-dark-400">SKU {l.sku}</p>}
         </div>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => removeFromRfq(l.productId)}
           aria-label={`Remove ${l.productName || `product ${index + 1}`}`}
-          className="rounded-lg p-2 text-dark-400 hover:bg-dark-50 hover:text-red-500"
+          className="w-[2.375rem] shrink-0 px-0 text-dark-400 hover:text-red-600"
         >
-          <Trash2 className="h-4 w-4" />
-        </button>
+          <Trash2 className="h-4 w-4" aria-hidden />
+        </Button>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls} htmlFor={`qty-${l.productId}`}>Quantity *</label>
-          <input
+      <div className="mt-4 grid grid-cols-2 gap-4">
+        <Field label="Quantity" htmlFor={`qty-${l.productId}`} required>
+          <Input
             id={`qty-${l.productId}`}
             type="number"
             min={1}
             value={l.quantity}
             onChange={(e) => updateRfqQuantity(l.productId, Number(e.target.value))}
-            className={`mt-1 ${inputCls}`}
           />
-        </div>
-        <div>
-          <label className={labelCls} htmlFor={`unit-${l.productId}`}>Unit</label>
-          <select
+        </Field>
+        <Field label="Unit" htmlFor={`unit-${l.productId}`}>
+          <Select
             id={`unit-${l.productId}`}
             value={l.unit || "pcs"}
             onChange={(e) => updateRfqLine(l.productId, { unit: e.target.value })}
-            className={`mt-1 ${inputCls}`}
           >
             {QUANTITY_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-          </select>
-        </div>
+          </Select>
+        </Field>
       </div>
     </div>
   );
 
-  // ---- Requirements card (step 2) -----------------------------------------
+  // ---- Requirements block (step 2) ----------------------------------------
   const requirementsCard = (l: RfqCartLine, index: number) => {
     const materialChoice = String(l.specs?.materialChoice ?? "");
     const materialOther = String(l.specs?.materialOther ?? "");
@@ -550,48 +571,47 @@ export default function RfqPage() {
     const lineArt = artwork[l.productId] ?? [];
 
     return (
-      <div key={l.productId} className="rounded-xl border border-dark-100 bg-white p-4">
-        <p className="font-semibold text-dark-900">
-          <span className="text-[11px] font-bold uppercase tracking-wide text-dark-400">Product {index + 1} · </span>
-          {l.productName || "Untitled product"}
-          <span className="ml-2 text-xs font-normal text-dark-400">{l.quantity.toLocaleString("en-IN")} {l.unit || "pcs"}</span>
-        </p>
+      <div key={l.productId} className="card-flat p-4 sm:p-5">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-dark-400">Product {index + 1}</span>
+          <p className="min-w-0 flex-1 truncate font-semibold text-dark-900">{l.productName || "Untitled product"}</p>
+          <span className="text-xs text-dark-500">{l.quantity.toLocaleString("en-IN")} {l.unit || "pcs"}</span>
+        </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           {/* Description */}
-          <div className="sm:col-span-2">
-            <label className={labelCls} htmlFor={`desc-${l.productId}`}>Product description{isCustomLine(l) ? " *" : ""}</label>
-            <textarea
+          <Field label="Product description" htmlFor={`desc-${l.productId}`} required={isCustomLine(l)} className="sm:col-span-2">
+            <Textarea
               id={`desc-${l.productId}`}
               rows={3}
               value={String(l.specs?.description ?? "")}
               onChange={(e) => patchSpecs(l, { description: e.target.value })}
               placeholder="Describe exactly what you need — material feel, finish, closure, use case…"
-              className={`mt-1 ${inputCls}`}
+              className="min-h-20"
             />
-          </div>
+          </Field>
 
           <DimensionsInput line={l} />
 
           {/* Material */}
           <div>
-            <label className={labelCls} htmlFor={`mat-${l.productId}`}>Material</label>
-            <select
-              id={`mat-${l.productId}`}
-              value={materialChoice}
-              onChange={(e) => writeMaterial(l, e.target.value, materialOther)}
-              className={`mt-1 ${inputCls}`}
-            >
-              <option value="">Select material…</option>
-              {MATERIALS.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
+            <Field label="Material" htmlFor={`mat-${l.productId}`}>
+              <Select
+                id={`mat-${l.productId}`}
+                value={materialChoice}
+                onChange={(e) => writeMaterial(l, e.target.value, materialOther)}
+              >
+                <option value="">Select material…</option>
+                {MATERIALS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </Select>
+            </Field>
             {materialChoice === "Other" && (
-              <input
+              <Input
                 type="text"
                 value={materialOther}
                 onChange={(e) => writeMaterial(l, "Other", e.target.value)}
                 placeholder="Enter material"
-                className={`mt-2 ${inputCls}`}
+                className="mt-2"
                 aria-label="Custom material"
               />
             )}
@@ -599,95 +619,102 @@ export default function RfqPage() {
 
           {/* Printing */}
           <div>
-            <label className={labelCls}>Printing required?</label>
-            <div className="mt-1 flex gap-2">
+            <span className="label">Printing required?</span>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Printing required">
               {(["no", "yes"] as const).map((v) => (
                 <button
                   key={v}
                   type="button"
                   onClick={() => writePrinting(l, v, printingType)}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-bold capitalize transition ${
-                    printingRequired === v ? "border-primary-500 bg-primary-50 text-primary-700" : "border-dark-200 text-dark-600 hover:bg-dark-50"
-                  }`}
+                  aria-pressed={printingRequired === v}
+                  className={`${chipCls(printingRequired === v)} flex-1 justify-center capitalize`}
                 >
+                  {printingRequired === v && <Check className="h-3.5 w-3.5" aria-hidden />}
                   {v}
                 </button>
               ))}
             </div>
             {printingRequired === "yes" && (
-              <select
+              <Select
                 value={printingType}
                 onChange={(e) => writePrinting(l, "yes", e.target.value)}
-                className={`mt-2 ${inputCls}`}
+                className="mt-2"
                 aria-label="Printing type"
               >
                 <option value="">Select printing type…</option>
                 {PRINTING_TYPES.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
+              </Select>
             )}
           </div>
 
           {/* Colours */}
           <div className="sm:col-span-2">
-            <label className={labelCls}>Colour</label>
-            <div className="mt-1 flex flex-wrap gap-1.5">
+            <span className="label">Colour</span>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Colour">
               {COLORS.map((c) => {
                 const on = colors.includes(c);
                 return (
                   <button
                     key={c}
                     type="button"
+                    aria-pressed={on}
                     onClick={() => {
                       const next = on ? colors.filter((x) => x !== c) : [...colors, c];
                       writeColors(l, next, colorCustom, pantone);
                     }}
-                    className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                      on ? "border-primary-500 bg-primary-50 text-primary-700" : "border-dark-200 text-dark-600 hover:bg-dark-50"
-                    }`}
+                    className={chipCls(on)}
                   >
+                    {on && <Check className="h-3.5 w-3.5" aria-hidden />}
                     {c}
                   </button>
                 );
               })}
             </div>
             {colors.includes("Custom Colour") && (
-              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <input
-                  type="text"
-                  value={colorCustom}
-                  onChange={(e) => writeColors(l, colors, e.target.value, pantone)}
-                  placeholder="Colour name (e.g. Royal Blue)"
-                  className={inputCls}
-                  aria-label="Custom colour name"
-                />
-                <input
-                  type="text"
-                  value={pantone}
-                  onChange={(e) => writeColors(l, colors, colorCustom, e.target.value)}
-                  placeholder="Pantone / HEX (optional)"
-                  className={inputCls}
-                  aria-label="Pantone or HEX"
-                />
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                <Field label="Colour name" htmlFor={`colour-custom-${l.productId}`}>
+                  <Input
+                    id={`colour-custom-${l.productId}`}
+                    type="text"
+                    value={colorCustom}
+                    onChange={(e) => writeColors(l, colors, e.target.value, pantone)}
+                    placeholder="e.g. Royal Blue"
+                  />
+                </Field>
+                <Field label="Pantone / HEX" htmlFor={`pantone-${l.productId}`} hint="Optional">
+                  <Input
+                    id={`pantone-${l.productId}`}
+                    type="text"
+                    value={pantone}
+                    onChange={(e) => writeColors(l, colors, colorCustom, e.target.value)}
+                    placeholder="e.g. 286 C or #1E40AF"
+                  />
+                </Field>
               </div>
             )}
           </div>
 
           {/* Artwork upload */}
           <div className="sm:col-span-2">
-            <label className={labelCls}>Logo / artwork <span className="font-normal text-dark-400">(PDF, AI, CDR, SVG, PNG, JPG)</span></label>
-            <label className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-dark-200 py-3 text-sm font-bold text-dark-600 hover:border-primary-400 hover:text-primary-600">
-              <ImagePlus className="h-4 w-4" /> Upload artwork
+            <span className="label">Logo / artwork <span className="font-normal text-dark-400">(PDF, AI, CDR, SVG, PNG, JPG)</span></span>
+            <label
+              className={`${dropzoneCls} py-4`}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); addArtwork(l.productId, e.dataTransfer.files); }}
+            >
+              <span className="flex items-center gap-2"><ImagePlus className="h-4 w-4" aria-hidden /> Upload artwork</span>
+              <span className="text-xs font-normal text-dark-500">or drag and drop here</span>
               <input type="file" accept={ACCEPT_ARTWORK} multiple className="sr-only" onChange={(e) => addArtwork(l.productId, e.target.files)} />
             </label>
             {lineArt.length > 0 && (
               <ul className="mt-2 space-y-1.5">
                 {lineArt.map((f) => (
-                  <li key={`${f.name}-${f.size}`} className="flex items-center gap-2 rounded-lg border border-dark-100 px-3 py-1.5 text-xs">
-                    <Paperclip className="h-3.5 w-3.5 shrink-0 text-primary-500" />
+                  <li key={`${f.name}-${f.size}`} className="card-flat flex items-center gap-2 px-3 py-2 text-xs">
+                    <Paperclip className="h-3.5 w-3.5 shrink-0 text-green-500" aria-hidden />
                     <span className="min-w-0 flex-1 truncate text-dark-800">{f.name}</span>
                     <span className="shrink-0 text-dark-400">{prettySize(f.size)}</span>
-                    <button type="button" onClick={() => removeArtwork(l.productId, f)} aria-label={`Remove ${f.name}`} className="rounded p-0.5 text-dark-400 hover:text-red-500">
-                      <X className="h-3.5 w-3.5" />
+                    <button type="button" onClick={() => removeArtwork(l.productId, f)} aria-label={`Remove ${f.name}`} className="rounded-[6px] p-1 text-dark-400 transition-colors duration-150 hover:bg-dark-50 hover:text-red-600">
+                      <X className="h-3.5 w-3.5" aria-hidden />
                     </button>
                   </li>
                 ))}
@@ -699,294 +726,310 @@ export default function RfqPage() {
     );
   };
 
+  // ---- Review helpers (step 5) --------------------------------------------
+  const reviewRow = (term: string, value: React.ReactNode) => (
+    <div className="grid gap-0.5 py-2.5 sm:grid-cols-[9rem_1fr] sm:gap-4">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-dark-500">{term}</dt>
+      <dd className="text-sm text-dark-900">{value}</dd>
+    </div>
+  );
+
+  const copy = STEP_COPY[step];
+
   return (
-    <main className="py-8">
-      <div className="mx-auto max-w-4xl px-4 sm:px-6">
-        <h1 className="text-2xl font-bold text-dark-900">Create Bulk Quote</h1>
-        <p className="mt-1 text-sm text-dark-500">
-          {lines.length > 0
-            ? `${lines.length} product${lines.length === 1 ? "" : "s"} · ${totalQuantity.toLocaleString("en-IN")} units — sent as one request`
-            : "Add the products you need quoted — they all go out as one request."}
-        </p>
+    <main className="section-sm">
+      <div className="shell">
+        <div className="mx-auto max-w-4xl">
+          <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Request a quote" }]} />
 
-        <div className="mt-5">{stepper}</div>
+          {/* Page header */}
+          <div className="mt-4">
+            <p className="eyebrow">Request a quote</p>
+            <h1 className="h2 mt-1 text-dark-900">Get a bulk packaging quote</h1>
+            <p className="lead mt-1.5">
+              {lines.length > 0
+                ? `${lines.length} product${lines.length === 1 ? "" : "s"} · ${totalQuantity.toLocaleString("en-IN")} units — sent together as one request.`
+                : "Tell us what you need and our team replies with pricing, MOQs and lead times."}
+            </p>
+          </div>
 
-        <div className="mt-6 space-y-3">
-          {/* Step 1 — Products */}
-          {step === 0 && (
-            <>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => setPickerOpen(true)}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-primary-500 py-3 text-sm font-bold text-white hover:bg-primary-600"
-                >
-                  <Package className="h-4 w-4" /> Select Product From Store
-                </button>
-                <button
-                  type="button"
-                  onClick={() => addCustomRfqLine()}
-                  className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-dark-200 bg-white py-3 text-sm font-bold text-dark-600 hover:border-primary-400 hover:text-primary-600"
-                >
-                  <Plus className="h-4 w-4" /> Add Custom Product
-                </button>
-              </div>
+          <div className="mt-6">{stepper}</div>
 
-              {/* AI assistant */}
-              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-4">
-                <button
-                  type="button"
-                  onClick={() => setAiOpen((v) => !v)}
-                  className="flex w-full items-center justify-between gap-2 text-sm font-bold text-primary-700"
-                >
-                  <span className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> Ask AI to help</span>
-                  <span className="text-xs font-normal text-primary-600">{aiOpen ? "Hide" : "Describe what you need"}</span>
-                </button>
-                {aiOpen && (
-                  <div className="mt-3">
-                    <textarea
-                      rows={2}
-                      value={aiPrompt}
-                      onChange={(e) => setAiPrompt(e.target.value)}
-                      placeholder='e.g. "I need packaging for 500 glass bottles with a printed label"'
-                      className={inputCls}
-                    />
+          {/* Step card */}
+          <section className="card mt-6 p-5 sm:p-6" aria-labelledby="rfq-step-title">
+            <h2 id="rfq-step-title" className="h3 text-dark-900">{copy.title}</h2>
+            <p className="mt-1 text-sm text-dark-500">{copy.hint}</p>
+
+            <div className="mt-5 space-y-4">
+              {/* Step 1 — Products */}
+              {step === 0 && (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Button variant="secondary" icon={Package} onClick={() => setPickerOpen(true)}>
+                      Select from store
+                    </Button>
+                    <Button variant="outline" icon={Plus} onClick={() => addCustomRfqLine()}>
+                      Add custom product
+                    </Button>
+                  </div>
+
+                  {/* AI assistant */}
+                  <div className="rounded-[12px] border border-green-200 bg-green-50 p-4">
                     <button
                       type="button"
-                      onClick={runAssist}
-                      disabled={aiLoading || !aiPrompt.trim()}
-                      className="mt-2 flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-bold text-white hover:bg-primary-600 disabled:opacity-50"
+                      onClick={() => setAiOpen((v) => !v)}
+                      aria-expanded={aiOpen}
+                      className="flex w-full items-center justify-between gap-3 text-left text-sm font-bold text-green-700"
                     >
-                      {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Suggest
+                      <span className="flex min-w-0 items-center gap-2"><Sparkles className="h-4 w-4 shrink-0" aria-hidden /> <span>Not sure what to pick? Describe it</span></span>
+                      <span className="shrink-0 whitespace-nowrap text-xs font-semibold text-green-600">{aiOpen ? "Hide" : "Try it"}</span>
                     </button>
-
-                    {aiResult && (
-                      <div className="mt-3 rounded-lg border border-primary-100 bg-white p-3 text-sm">
-                        <p className="text-dark-600">{aiResult.note}</p>
-                        <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                          {aiResult.category && <div><dt className="inline font-bold text-dark-700">Category: </dt><dd className="inline text-dark-600">{aiResult.category}</dd></div>}
-                          {aiResult.material && <div><dt className="inline font-bold text-dark-700">Material: </dt><dd className="inline text-dark-600">{aiResult.material}</dd></div>}
-                          {aiResult.dimensions && <div><dt className="inline font-bold text-dark-700">Size: </dt><dd className="inline text-dark-600">{aiResult.dimensions}</dd></div>}
-                          {aiResult.quantity != null && <div><dt className="inline font-bold text-dark-700">Qty: </dt><dd className="inline text-dark-600">{aiResult.quantity.toLocaleString("en-IN")} {aiResult.unit}</dd></div>}
-                          {aiResult.printing && <div><dt className="inline font-bold text-dark-700">Printing: </dt><dd className="inline text-dark-600">{aiResult.printing}</dd></div>}
-                        </dl>
-                        {aiResult.products.length > 0 && (
-                          <p className="mt-2 text-xs text-dark-500">
-                            Matching products: {aiResult.products.map((p) => p.name).join(", ")}
-                          </p>
-                        )}
-                        <p className="mt-2 text-[11px] italic text-dark-400">Suggestions only — you can edit everything after adding.</p>
-                        <button
-                          type="button"
-                          onClick={applyAssist}
-                          className="mt-2 flex items-center gap-2 rounded-lg bg-dark-900 px-4 py-2 text-sm font-bold text-white hover:bg-dark-800"
+                    {aiOpen && (
+                      <div className="mt-3">
+                        <Textarea
+                          rows={2}
+                          value={aiPrompt}
+                          onChange={(e) => setAiPrompt(e.target.value)}
+                          placeholder='e.g. "I need packaging for 500 glass bottles with a printed label"'
+                          aria-label="Describe what you need"
+                          className="min-h-16"
+                        />
+                        <Button
+                          variant="green"
+                          size="sm"
+                          onClick={runAssist}
+                          disabled={aiLoading || !aiPrompt.trim()}
+                          className="mt-2"
                         >
-                          <Plus className="h-4 w-4" /> Add as a product
-                        </button>
+                          {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />} Suggest
+                        </Button>
+
+                        {aiResult && (
+                          <div className="card-flat mt-3 p-4 text-sm">
+                            <p className="text-dark-600">{aiResult.note}</p>
+                            <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                              {aiResult.category && <div><dt className="inline font-bold text-dark-700">Category: </dt><dd className="inline text-dark-600">{aiResult.category}</dd></div>}
+                              {aiResult.material && <div><dt className="inline font-bold text-dark-700">Material: </dt><dd className="inline text-dark-600">{aiResult.material}</dd></div>}
+                              {aiResult.dimensions && <div><dt className="inline font-bold text-dark-700">Size: </dt><dd className="inline text-dark-600">{aiResult.dimensions}</dd></div>}
+                              {aiResult.quantity != null && <div><dt className="inline font-bold text-dark-700">Qty: </dt><dd className="inline text-dark-600">{aiResult.quantity.toLocaleString("en-IN")} {aiResult.unit}</dd></div>}
+                              {aiResult.printing && <div><dt className="inline font-bold text-dark-700">Printing: </dt><dd className="inline text-dark-600">{aiResult.printing}</dd></div>}
+                            </dl>
+                            {aiResult.products.length > 0 && (
+                              <p className="mt-2 text-xs text-dark-500">
+                                Matching products: {aiResult.products.map((p) => p.name).join(", ")}
+                              </p>
+                            )}
+                            <p className="mt-2 text-[11px] italic text-dark-400">Suggestions only — you can edit everything after adding.</p>
+                            <Button variant="navy" size="sm" icon={Plus} onClick={applyAssist} className="mt-3">
+                              Add as a product
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-              </div>
 
-              {lines.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-dark-200 bg-white p-8 text-center">
-                  <FileText className="mx-auto h-10 w-10 text-dark-300" />
-                  <p className="mt-3 text-sm text-dark-500">
-                    Pick products from the store, add a custom request, or choose &ldquo;Request Quote&rdquo; on any{" "}
-                    <Link to="/products" className="font-bold text-primary-600 hover:underline">catalogue product</Link>.
-                  </p>
-                </div>
-              ) : (
-                lines.map(productCard)
+                  {lines.length === 0 ? (
+                    <EmptyState
+                      icon={FileText}
+                      title="No products yet"
+                      className="border-dashed shadow-none"
+                      message={
+                        <>
+                          Pick products from the store, add a custom request, or choose &ldquo;Request Quote&rdquo; on any{" "}
+                          <Link to="/products" className="font-bold text-green-600 hover:underline">catalogue product</Link>.
+                        </>
+                      }
+                    />
+                  ) : (
+                    <div className="space-y-3">{lines.map(productCard)}</div>
+                  )}
+                </>
               )}
-            </>
-          )}
 
-          {/* Step 2 — Requirements */}
-          {step === 1 && lines.map(requirementsCard)}
+              {/* Step 2 — Requirements */}
+              {step === 1 && lines.map(requirementsCard)}
 
-          {/* Step 3 — Upload requirement sheet */}
-          {step === 2 && (
-            <div className="rounded-xl border border-dark-100 bg-white p-5">
-              <p className="font-semibold text-dark-900">Product requirement sheet</p>
-              <p className="mt-1 text-sm text-dark-500">
-                Optional — attach a specification sheet (Excel, CSV, PDF, Word or images). Counts toward the {MAX_FILES}-file,
-                10 MB-each limit shared with artwork. It goes to our team with your products.
-              </p>
-              <input ref={fileInput} type="file" accept={ACCEPT_SHEET} multiple onChange={(e) => addFiles(e.target.files)} className="sr-only" id="rfq-file-input" />
-              <button
-                type="button"
-                onClick={() => fileInput.current?.click()}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-dark-200 py-6 text-sm font-bold text-dark-600 hover:border-primary-400 hover:text-primary-600"
-              >
-                <Upload className="h-4 w-4" /> Choose files…
-              </button>
-              {files.length > 0 && (
-                <ul className="mt-4 space-y-2">
-                  {files.map((f) => (
-                    <li key={`${f.name}-${f.size}`} className="flex items-center gap-3 rounded-lg border border-dark-100 px-3 py-2 text-sm">
-                      <FileSpreadsheet className="h-4 w-4 shrink-0 text-primary-500" />
-                      <span className="min-w-0 flex-1 truncate text-dark-800">{f.name}</span>
-                      <span className="shrink-0 text-xs text-dark-400">{prettySize(f.size)}</span>
-                      <button type="button" onClick={() => setFiles(files.filter((x) => x !== f))} aria-label={`Remove ${f.name}`} className="rounded p-1 text-dark-400 hover:text-red-500">
-                        <X className="h-4 w-4" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+              {/* Step 3 — Upload requirement sheet */}
+              {step === 2 && (
+                <div>
+                  <input ref={fileInput} type="file" accept={ACCEPT_SHEET} multiple onChange={(e) => addFiles(e.target.files)} className="sr-only" id="rfq-file-input" />
+                  <button
+                    type="button"
+                    onClick={() => fileInput.current?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
+                    className={`${dropzoneCls} py-8`}
+                  >
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-600"><Upload className="h-5 w-5" aria-hidden /></span>
+                    <span>Choose files</span>
+                    <span className="text-xs font-normal text-dark-500">or drag and drop — Excel, CSV, PDF, Word, images</span>
+                  </button>
+                  {files.length > 0 && (
+                    <ul className="mt-4 space-y-2">
+                      {files.map((f) => (
+                        <li key={`${f.name}-${f.size}`} className="card-flat flex items-center gap-3 px-3 py-2 text-sm">
+                          <FileSpreadsheet className="h-4 w-4 shrink-0 text-green-500" aria-hidden />
+                          <span className="min-w-0 flex-1 truncate text-dark-800">{f.name}</span>
+                          <span className="shrink-0 text-xs text-dark-400">{prettySize(f.size)}</span>
+                          <button type="button" onClick={() => setFiles(files.filter((x) => x !== f))} aria-label={`Remove ${f.name}`} className="rounded-[6px] p-1 text-dark-400 transition-colors duration-150 hover:bg-dark-50 hover:text-red-600">
+                            <X className="h-4 w-4" aria-hidden />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="mt-3 text-xs text-dark-400">{totalFileCount}/{MAX_FILES} files used (sheets + artwork).</p>
+                </div>
               )}
-              <p className="mt-3 text-xs text-dark-400">{totalFileCount}/{MAX_FILES} files used (sheets + artwork).</p>
-            </div>
-          )}
 
-          {/* Step 4 — Delivery + contact */}
-          {step === 3 && (
-            <div className="space-y-3">
-              <div className="rounded-xl border border-dark-100 bg-white p-5">
-                <p className="font-semibold text-dark-900">Your contact details</p>
-                <p className="mt-1 text-xs text-dark-500">Pre-filled from your profile — edit if this request needs a different contact.</p>
-                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {/* Step 4 — Delivery + contact */}
+              {step === 3 && (
+                <>
                   <div>
-                    <label className={labelCls} htmlFor="c-name">Name</label>
-                    <input id="c-name" type="text" value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} className={`mt-1 ${inputCls}`} placeholder="Full name" />
+                    <h3 className="text-sm font-bold text-dark-900">Contact</h3>
+                    <p className="mt-0.5 text-xs text-dark-500">Pre-filled from your profile — edit if this request needs a different contact.</p>
+                    <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                      <Field label="Name" htmlFor="c-name">
+                        <Input id="c-name" type="text" value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} placeholder="Full name" autoComplete="name" />
+                      </Field>
+                      <Field label="Phone" htmlFor="c-phone">
+                        <Input id="c-phone" type="tel" value={contact.phone} onChange={(e) => setContact({ ...contact, phone: e.target.value })} placeholder="98xxxxxxxx" autoComplete="tel" />
+                      </Field>
+                      <Field label="Email" htmlFor="c-email" className="sm:col-span-2">
+                        <Input id="c-email" type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} placeholder="you@company.com" autoComplete="email" />
+                      </Field>
+                    </div>
                   </div>
-                  <div>
-                    <label className={labelCls} htmlFor="c-phone">Phone</label>
-                    <input id="c-phone" type="tel" value={contact.phone} onChange={(e) => setContact({ ...contact, phone: e.target.value })} className={`mt-1 ${inputCls}`} placeholder="Phone" />
-                  </div>
-                  <div>
-                    <label className={labelCls} htmlFor="c-email">Email</label>
-                    <input id="c-email" type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} className={`mt-1 ${inputCls}`} placeholder="Email" />
-                  </div>
-                </div>
-              </div>
 
-              <div className="rounded-xl border border-dark-100 bg-white p-5">
-                <p className="font-semibold text-dark-900">Delivery details</p>
-                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className={labelCls} htmlFor="ship-city">City *</label>
-                    <input id="ship-city" type="text" value={ship.city} onChange={(e) => setShip({ ...ship, city: e.target.value })} placeholder="Mumbai" className={`mt-1 ${inputCls}`} />
+                  <div className="border-t border-dark-100 pt-4">
+                    <h3 className="text-sm font-bold text-dark-900">Delivery</h3>
+                    <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                      <Field label="City" htmlFor="ship-city" required>
+                        <Input id="ship-city" type="text" value={ship.city} onChange={(e) => setShip({ ...ship, city: e.target.value })} placeholder="Mumbai" autoComplete="address-level2" />
+                      </Field>
+                      <Field label="State" htmlFor="ship-state" required>
+                        <Input id="ship-state" type="text" value={ship.state} onChange={(e) => setShip({ ...ship, state: e.target.value })} placeholder="Maharashtra" autoComplete="address-level1" />
+                      </Field>
+                      <Field label="PIN code" htmlFor="ship-postal">
+                        <Input id="ship-postal" type="text" inputMode="numeric" value={ship.postalCode} onChange={(e) => setShip({ ...ship, postalCode: e.target.value })} placeholder="400001" autoComplete="postal-code" />
+                      </Field>
+                      <Field label="Required by" htmlFor="rfq-required-by" hint="Your target delivery date">
+                        <Input id="rfq-required-by" type="date" value={requiredBy} onChange={(e) => setRequiredBy(e.target.value)} />
+                      </Field>
+                      <Field label="Notes for our team" htmlFor="rfq-notes" className="sm:col-span-2">
+                        <Textarea id="rfq-notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Timelines, budget, delivery constraints…" className="min-h-20" />
+                      </Field>
+                    </div>
                   </div>
-                  <div>
-                    <label className={labelCls} htmlFor="ship-state">State *</label>
-                    <input id="ship-state" type="text" value={ship.state} onChange={(e) => setShip({ ...ship, state: e.target.value })} placeholder="Maharashtra" className={`mt-1 ${inputCls}`} />
-                  </div>
-                  <div>
-                    <label className={labelCls} htmlFor="ship-postal">PIN code</label>
-                    <input id="ship-postal" type="text" inputMode="numeric" value={ship.postalCode} onChange={(e) => setShip({ ...ship, postalCode: e.target.value })} placeholder="400001" className={`mt-1 ${inputCls}`} />
-                  </div>
-                  <div>
-                    <label className={labelCls} htmlFor="rfq-required-by">Required by</label>
-                    <input id="rfq-required-by" type="date" value={requiredBy} onChange={(e) => setRequiredBy(e.target.value)} className={`mt-1 ${inputCls}`} />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className={labelCls} htmlFor="rfq-notes">Notes for our team</label>
-                    <textarea id="rfq-notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Timelines, budget, delivery constraints…" className={`mt-1 ${inputCls}`} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+                </>
+              )}
 
-          {/* Step 5 — Review & submit */}
-          {step === 4 && (
-            <div className="space-y-3">
-              <div className="rounded-xl border border-dark-100 bg-white p-5">
-                <p className="font-semibold text-dark-900">{lines.length} product{lines.length === 1 ? "" : "s"} · {totalQuantity.toLocaleString("en-IN")} units</p>
-                <ul className="mt-3 space-y-3 text-sm">
-                  {lines.map((l, i) => {
-                    const summary = [
-                      formatDimensions(getDimension(l)),
-                      String(l.specs?.material ?? ""),
-                      String(l.specs?.color ?? ""),
-                      String(l.specs?.printing ?? ""),
-                    ].filter(Boolean).join(" · ");
-                    const art = (artwork[l.productId] ?? []).length;
-                    return (
-                      <li key={l.productId} className="border-b border-dark-50 pb-3 last:border-0 last:pb-0">
-                        <div className="flex justify-between gap-4">
-                          <span className="font-semibold text-dark-900">{i + 1}. {l.productName || "Untitled"}</span>
-                          <span className="shrink-0 text-dark-600">{l.quantity.toLocaleString("en-IN")} {l.unit || "pcs"}</span>
-                        </div>
-                        {summary && <p className="mt-0.5 text-xs text-dark-500">{summary}</p>}
-                        {l.specs?.description ? <p className="mt-0.5 text-xs italic text-dark-400">“{String(l.specs.description).slice(0, 120)}”</p> : null}
-                        {art > 0 && <p className="mt-0.5 text-xs text-primary-600">{art} artwork file{art === 1 ? "" : "s"}</p>}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-              <div className="rounded-xl border border-dark-100 bg-white p-5 text-sm">
-                {(contact.name || contact.phone || contact.email) && (
-                  <p><span className="font-bold text-dark-700">Contact:</span> <span className="text-dark-600">{[contact.name, contact.phone, contact.email].filter(Boolean).join(" · ")}</span></p>
-                )}
-                <p className="mt-1"><span className="font-bold text-dark-700">Delivery:</span> <span className="text-dark-600">{[ship.city, ship.state, ship.postalCode].filter(Boolean).join(", ")}</span></p>
-                {requiredBy && <p className="mt-1"><span className="font-bold text-dark-700">Required by:</span> <span className="text-dark-600">{requiredBy}</span></p>}
-                <p className="mt-1 flex items-center gap-1.5">
-                  <Paperclip className="h-3.5 w-3.5 text-dark-400" />
-                  <span className="text-dark-600">{totalFileCount > 0 ? `${totalFileCount} file${totalFileCount === 1 ? "" : "s"} attached` : "No attachments"}</span>
-                </p>
-                {notes.trim() && <p className="mt-1"><span className="font-bold text-dark-700">Notes:</span> <span className="text-dark-600">{notes}</span></p>}
-              </div>
-              {!user && (
-                <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                  You'll be asked to sign in when you submit — your products and details are kept.
-                </p>
+              {/* Step 5 — Review & submit */}
+              {step === 4 && (
+                <>
+                  <div className="card-flat p-4 sm:p-5">
+                    <p className="font-semibold text-dark-900">{lines.length} product{lines.length === 1 ? "" : "s"} · {totalQuantity.toLocaleString("en-IN")} units</p>
+                    <ul className="mt-3 divide-y divide-dark-100 text-sm">
+                      {lines.map((l, i) => {
+                        const summary = [
+                          formatDimensions(getDimension(l)),
+                          String(l.specs?.material ?? ""),
+                          String(l.specs?.color ?? ""),
+                          String(l.specs?.printing ?? ""),
+                        ].filter(Boolean).join(" · ");
+                        const art = (artwork[l.productId] ?? []).length;
+                        return (
+                          <li key={l.productId} className="py-3 first:pt-0 last:pb-0">
+                            <div className="flex justify-between gap-4">
+                              <span className="font-semibold text-dark-900">{i + 1}. {l.productName || "Untitled"}</span>
+                              <span className="shrink-0 text-dark-600">{l.quantity.toLocaleString("en-IN")} {l.unit || "pcs"}</span>
+                            </div>
+                            {summary && <p className="mt-0.5 text-xs text-dark-500">{summary}</p>}
+                            {l.specs?.description ? <p className="mt-0.5 text-xs italic text-dark-400">“{String(l.specs.description).slice(0, 120)}”</p> : null}
+                            {art > 0 && <p className="mt-0.5 text-xs font-semibold text-green-600">{art} artwork file{art === 1 ? "" : "s"}</p>}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+
+                  <dl className="card-flat divide-y divide-dark-100 px-4 sm:px-5">
+                    {(contact.name || contact.phone || contact.email) && reviewRow("Contact", [contact.name, contact.phone, contact.email].filter(Boolean).join(" · "))}
+                    {reviewRow("Delivery", [ship.city, ship.state, ship.postalCode].filter(Boolean).join(", ") || "—")}
+                    {requiredBy && reviewRow("Required by", requiredBy)}
+                    {reviewRow(
+                      "Attachments",
+                      <span className="inline-flex items-center gap-1.5">
+                        <Paperclip className="h-3.5 w-3.5 text-dark-400" aria-hidden />
+                        {totalFileCount > 0 ? `${totalFileCount} file${totalFileCount === 1 ? "" : "s"} attached` : "No attachments"}
+                      </span>,
+                    )}
+                    {notes.trim() && reviewRow("Notes", <span className="whitespace-pre-wrap">{notes}</span>)}
+                  </dl>
+
+                  {!user && (
+                    <p className="rounded-[12px] bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                      You'll be asked to sign in when you submit — your products and details are kept.
+                    </p>
+                  )}
+                </>
               )}
             </div>
-          )}
-        </div>
 
-        {/* Navigation */}
-        <div className="mt-6 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => setStep(Math.max(0, step - 1))}
-            disabled={step === 0 || submitting}
-            className="flex items-center gap-2 rounded-xl border border-dark-200 px-4 py-2.5 text-sm font-bold text-dark-700 hover:bg-dark-50 disabled:opacity-40"
-          >
-            <ArrowLeft className="h-4 w-4" /> Back
-          </button>
-
-          <div className="flex items-center gap-2">
-            {lines.length > 0 && (
-              <button
-                type="button"
-                onClick={handleSaveDraft}
-                disabled={savingDraft || submitting}
-                className="hidden items-center gap-2 rounded-xl border border-dark-200 px-4 py-2.5 text-sm font-bold text-dark-700 hover:bg-dark-50 disabled:opacity-40 sm:flex"
-              >
-                {savingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save draft
-              </button>
-            )}
-            {step < STEPS.length - 1 ? (
-              <div className="flex items-center gap-3">
-                {nextBlockedReason && <span className="hidden text-xs text-dark-400 sm:inline">{nextBlockedReason}</span>}
-                <button
-                  type="button"
-                  onClick={() => canNext && setStep(step + 1)}
-                  disabled={!canNext}
-                  className="flex items-center gap-2 rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-primary-600 disabled:opacity-50"
+            {/* Wizard footer navigation */}
+            <div className="mt-6 border-t border-dark-100 pt-5">
+              {nextBlockedReason && step < STEPS.length - 1 && (
+                <p className="mb-3 text-xs text-dark-500 sm:text-right">{nextBlockedReason}</p>
+              )}
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <Button
+                  variant="outline"
+                  icon={ArrowLeft}
+                  onClick={() => setStep(Math.max(0, step - 1))}
+                  disabled={step === 0 || submitting}
+                  className="w-full sm:w-auto"
                 >
-                  Next <ArrowRight className="h-4 w-4" />
-                </button>
+                  Back
+                </Button>
+
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
+                  {lines.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      onClick={handleSaveDraft}
+                      disabled={savingDraft || submitting}
+                      className="w-full sm:w-auto"
+                    >
+                      {savingDraft ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />} Save draft
+                    </Button>
+                  )}
+                  {step < STEPS.length - 1 ? (
+                    <Button
+                      variant="primary"
+                      onClick={() => canNext && setStep(step + 1)}
+                      disabled={!canNext}
+                      className="w-full sm:w-auto"
+                    >
+                      Continue <ArrowRight className="h-4 w-4" aria-hidden />
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      onClick={handleSubmit}
+                      disabled={submitting || lines.length === 0}
+                      className="w-full sm:w-auto"
+                    >
+                      {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <FileText className="h-4 w-4" aria-hidden />}
+                      {submitting ? "Sending…" : pendingDraftId ? "Retry submit" : "Submit quote request"}
+                    </Button>
+                  )}
+                </div>
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={submitting || lines.length === 0}
-                className="flex items-center gap-2 rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-primary-600 disabled:opacity-50"
-              >
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                {submitting ? "Sending…" : pendingDraftId ? "Retry submit" : "Submit Bulk Quote Request"}
-              </button>
-            )}
-          </div>
+            </div>
+          </section>
+          <p className="mt-3 text-center text-xs text-dark-400 sm:text-right">All products are sent together as one quotation request.</p>
         </div>
-        <p className="mt-2 text-right text-[11px] text-dark-400">All products are sent together as one quotation request.</p>
       </div>
 
       <ProductPickerModal open={pickerOpen} onClose={() => setPickerOpen(false)} addedIds={addedIds} />

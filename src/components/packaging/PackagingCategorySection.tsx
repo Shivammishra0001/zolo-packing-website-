@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, ChevronLeft, ChevronRight, PackageX, RefreshCw } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, PackageX } from "lucide-react";
 import { API_BASE } from "@/lib/api-config";
 import type { Category } from "@/data/products";
+import { EmptyState, ErrorState, SectionHeader } from "@/components/UI";
 import { PackagingCategoryCard } from "./PackagingCategoryCard";
 import { PackagingCategorySkeleton } from "./PackagingCategorySkeleton";
 
 // ============================================================
-// "Shop by packaging type" — premium circular category showcase.
+// "Shop by packaging type" — category showcase on the mint band.
 //
 // Data flow: GET /api/v1/categories (the same canonical endpoint the nav uses)
-// → active categories with a representative product image → circular cards →
+// → active categories with a representative product image → cards →
 // click → /products?category=<slug> (the existing catalog route, reused).
 //
-// Distinct states: loading (circular skeletons), error (retry), empty (never
-// shown for an API failure). No product counts / price / MOQ anywhere.
+// Distinct states: loading (skeleton cards), error (retry), empty (never
+// shown for an API failure).
 // ============================================================
 
 type LoadState =
@@ -24,6 +25,9 @@ type LoadState =
 
 interface ApiSub { productCount: number }
 interface ApiCategory { id: string; name: string; slug: string; productCount: number; image?: string | null; imageSource?: "uploaded" | "product" | null; isActive?: boolean; subcategories: ApiSub[] }
+
+const arrowClass =
+  "flex h-10 w-10 items-center justify-center rounded-full border border-dark-200 bg-white text-dark-700 transition-colors hover:border-green-500 hover:text-green-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-dark-200 disabled:hover:text-dark-700";
 
 export function PackagingCategorySection() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
@@ -92,84 +96,74 @@ export function PackagingCategorySection() {
   const showArrows = state.status === "ready" && state.categories.length > 0;
 
   return (
-    <section className="py-20 bg-white">
+    <section className="section bg-green-50">
       <div className="shell">
-        {/* Header — unchanged layout: eyebrow, title, subtitle, View all */}
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
-          <div className="w-full min-w-0 sm:w-auto">
-            <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600">
-              <span className="mr-2 inline-block h-1 w-6 rounded-full bg-primary-500" />
-              Categories
+        <SectionHeader
+          eyebrow="Categories"
+          title="Shop by packaging type"
+          subtitle="Explore our full catalog of premium packaging solutions"
+          className="mb-6"
+          action={
+            <div className="flex items-center gap-2">
+              {showArrows && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => scrollBy(-1)}
+                    disabled={atStart}
+                    aria-label="Previous categories"
+                    className={arrowClass}
+                  >
+                    <ChevronLeft className="h-5 w-5" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => scrollBy(1)}
+                    disabled={atEnd}
+                    aria-label="Next categories"
+                    className={arrowClass}
+                  >
+                    <ChevronRight className="h-5 w-5" aria-hidden />
+                  </button>
+                </>
+              )}
+              <Link to="/categories" className="btn btn-ghost btn-sm">
+                View all <ArrowRight className="h-4 w-4" aria-hidden />
+              </Link>
             </div>
-            <h2 className="font-display text-[1.6rem] font-extrabold leading-[1.1] tracking-tight text-balance text-dark-900 sm:text-4xl lg:text-5xl">
-              Shop by <span className="grad-text">packaging type</span>
-            </h2>
-            <p className="mt-3 text-lg text-dark-500">Explore our full catalog of premium packaging solutions</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {showArrows && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => scrollBy(-1)}
-                  disabled={atStart}
-                  aria-label="Previous categories"
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-dark-200 text-dark-700 transition hover:border-primary-400 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  <ChevronLeft className="h-5 w-5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => scrollBy(1)}
-                  disabled={atEnd}
-                  aria-label="Next categories"
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-dark-200 text-dark-700 transition hover:border-primary-400 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  <ChevronRight className="h-5 w-5" />
-                </button>
-              </>
-            )}
-            <Link to="/categories" className="inline-flex items-center gap-1 text-sm font-bold text-dark-900 hover:text-primary-600">
-              View all <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-        </div>
+          }
+        />
 
         {state.status === "loading" && <PackagingCategorySkeleton />}
 
         {state.status === "error" && (
-          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-dark-200 py-12 text-center">
-            <PackageX className="h-8 w-8 text-dark-300" aria-hidden />
-            <p className="text-sm font-semibold text-dark-600">Unable to load packaging categories</p>
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="inline-flex items-center gap-2 rounded-full border border-dark-200 px-4 py-2 text-sm font-bold text-dark-700 hover:border-primary-400 hover:text-primary-600"
-            >
-              <RefreshCw className="h-4 w-4" /> Retry
-            </button>
-          </div>
+          <ErrorState
+            title="Unable to load packaging categories"
+            message="Please check your connection and try again."
+            onRetry={() => void load()}
+          />
         )}
 
         {state.status === "ready" && state.categories.length === 0 && (
-          <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-dark-200 py-12 text-center">
-            <PackageX className="h-8 w-8 text-dark-300" aria-hidden />
-            <p className="text-sm font-semibold text-dark-600">No packaging categories yet</p>
-            <p className="text-xs text-dark-400">Categories added in the catalog will appear here.</p>
-          </div>
+          <EmptyState
+            icon={PackageX}
+            title="No packaging categories yet"
+            message="Categories added in the catalog will appear here."
+          />
         )}
 
         {state.status === "ready" && state.categories.length > 0 && (
           // Only THIS strip scrolls horizontally — never the page. Snap + hidden
-          // scrollbar; touch/swipe works natively on mobile.
+          // scrollbar; touch/swipe works natively on mobile. The 4px inset keeps
+          // the card lift/border from clipping at the strip edges.
           <div
             ref={scroller}
-            className="no-scrollbar -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth px-1 pb-2 motion-reduce:scroll-auto"
+            className="no-scrollbar -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth px-1 pb-2 pt-1 motion-reduce:scroll-auto sm:gap-4"
             role="list"
             aria-label="Packaging categories"
           >
             {state.categories.map((c) => (
-              <div key={c.id} role="listitem" className="snap-start">
+              <div key={c.id} role="listitem" className="flex snap-start">
                 <PackagingCategoryCard category={c} />
               </div>
             ))}
