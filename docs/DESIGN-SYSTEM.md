@@ -76,7 +76,24 @@ Use `<Button>` / `<ButtonLink>` / `buttonClass()` from `components/UI.tsx`.
 
 ## Product card (`components/NewProductCard.tsx`)
 
-Fixed 4:3 image stage on `green-50` (object-contain, never cropped) → spec tag + MOQ → 2-line name (reserved height) → sizes/colours lines (reserved height, only when present) → price row → CTA row pinned to the bottom. Grid: `.grid-cards` (2 → 4 columns).
+Fixed 4:3 image stage on **white** with a hairline bottom border (object-contain, never cropped) → spec tag + MOQ → 2-line name (reserved height) → sizes/colours lines (reserved height, only when present) → price row → CTA row pinned to the bottom. Grid: `.grid-cards` (2 → 4 columns).
+
+**Image stages are white, not mint.** Much of the catalog photography is shot on an opaque white studio ground; on a tinted stage that ground reads as a grey rectangle floating behind the product, and cards disagree with each other depending on how each image happened to be shot. White + a hairline gives one image language across every grid. The same rule applies to category cards and the circular category nav.
+
+## Homepage (`pages/Home.tsx` + `components/home/*`)
+
+Flow: hero → benefit strip → campaigns → categories → featured → promo panels → new arrivals → trusted by → how it works → final CTA.
+
+* `HomeHero` — bounded split (~460–520px): eyebrow, H1, one sentence, 2 CTAs, 4 trust indicators; right side is a composition of real packaging PNGs. Hidden below `sm` so the fold stays useful on a phone.
+* `BenefitStrip` — 4 service facts on a card that rides the hero seam (`-mt-7`), removing the dead gutter between two full-width bands.
+* `CategoryCircleNav` (§9) + `PackagingCategoryCard` grid (§10) — two surfaces, two jobs: fast jump vs visual browse. Both read `useParentCategories()` (ONE request), show **top-level categories only**, and skip categories with zero products.
+* `FeaturedProducts` — admin-curated Featured rail with dynamic category tabs built from the products actually present. **Not** "Best Sellers".
+* `PromoPanels` — sustainability (mint) | custom packaging (dark green), one shared anatomy.
+* `FinalCta` — shop / quote + the real phone and email.
+
+### Data honesty rules (do not "fix" these by inventing data)
+
+There is **no rating, review, sales-rank or compare-at price data** in the catalog (`lib/products.ts`). So the homepage has **no star ratings, no review counts, no "Bestseller" claims, no strike-through pricing, and no testimonials**, and the product rail is labelled "Featured", not "Best selling". There is **no newsletter endpoint or subscriber storage**, so there is no subscribe form — an input that silently discards an email is worse than none. Only link to routes that exist: `/about`, `/careers`, `/shipping`, `/returns` and `/custom-packaging` do **not** exist and there is no catch-all 404.
 
 ## Motion
 

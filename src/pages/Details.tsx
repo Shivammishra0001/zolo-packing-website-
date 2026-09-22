@@ -242,7 +242,7 @@ export default function Details() {
     materialLabel ? { label: "Material", value: materialLabel } : null,
     gsm ? { label: "GSM", value: gsm } : null,
     thickness ? { label: "Thickness", value: thickness } : null,
-    { label: "MOQ", value: `${product.moq.toLocaleString("en-IN")} ${product.unit}s` },
+    { label: "MOQ", value: `${product.moq.toLocaleString("en-IN")} ${product.unit}` },
   ].filter((r): r is { label: string; value: string } => r !== null);
 
   const handleAddToCart = () => {
@@ -553,7 +553,7 @@ export default function Details() {
               </div>
               <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
                 <span className="text-dark-300">Quantity</span>
-                <span className="font-semibold tabular-nums">{quantity.toLocaleString("en-IN")} {product.unit}s</span>
+                <span className="font-semibold tabular-nums">{quantity.toLocaleString("en-IN")} {product.unit}</span>
               </div>
               <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-white/10 pt-2">
                 <span className="text-sm text-dark-300">Total</span>
@@ -609,7 +609,7 @@ export default function Details() {
                     {hasColors && (
                       <div className="flex justify-between gap-4 py-2"><dt className="text-dark-500">Available Colors</dt><dd className="text-right font-semibold text-dark-900">{product.colors.join(", ")}</dd></div>
                     )}
-                    <div className="flex justify-between gap-4 py-2"><dt className="text-dark-500">MOQ</dt><dd className="font-semibold text-dark-900">{product.moq} {product.unit}s</dd></div>
+                    <div className="flex justify-between gap-4 py-2"><dt className="text-dark-500">MOQ</dt><dd className="font-semibold text-dark-900">{product.moq} {product.unit}</dd></div>
                     {product.rating != null && (
                       <div className="flex justify-between gap-4 py-2"><dt className="text-dark-500">Rating</dt><dd className="font-semibold text-dark-900">{product.rating}/5 ({product.reviews ?? 0} reviews)</dd></div>
                     )}

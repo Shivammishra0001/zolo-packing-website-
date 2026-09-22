@@ -1,136 +1,75 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, ChevronLeft, ChevronRight, PackageX } from "lucide-react";
-import { API_BASE } from "@/lib/api-config";
-import type { Category } from "@/data/products";
+import { ArrowRight, PackageX } from "lucide-react";
+import { useParentCategories, type ParentCategory } from "@/lib/use-parent-categories";
 import { EmptyState, ErrorState, SectionHeader } from "@/components/UI";
+import { CategoryCircleNav } from "./CategoryCircleNav";
 import { PackagingCategoryCard } from "./PackagingCategoryCard";
 import { PackagingCategorySkeleton } from "./PackagingCategorySkeleton";
 
 // ============================================================
-// "Shop by packaging type" — category showcase on the mint band.
+// Category discovery band — TWO surfaces with two different jobs (§9 + §10):
 //
-// Data flow: GET /api/v1/categories (the same canonical endpoint the nav uses)
-// → active categories with a representative product image → cards →
-// click → /products?category=<slug> (the existing catalog route, reused).
+//   1. CategoryCircleNav  — compact circular strip: the FAST way to jump into
+//                           a category. Glanceable, one tap, no descriptions.
+//   2. Category cards     — larger tiles for VISUAL discovery: image, name,
+//                           product count.
 //
-// Distinct states: loading (skeleton cards), error (retry), empty (never
-// shown for an API failure).
+// Both read the same `useParentCategories()` result, so the pair costs ONE
+// API call. Only TOP-LEVEL categories (parentId === null) appear — subcategories
+// remain in the database, the admin, the importer and the catalog filters.
+//
+// States: loading (skeleton), error (retry — never a silent empty list),
+// empty (intentional message).
 // ============================================================
 
-type LoadState =
-  | { status: "loading" }
-  | { status: "error" }
-  | { status: "ready"; categories: Category[] };
+/** Two full desktop rows of discovery cards (4 columns × 2). */
+const CARD_LIMIT = 8;
 
-interface ApiSub { productCount: number }
-interface ApiCategory { id: string; name: string; slug: string; productCount: number; image?: string | null; imageSource?: "uploaded" | "product" | null; isActive?: boolean; subcategories: ApiSub[] }
-
-const arrowClass =
-  "flex h-10 w-10 items-center justify-center rounded-full border border-dark-200 bg-white text-dark-700 transition-colors hover:border-green-500 hover:text-green-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-dark-200 disabled:hover:text-dark-700";
+/** A grid of large discovery cards: 2 columns on a phone, 3 on a tablet,
+ *  4 on desktop — a fixed column count (not auto-fill) so the rows are always
+ *  even and the section never ends in a ragged orphan row. */
+function CategoryCards({ categories }: { categories: ParentCategory[] }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
+      {categories.map((c) => (
+        <PackagingCategoryCard
+          key={c.id}
+          category={{
+            id: c.slug,
+            dbId: c.id,
+            name: c.name,
+            slug: c.slug,
+            icon: "",
+            count: c.productCount,
+            image: c.image,
+            imageSource: c.imageSource,
+            subcategories: [],
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
 export function PackagingCategorySection() {
-  const [state, setState] = useState<LoadState>({ status: "loading" });
-  const scroller = useRef<HTMLDivElement>(null);
-  const [atStart, setAtStart] = useState(true);
-  const [atEnd, setAtEnd] = useState(false);
-
-  const load = useCallback(async () => {
-    setState({ status: "loading" });
-    try {
-      const res = await fetch(`${API_BASE}/categories`);
-      const body = await res.json();
-      const tree: ApiCategory[] | undefined = body?.data?.tree;
-      if (!body?.success || !Array.isArray(tree)) throw new Error("bad response");
-      // The server already returns active, non-archived categories in the
-      // admin's display order. Only categories with something to shop show.
-      const categories: Category[] = tree
-        .filter((c) => (c.isActive ?? true) && c.productCount > 0)
-        .map((c) => ({
-          id: c.slug,
-          dbId: c.id,
-          name: c.name,
-          slug: c.slug,
-          icon: "",
-          count: c.productCount,
-          image: c.image ?? null,
-          imageSource: c.imageSource ?? null,
-          subcategories: [],
-        }));
-      setState({ status: "ready", categories });
-    } catch {
-      // An API failure is an ERROR, never an empty category list.
-      setState({ status: "error" });
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const updateArrows = useCallback(() => {
-    const el = scroller.current;
-    if (!el) return;
-    setAtStart(el.scrollLeft <= 4);
-    setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 4);
-  }, []);
-
-  useEffect(() => {
-    if (state.status !== "ready") return;
-    updateArrows();
-    const el = scroller.current;
-    if (!el) return;
-    el.addEventListener("scroll", updateArrows, { passive: true });
-    window.addEventListener("resize", updateArrows);
-    return () => {
-      el.removeEventListener("scroll", updateArrows);
-      window.removeEventListener("resize", updateArrows);
-    };
-  }, [state.status, updateArrows]);
-
-  const scrollBy = (dir: 1 | -1) => {
-    const el = scroller.current;
-    if (!el) return;
-    // Scroll roughly one viewport of cards; respects reduced-motion via CSS.
-    el.scrollBy({ left: dir * Math.max(el.clientWidth * 0.8, 300), behavior: "smooth" });
-  };
-
-  const showArrows = state.status === "ready" && state.categories.length > 0;
+  const state = useParentCategories();
+  // Only categories a shopper can actually buy from. A category with zero
+  // products is a dead end on the homepage — it stays in the database, the
+  // admin and /categories, it is simply not advertised as an entry point.
+  const ready = state.status === "ready" ? state.categories.filter((c) => c.productCount > 0) : [];
 
   return (
-    <section className="section bg-green-50">
+    <section className="section bg-green-50" aria-label="Shop by category">
       <div className="shell">
         <SectionHeader
           eyebrow="Categories"
-          title="Shop by packaging type"
-          subtitle="Explore our full catalog of premium packaging solutions"
+          title="Shop by category"
+          subtitle="Find the right packaging for how you ship"
           className="mb-6"
           action={
-            <div className="flex items-center gap-2">
-              {showArrows && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => scrollBy(-1)}
-                    disabled={atStart}
-                    aria-label="Previous categories"
-                    className={arrowClass}
-                  >
-                    <ChevronLeft className="h-5 w-5" aria-hidden />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => scrollBy(1)}
-                    disabled={atEnd}
-                    aria-label="Next categories"
-                    className={arrowClass}
-                  >
-                    <ChevronRight className="h-5 w-5" aria-hidden />
-                  </button>
-                </>
-              )}
-              <Link to="/categories" className="btn btn-ghost btn-sm">
-                View all <ArrowRight className="h-4 w-4" aria-hidden />
-              </Link>
-            </div>
+            <Link to="/categories" className="btn btn-ghost btn-sm">
+              View all categories <ArrowRight className="h-4 w-4" aria-hidden />
+            </Link>
           }
         />
 
@@ -138,36 +77,42 @@ export function PackagingCategorySection() {
 
         {state.status === "error" && (
           <ErrorState
-            title="Unable to load packaging categories"
+            title="Unable to load categories"
             message="Please check your connection and try again."
-            onRetry={() => void load()}
+            onRetry={state.reload}
           />
         )}
 
-        {state.status === "ready" && state.categories.length === 0 && (
+        {state.status === "ready" && ready.length === 0 && (
           <EmptyState
             icon={PackageX}
-            title="No packaging categories yet"
+            title="No categories yet"
             message="Categories added in the catalog will appear here."
           />
         )}
 
-        {state.status === "ready" && state.categories.length > 0 && (
-          // Only THIS strip scrolls horizontally — never the page. Snap + hidden
-          // scrollbar; touch/swipe works natively on mobile. The 4px inset keeps
-          // the card lift/border from clipping at the strip edges.
-          <div
-            ref={scroller}
-            className="no-scrollbar -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth px-1 pb-2 pt-1 motion-reduce:scroll-auto sm:gap-4"
-            role="list"
-            aria-label="Packaging categories"
-          >
-            {state.categories.map((c) => (
-              <div key={c.id} role="listitem" className="flex snap-start">
-                <PackagingCategoryCard category={c} />
-              </div>
-            ))}
-          </div>
+        {state.status === "ready" && ready.length > 0 && (
+          <>
+            {/* Quick navigation first — the shortest path to a category. */}
+            <CategoryCircleNav categories={ready} />
+
+            {/* Visual discovery below, separated by a hairline so the two
+                surfaces read as "jump there" vs "browse these". Capped at two
+                desktop rows: the circles above already cover every category,
+                so the grid stays a bounded showcase rather than an
+                ever-growing wall as the catalog expands. */}
+            <div className="mt-7 border-t border-green-200 pt-7">
+              <CategoryCards categories={ready.slice(0, CARD_LIMIT)} />
+
+              {ready.length > CARD_LIMIT && (
+                <div className="mt-5 flex justify-center">
+                  <Link to="/categories" className="btn btn-secondary btn-sm">
+                    View all {ready.length} categories <ArrowRight className="h-4 w-4" aria-hidden />
+                  </Link>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
     </section>

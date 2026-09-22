@@ -85,9 +85,13 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
       className="group @container card card-hover flex h-full flex-col overflow-hidden"
       data-product-card
     >
-      {/* Fixed 4:3 image stage: every card has the same image area, images
-          are contained (never cropped or stretched) on a mint surface. */}
-      <Link to={`/product/${product.slug}`} className="relative block aspect-[4/3] overflow-hidden bg-green-50">
+      {/* Fixed 4:3 image stage: every card has the same image area, images are
+          contained (never cropped or stretched). The stage is WHITE because
+          catalog photography often carries a baked white studio background —
+          on a tinted stage that reads as a grey rectangle behind the product,
+          and cards then disagree with each other depending on how each image
+          was shot. White + a hairline keeps one image language across the grid. */}
+      <Link to={`/product/${product.slug}`} className="relative block aspect-[4/3] overflow-hidden border-b border-dark-100 bg-white">
         <div className={`absolute inset-0 flex items-center justify-center p-4 transition-transform duration-300 ease-out ${hovered ? "scale-[1.04]" : "scale-100"}`}>
           {hasRealImage ? (
             <img src={product.image} alt={product.name} loading="lazy" className="h-full w-full object-contain" />
@@ -153,8 +157,10 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
             <div className="min-w-0">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-dark-500">{quoteOnly ? "Min. order" : "Price"}</div>
               <div className="font-display text-base font-bold leading-none text-dark-900">
+                {/* `unit` is already plural ("pcs"); appending "s" printed
+                    "500 pcss". Only pluralise a unit that is not already. */}
                 {quoteOnly
-                  ? `${product.moq.toLocaleString("en-IN")} ${product.unit}s`
+                  ? `${product.moq.toLocaleString("en-IN")} ${product.unit}`
                   : <>{product.sizes.length > 1 && <span className="text-xs font-semibold text-dark-500">From </span>}₹{(priceMinor / 100).toLocaleString("en-IN")}</>}
               </div>
             </div>
@@ -213,7 +219,7 @@ export function LargeProductCard({ product, index = 0 }: { product: Product; ind
         <div className="p-4">
           {product.specTag && <div className="text-[11px] font-semibold uppercase tracking-wide text-green-600">{product.specTag}</div>}
           <h3 className="h3 mt-1 line-clamp-2 text-dark-900 transition-colors group-hover:text-green-600">{product.name}</h3>
-          <div className="mt-3 text-xs text-dark-500">Min. order <span className="font-bold text-dark-900">{product.moq.toLocaleString("en-IN")} {product.unit}s</span></div>
+          <div className="mt-3 text-xs text-dark-500">Min. order <span className="font-bold text-dark-900">{product.moq.toLocaleString("en-IN")} {product.unit}</span></div>
         </div>
       </Link>
     </motion.article>
