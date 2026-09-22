@@ -10,7 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import { useBuyerProducts } from "../lib/products";
-import { useCategoryTree, productMatchesCategory, productMatchesSubcategory, findCategoryNodes } from "../lib/categories";
+import { useCategoryTree, productMatchesCategory, productMatchesSubcategory, findCategoryNodes, mainCategories } from "../lib/categories";
 import { ProductCard } from "../components/NewProductCard";
 import { SectionHeader, Chip } from "../components/UI";
 
@@ -170,7 +170,7 @@ export default function Listing() {
             >
               All ({productsList.length})
             </button>
-            {CATEGORIES.map((c) => (
+            {mainCategories(CATEGORIES).map((c) => (
               <button
                 key={c.slug}
                 onClick={() => updateCategory(c.slug === category ? "" : c.slug)}
@@ -251,36 +251,24 @@ export default function Listing() {
                     <span>All categories</span>
                     <span className="text-xs text-dark-400">{productsList.length}</span>
                   </button>
-                  {CATEGORIES.map((c) => (
-                    <div key={c.id}>
-                      <button
-                        onClick={() => updateCategory(c.id === category ? "" : c.id)}
-                        className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-sm ${
-                          category === c.id ? "bg-dark-50 font-semibold text-dark-900" : "text-dark-600 hover:bg-dark-50"
-                        }`}
-                      >
-                        <span className="line-clamp-1">{c.name}</span>
-                        <span className="text-xs text-dark-400">{c.count}</span>
-                      </button>
-                      {/* Subcategories expand only for the open category, so the
-                          sidebar stays scannable with 12 categories. */}
-                      {category === c.id && c.subcategories.length > 0 && (
-                        <div className="ml-3 mt-1 space-y-0.5 border-l border-dark-100 pl-2">
-                          {c.subcategories.map((sc) => (
-                            <button
-                              key={sc.slug}
-                              onClick={() => updateSubcategory(sc.pathSlug === subcategory || sc.slug === subcategory ? "" : sc.pathSlug)}
-                              className={`w-full flex items-center justify-between px-2 py-1 rounded-md text-xs ${
-                                subcategory === sc.pathSlug || subcategory === sc.slug ? "bg-primary-50 font-semibold text-primary-700" : "text-dark-500 hover:bg-dark-50"
-                              }`}
-                            >
-                              <span className="line-clamp-1">{sc.name}</span>
-                              <span className="text-[10px] text-dark-400">{sc.count}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                  {/* MAIN category filter: top-level categories only (parentId
+                      null in the database). Subcategories are never listed here
+                      as independent options — picking "Boxes" already includes
+                      every product in its subcategories, because each product
+                      carries its parent categoryId. Subcategories still exist
+                      in Admin, the importer, the Categories page and product
+                      breadcrumbs. */}
+                  {mainCategories(CATEGORIES).map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => updateCategory(c.id === category ? "" : c.id)}
+                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-sm ${
+                        category === c.id ? "bg-dark-50 font-semibold text-dark-900" : "text-dark-600 hover:bg-dark-50"
+                      }`}
+                    >
+                      <span className="line-clamp-1">{c.name}</span>
+                      <span className="text-xs text-dark-400">{c.count}</span>
+                    </button>
                   ))}
                 </div>
               </div>

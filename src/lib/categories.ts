@@ -165,6 +165,17 @@ export function useCategoryTree(products: StoreProduct[]): Category[] {
  * Resolve a category-page path to tree nodes. `sub` may be the short path slug
  * ("gift-boxes") or the full DB slug ("boxes-gift-boxes").
  */
+/**
+ * The MAIN customer-facing category list: top-level categories only, i.e.
+ * rows whose parentId is null in the Category table (the tree endpoint nests
+ * children under `subcategories`, so a top-level node is one that is not
+ * itself a child). Never hardcoded names — a category the admin creates
+ * tomorrow appears automatically; a subcategory never appears on its own.
+ */
+export function mainCategories(tree: Category[]): Category[] {
+  return tree.filter((c) => !(c as Category & { parentId?: string | null }).parentId);
+}
+
 export function findCategoryNodes(tree: Category[], categorySlug: string, sub?: string): { category?: Category; subcategory?: SubCategory } {
   const category = tree.find((c) => c.slug === categorySlug || c.id === categorySlug)
     // A subcategory slug used at the top level still resolves to its parent.

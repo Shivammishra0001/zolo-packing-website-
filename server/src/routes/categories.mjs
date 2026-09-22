@@ -23,7 +23,18 @@ async function readTree(req, res) {
     if (req.user && isAdminRole(req.user.role)) scope = "admin";
   }
   res.setHeader("Cache-Control", "no-store");
-  ok(res, await categories.tree({ scope, includeEmpty: req.query.includeEmpty !== "0" }));
+  const data = await categories.tree({ scope, includeEmpty: req.query.includeEmpty !== "0" });
+  // ?level=parent — main storefront filter: top-level categories only
+  // (parentId null). Subcategories are simply omitted from the response;
+  // nothing is changed in the database.
+  if (req.query.level === "parent") {
+    ok(res, {
+      categories: data.categories.filter((c) => !c.parentId),
+      tree: data.tree.map(({ subcategories: _subs, ...c }) => ({ ...c, subcategories: [] })),
+    });
+    return;
+  }
+  ok(res, data);
 }
 categoriesRouter.get("/categories", wrap(readTree));
 categoriesRouter.get("/categories/tree", wrap(readTree));
