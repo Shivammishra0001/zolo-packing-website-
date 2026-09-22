@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, createContext, useContext } from "react";
-import { BrowserRouter, Routes, Route, Link, NavLink, useLocation, useSearchParams, useNavigate, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, NavLink, useLocation, useSearchParams, useNavigate, useParams, Navigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Search,
@@ -741,6 +741,14 @@ function LegacyAuthBridge({ onChange }: { onChange: (s: AuthState) => void }) {
   return null;
 }
 
+/** /category/boxes[/gift-boxes] → /products?category=boxes[&subcategory=gift-boxes] */
+function CategoryRedirect() {
+  const { slug = "", sub } = useParams();
+  const q = new URLSearchParams({ category: slug });
+  if (sub) q.set("subcategory", sub);
+  return <Navigate to={`/products?${q.toString()}`} replace />;
+}
+
 function Shell() {
   const loc = useLocation();
   // The admin dashboard ships its own layout (sidebar + topbar), no storefront chrome.
@@ -792,6 +800,9 @@ function AnimatedRoutes() {
           <Route path="/products" element={<Listing />} />
           <Route path="/product/:slug" element={<Details />} />
           <Route path="/categories" element={<Categories />} />
+          {/* SEO paths for category / subcategory pages → the catalog listing filters. */}
+          <Route path="/category/:slug" element={<CategoryRedirect />} />
+          <Route path="/category/:slug/:sub" element={<CategoryRedirect />} />
           <Route path="/eco-rewards" element={<EcoRewards />} />
           <Route path="/sustainability" element={<Navigate to="/eco-rewards" replace />} />
            <Route path="/cart" element={<CartPage />} />

@@ -138,6 +138,9 @@ export function SummaryCards({ items }: { items: { label: string; value: number;
 
 export interface RowAction { label: string; icon: LucideIcon; onClick: () => void; danger?: boolean; hidden?: boolean }
 
+// Only one row menu may be open at a time: opening another closes it.
+const closeOpenMenu = { current: null as null | (() => void) };
+
 export function RowActions({ label, actions }: { label: string; actions: RowAction[] }) {
   const [pos, setPos] = useState<{ top: number; right: number; up: boolean } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -148,6 +151,8 @@ export function RowActions({ label, actions }: { label: string; actions: RowActi
   // (overflow-x-auto), which would otherwise clip a dropdown on the last rows.
   const toggle = () => {
     if (pos) return setPos(null);
+    closeOpenMenu.current?.();
+    closeOpenMenu.current = () => setPos(null);
     const r = btnRef.current!.getBoundingClientRect();
     const height = visible.length * 40 + 10;
     const up = r.bottom + height + 8 > window.innerHeight && r.top > height;

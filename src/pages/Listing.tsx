@@ -10,7 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import { useBuyerProducts } from "../lib/products";
-import { useCategoryTree, productMatchesCategory, slugifyCategory } from "../lib/categories";
+import { useCategoryTree, productMatchesCategory, productMatchesSubcategory, findCategoryNodes } from "../lib/categories";
 import { ProductCard } from "../components/NewProductCard";
 import { SectionHeader, Chip } from "../components/UI";
 
@@ -106,10 +106,10 @@ export default function Listing() {
 
   const filtered = useMemo(() => {
     let list = [...productsList];
-    if (category) list = list.filter((p) => productMatchesCategory(p, category));
-    if (subcategory) {
-      list = list.filter((p) => slugifyCategory(p.subcategory ?? "") === subcategory);
-    }
+    // Category / subcategory filters resolve through the admin-managed tree
+    // (match by Category id), so renamed or re-slugged categories keep working.
+    if (category) list = list.filter((p) => productMatchesCategory(p, category, CATEGORIES));
+    if (subcategory) list = list.filter((p) => productMatchesSubcategory(p, category, subcategory, CATEGORIES));
     if (search) {
       // Search spans name, SKU, category, subcategory and description so
       // "box", "tape" and "ZOLO-TAP-001" all find their products.
@@ -133,9 +133,10 @@ export default function Listing() {
       case "popular": default: break;
     }
     return list;
-  }, [productsList, category, subcategory, search, material, sort]);
+  }, [productsList, category, subcategory, search, material, sort, CATEGORIES]);
 
-  const activeCategory = CATEGORIES.find((c) => c.slug === category || c.id === category);
+  const { category: activeCategory, subcategory: activeSub } = findCategoryNodes(CATEGORIES, category, subcategory);
+  const subLabel = activeSub?.name ?? subcategory.replace(/-/g, " ");
 
   return (
     <main className="py-10">
@@ -151,7 +152,7 @@ export default function Listing() {
           {subcategory && (
             <>
               <span className="mx-2">/</span>
-              <span className="text-dark-900 font-semibold capitalize">{subcategory.replace(/-/g, " ")}</span>
+              <span className="text-dark-900 font-semibold capitalize">{subLabel}</span>
             </>
           )}
         </div>
@@ -258,7 +259,7 @@ export default function Listing() {
                           category === c.id ? "bg-dark-50 font-semibold text-dark-900" : "text-dark-600 hover:bg-dark-50"
                         }`}
                       >
-                        <span className="line-clamp-1">{c.icon} {c.name}</span>
+                        <span className="line-clamp-1">{c.name}</span>
                         <span className="text-xs text-dark-400">{c.count}</span>
                       </button>
                       {/* Subcategories expand only for the open category, so the
@@ -268,9 +269,9 @@ export default function Listing() {
                           {c.subcategories.map((sc) => (
                             <button
                               key={sc.slug}
-                              onClick={() => updateSubcategory(sc.slug === subcategory ? "" : sc.slug)}
+                              onClick={() => updateSubcategory(sc.pathSlug === subcategory || sc.slug === subcategory ? "" : sc.pathSlug)}
                               className={`w-full flex items-center justify-between px-2 py-1 rounded-md text-xs ${
-                                subcategory === sc.slug ? "bg-primary-50 font-semibold text-primary-700" : "text-dark-500 hover:bg-dark-50"
+                                subcategory === sc.pathSlug || subcategory === sc.slug ? "bg-primary-50 font-semibold text-primary-700" : "text-dark-500 hover:bg-dark-50"
                               }`}
                             >
                               <span className="line-clamp-1">{sc.name}</span>
@@ -324,7 +325,8 @@ export default function Listing() {
                 )}
                 {subcategory && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary-50 text-primary-700 text-xs font-medium capitalize">
-                    {subcategory.replace(/-/g, " ")}
+                    {subLabel}
+                    <button onClick={() => updateSubcategory("")} className="hover:text-primary-500" aria-label="Clear subcategory"><X className="h-3 w-3" /></button>
                   </span>
                 )}
               </div>

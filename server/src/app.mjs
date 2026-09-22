@@ -10,6 +10,7 @@ import { UPLOADS_PATH } from "./lib/storage.mjs";
 import { authenticate, requireAdmin, requireSeller, requireBuyer, loadSupplierOrg } from "./middleware/auth.mjs";
 import { authRouter } from "./routes/auth.mjs";
 import { productsRouter } from "./routes/products.mjs";
+import { categoriesRouter } from "./routes/categories.mjs";
 import { sellerRouter } from "./routes/seller.mjs";
 import { adminRouter } from "./routes/admin.mjs";
 import { notificationsRouter } from "./routes/notifications.mjs";
@@ -154,6 +155,9 @@ export function createApp() {
 
   // Products/catalog — kept OPEN to preserve the existing admin/storefront behavior.
   app.use(API, productsRouter);
+  // Category tree (public read, admin writes) — mounted at the API root like
+  // the products router so the existing /categories path is unchanged.
+  app.use(API, categoriesRouter);
 
   // Live marketing campaigns — public, and mounted BEFORE the buyer-guarded
   // routers below (orderRouter is mounted at the API root behind authenticate).

@@ -722,13 +722,18 @@ enum AddressKind {
   shipping
 }
 
-// Hierarchical product taxonomy (self-referential parent).
+// Hierarchical product taxonomy (self-referential parent): a top-level
+// category has parentId = null, a subcategory points at its parent. Managed
+// by the admin (Product Catalog → Categories); the storefront only ever sees
+// active, non-archived rows, in sortOrder.
 model Category {
   id          String     @id @default(cuid())
   name        String
   slug        String     @unique
   description String?
-  icon        String?
+  icon        String? // legacy, unused
+  image       String? // uploaded through the uploads pipeline (URL only)
+  sortOrder   Int        @default(0) // display order among siblings (lower first)
   parentId    String?
   parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children    Category[] @relation("CategoryTree")
@@ -742,7 +747,7 @@ model Category {
   coupons     CouponCategory[]
   campaigns   Campaign[]
 
-  @@index([parentId])
+  @@index([parentId, sortOrder])
   @@index([isActive])
 }
 

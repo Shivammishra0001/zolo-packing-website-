@@ -19,6 +19,7 @@ import {
   Upload,
 } from "lucide-react";
 import { cn } from "@/utils/cn";
+import { useNavigate } from "react-router-dom";
 import { useToast } from "@/components/ui/Toast";
 import { EmptyState, Panel } from "../components/Panel";
 import {
@@ -35,7 +36,7 @@ import {
 } from "../components/ui";
 // Canonical categories from PostgreSQL (NOT the empty mock array, which is
 // why this page used to report "Categories = 0").
-import { useCategories, hydrateCategories, createCategory, archiveCategory, type AdminCategory } from "../categories-store";
+import { useCategories, hydrateCategories } from "../categories-store";
 import { addProduct, hydrateCatalog, onCatalogPersistError, saveProduct, useCatalog } from "../catalog-store";
 import { catalogApi } from "@/lib/catalog-api";
 import { PRODUCT_STATUS, STOCK_STATUS } from "../statuses-ext";
@@ -223,7 +224,7 @@ function ProductsTab() {
 
   const [summary, setSummary] = useState<SummaryKey>("all");
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("all");
+  const [category, setCategory] = useState(() => new URLSearchParams(window.location.search).get("category") || "all");
   const [stockStatus, setStockStatus] = useState<StockStatus | "all">("all");
   const [productStatus, setProductStatus] = useState<ProductStatus | "all">("all");
   const [page, setPage] = useState(1);
@@ -657,165 +658,12 @@ function ProductsTab() {
 
 // ---------- Categories tab ----------
 
-type CatRow = AdminCategory & { archived?: boolean };
-
-function CategoriesTab() {
-  const toast = useToast();
-  // Real categories from PostgreSQL — the same rows the importer upserts and
-  // the storefront renders. Previously this was local useState seeded from an
-  // empty mock array, so nothing here ever persisted.
-  const categories = useCategories();
-  const [dialog, setDialog] = useState<{ mode: "add" | "edit"; row?: CatRow } | null>(null);
-  const [name, setName] = useState("");
-  const [parentId, setParentId] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => { void hydrateCategories(); }, []);
-
-  const rows: CatRow[] = categories.map((c) => ({ ...c, archived: !c.isActive }));
-
-  const openAdd = () => { setName(""); setParentId(""); setDialog({ mode: "add" }); };
-  const openEdit = (row: CatRow) => { setName(row.name); setParentId(""); setDialog({ mode: "edit", row }); };
-
-  const save = async () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    setBusy(true);
-    try {
-      if (dialog?.mode === "add") {
-        await createCategory(trimmed, parentId || undefined);
-        toast.success("Category created", parentId ? `Added “${trimmed}” as a subcategory.` : `Created “${trimmed}”.`);
-      } else {
-        // Renaming is not exposed yet — it would orphan slugs referenced by
-        // storefront URLs. Tracked separately.
-        toast.error("Renaming not available", "Create the new category and re-assign products instead.");
-      }
-      setDialog(null);
-    } catch (e) {
-      toast.error("Could not save the category", e instanceof Error ? e.message : "Please try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const toggleArchive = async (row: CatRow) => {
-    if (row.archived) {
-      toast.error("Reactivation not available", "Re-import or create the category to restore it.");
-      return;
-    }
-    try {
-      const res = await archiveCategory(row.id);
-      toast.success("Category archived", `${row.name} — ${res.productsAffected} product(s) still reference it.`);
-    } catch (e) {
-      toast.error("Could not archive", e instanceof Error ? e.message : "Please try again.");
-    }
-  };
-
-  const field = "h-10 w-full rounded-lg border erp-border erp-surface px-3 text-sm erp-text outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-500/20";
-
-  return (
-    <div className="space-y-4">
-      <Toolbar>
-        <span className="text-xs erp-text-faint">{rows.filter((r) => !r.archived).length} active categories</span>
-        <Button size="sm" variant="primary" icon={Plus} className="ml-auto" onClick={openAdd}>
-          Add Category
-        </Button>
-      </Toolbar>
-      <Panel bodyClassName="p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b erp-border text-left">
-                {["Category", "Subcategories", "Products", "Status", "Actions"].map((h, i) => (
-                  <th key={h} scope="col" className={cn("px-4 py-2.5 text-xs font-bold uppercase tracking-wide erp-text-faint", i === 4 && "text-right")}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((c) => (
-                <tr key={c.id} className={cn("border-b erp-border-soft last:border-0 erp-hover", c.archived && "opacity-60")}>
-                  <td className="px-4 py-3 font-semibold erp-text">{c.name}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1.5">
-                      {c.subcategories.length === 0 ? (
-                        <span className="text-xs erp-text-faint">—</span>
-                      ) : (
-                        c.subcategories.map((s) => (
-                          <span key={s.id} className="rounded-md erp-surface-2 px-1.5 py-0.5 text-[11px] font-medium erp-text-muted">
-                            {s.name} <span className="erp-text-faint">({s.productCount})</span>
-                          </span>
-                        ))
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 tabular-nums font-semibold erp-text">{c.productCount}</td>
-                  <td className="px-4 py-3">
-                    {c.archived ? <Badge tone="neutral">Archived</Badge> : <Badge tone="success">Active</Badge>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-0.5">
-                      <button onClick={() => openEdit(c)} aria-label={`Edit ${c.name}`} className="flex h-9 w-9 items-center justify-center rounded-lg erp-text-muted hover:erp-surface-2">
-                        <Pencil className="h-4 w-4" aria-hidden />
-                      </button>
-                      <button onClick={() => toggleArchive(c)} aria-label={c.archived ? `Restore ${c.name}` : `Archive ${c.name}`} className="flex h-9 w-9 items-center justify-center rounded-lg erp-text-muted hover:erp-surface-2">
-                        {c.archived ? <ArchiveRestore className="h-4 w-4" aria-hidden /> : <Archive className="h-4 w-4" aria-hidden />}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-
-      <Dialog
-        open={dialog !== null}
-        onClose={() => setDialog(null)}
-        title={dialog?.mode === "edit" ? "Edit category" : "Add category"}
-        description={dialog?.mode === "edit" ? "Rename this category." : "Create a new product category."}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button>
-            <Button variant="primary" disabled={!name.trim()} loading={busy} onClick={save}>
-              {dialog?.mode === "edit" ? "Save" : "Create"}
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-semibold erp-text-muted">Category name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Sustainable Packaging" className={field} autoFocus />
-          </label>
-          {dialog?.mode === "add" && (
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold erp-text-muted">Parent category (optional)</span>
-              <select value={parentId} onChange={(e) => setParentId(e.target.value)} className={field}>
-                <option value="">— Top-level category —</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              <span className="mt-1 block text-[11px] erp-text-faint">
-                Choose a parent to create a subcategory (e.g. Boxes → Gift Boxes).
-              </span>
-            </label>
-          )}
-        </div>
-      </Dialog>
-    </div>
-  );
-}
-
-// Real bulk import (parse/validate/preview/import) lives in ./BulkImport.
-
-// ---------- Page ----------
+// Category management moved to its own page: /admin/catalog/categories
+// (Product Catalog → Categories). The tab below just takes the admin there.
 
 export default function Catalog() {
   const toast = useToast();
+  const navigate = useNavigate();
   const products = useCatalog();
   const [tab, setTab] = useState("products");
   const [addOpen, setAddOpen] = useState(false);
@@ -857,10 +705,9 @@ export default function Catalog() {
         }
       />
 
-      <Tabs tabs={tabs} active={tab} onChange={setTab} />
+      <Tabs tabs={tabs} active={tab} onChange={(k) => (k === "categories" ? navigate("/admin/catalog/categories") : setTab(k))} />
 
       {tab === "products" && <ProductsTab />}
-      {tab === "categories" && <CategoriesTab />}
 
       {/* Add product (create mode) */}
       <ProductFormDrawer product={null} open={addOpen} onClose={() => setAddOpen(false)} />

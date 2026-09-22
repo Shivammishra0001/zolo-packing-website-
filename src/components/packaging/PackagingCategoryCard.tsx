@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Package } from "lucide-react";
 import type { Category } from "@/data/products";
 import { curatedCategoryImage } from "./category-images";
 
@@ -18,7 +19,10 @@ import { curatedCategoryImage } from "./category-images";
 export function PackagingCategoryCard({ category }: { category: Category }) {
   // Prefer a curated, packaging-TYPE-relevant PNG; fall back to the category's
   // representative product image from the API; emoji only if neither exists.
-  const image = curatedCategoryImage(category.slug, category.name) ?? category.image ?? null;
+  // An image the admin uploaded for the category wins; otherwise the curated
+  // artwork, then the representative product image from the API.
+  const image = (category.imageSource === "uploaded" ? category.image : null)
+    ?? curatedCategoryImage(category.slug, category.name) ?? category.image ?? null;
   const hasImage = Boolean(image);
 
   return (
@@ -45,11 +49,8 @@ export function PackagingCategoryCard({ category }: { category: Category }) {
             className="absolute left-[-4%] top-[-22%] h-[108%] w-[108%] max-w-none object-contain drop-shadow-[0_14px_20px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-out group-hover:-translate-y-1.5 group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:translate-y-0 motion-reduce:group-hover:scale-100"
           />
         ) : (
-          <span
-            className="relative -top-3 select-none text-[clamp(2.5rem,4vw,4rem)] transition-transform duration-300 ease-out group-hover:-translate-y-1.5 group-hover:scale-[1.04] motion-reduce:transition-none"
-            aria-hidden
-          >
-            {category.icon}
+          <span className="relative -top-2 flex h-14 w-14 items-center justify-center rounded-full bg-white/70 text-primary-500 shadow-sm" aria-hidden>
+            <Package className="h-7 w-7" strokeWidth={1.6} />
           </span>
         )}
       </div>

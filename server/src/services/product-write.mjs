@@ -154,11 +154,14 @@ async function assertSkuFree(sku, excludeId = null) {
  * Resolve the taxonomy for a write. An explicit id must exist (400 otherwise);
  * a name is resolved / created the same way the importer does.
  */
-async function resolveTaxonomy(p, { required }) {
+async function resolveTaxonomy(p, { required, keep = {} }) {
   let category = null;
   if (p.categoryId) {
     category = await prisma.category.findFirst({ where: { id: p.categoryId, deletedAt: null, parentId: null } });
     if (!category) throw badRequest("Category not found — refresh the category list and try again", "CATEGORY_NOT_FOUND");
+    // An inactive category keeps the products it already has, but takes no
+    // new ones. `keep` = the product's current ids, which are always allowed.
+    if (!category.isActive && p.categoryId !== keep.categoryId) throw badRequest(`${category.name} is inactive — activate it or choose another category`, "CATEGORY_INACTIVE");
   } else if (p.category) {
     category = await resolveCategory(p.category);
   }
@@ -168,6 +171,7 @@ async function resolveTaxonomy(p, { required }) {
   if (category && p.subcategoryId) {
     subcategory = await prisma.category.findFirst({ where: { id: p.subcategoryId, deletedAt: null, parentId: category.id } });
     if (!subcategory) throw badRequest("Subcategory not found under the chosen category", "SUBCATEGORY_NOT_FOUND");
+    if (!subcategory.isActive && p.subcategoryId !== keep.subcategoryId) throw badRequest(`${subcategory.name} is inactive — activate it or choose another subcategory`, "SUBCATEGORY_INACTIVE");
   } else if (category && p.subcategory && String(p.subcategory).toLowerCase() !== "general") {
     subcategory = await resolveSubcategory(p.subcategory, category);
   }
@@ -273,7 +277,7 @@ export async function updateProduct(id, input, { actorId = null } = {}) {
 
   const wantsTaxonomy = p.categoryId !== undefined || p.category !== undefined || p.subcategoryId !== undefined || p.subcategory !== undefined;
   const { category, subcategory } = wantsTaxonomy
-    ? await resolveTaxonomy({ ...p, category: p.category ?? (p.categoryId ? undefined : existing.category) }, { required: false })
+    ? await resolveTaxonomy({ ...p, category: p.category ?? (p.categoryId ? undefined : existing.category) }, { required: false, keep: { categoryId: existing.categoryId, subcategoryId: existing.subcategoryId } })
     : { category: null, subcategory: null };
 
   const wantsImages = p.images !== undefined || (p.imageUploads && p.imageUploads.length > 0);

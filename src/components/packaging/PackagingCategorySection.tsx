@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, ChevronLeft, ChevronRight, PackageX, RefreshCw } from "lucide-react";
 import { API_BASE } from "@/lib/api-config";
-import { isHiddenCategory } from "@/lib/categories";
 import type { Category } from "@/data/products";
 import { PackagingCategoryCard } from "./PackagingCategoryCard";
 import { PackagingCategorySkeleton } from "./PackagingCategorySkeleton";
@@ -24,13 +23,7 @@ type LoadState =
   | { status: "ready"; categories: Category[] };
 
 interface ApiSub { productCount: number }
-interface ApiCategory { id: string; name: string; slug: string; productCount: number; image?: string | null; icon?: string | null; isActive?: boolean; subcategories: ApiSub[] }
-
-const EMOJI_FALLBACK: Record<string, string> = {
-  boxes: "📦", containers: "🫙", "food packaging": "🍱", tapes: "🎗️", tubes: "🧴",
-  mailers: "✉️", bags: "🛍️", "flexible packaging": "🧃", "packaging accessories": "🏷️",
-  drinkware: "☕", packaging: "📦", "digital files": "🖼️",
-};
+interface ApiCategory { id: string; name: string; slug: string; productCount: number; image?: string | null; imageSource?: "uploaded" | "product" | null; isActive?: boolean; subcategories: ApiSub[] }
 
 export function PackagingCategorySection() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
@@ -45,17 +38,19 @@ export function PackagingCategorySection() {
       const body = await res.json();
       const tree: ApiCategory[] | undefined = body?.data?.tree;
       if (!body?.success || !Array.isArray(tree)) throw new Error("bad response");
+      // The server already returns active, non-archived categories in the
+      // admin's display order. Only categories with something to shop show.
       const categories: Category[] = tree
-        // Active + shoppable only; admin-disabled/empty categories never appear.
-        // "Digital files" and other non-physical types are always hidden.
-        .filter((c) => (c.isActive ?? true) && c.productCount > 0 && !isHiddenCategory(c.slug) && !isHiddenCategory(c.name))
+        .filter((c) => (c.isActive ?? true) && c.productCount > 0)
         .map((c) => ({
           id: c.slug,
+          dbId: c.id,
           name: c.name,
           slug: c.slug,
-          icon: c.icon || EMOJI_FALLBACK[c.name.trim().toLowerCase()] || "📦",
+          icon: "",
           count: c.productCount,
           image: c.image ?? null,
+          imageSource: c.imageSource ?? null,
           subcategories: [],
         }));
       setState({ status: "ready", categories });

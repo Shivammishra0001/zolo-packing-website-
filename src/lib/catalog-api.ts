@@ -304,12 +304,7 @@ export const catalogApi = {
       body: JSON.stringify({ ids }),
     }),
 
-  /** Admin category writes (the tree itself is read via categories-store). */
-  createCategory: (name: string, parentId?: string) =>
-    request<{ category: { id: string; name: string; slug: string } }>("/categories", { method: "POST", body: JSON.stringify({ name, parentId }) })
-      .then((d) => d.category),
-  archiveCategory: (id: string) =>
-    request<{ productsAffected: number }>(`/categories/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  // Category writes live in lib/api/categories.ts (categoriesApi).
 };
 
 /** Importer row shape (the bulk importer accepts denormalised names + image URLs). */

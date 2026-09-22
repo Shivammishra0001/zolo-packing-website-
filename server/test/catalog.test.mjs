@@ -420,7 +420,7 @@ test("import reports real per-run taxonomy and failure accounting", async () => 
   assert.ok(body.data.categoriesCreated + body.data.subcategoriesCreated >= 1);
 });
 
-test("deactivating a category is a soft delete that reports usage", async () => {
+test("a category with products cannot be archived — it is deactivated instead; products keep their link", async () => {
   const cat = `Del Cat ${rnd()}`;
   createdCats.push(cat);
   const s = sku("DC");
@@ -429,14 +429,17 @@ test("deactivating a category is a soft delete that reports usage", async () => 
   const product = await prisma.product.findUnique({ where: { sku: s } });
 
   const res = await api(`/categories/${product.categoryId}`, { token: ADMIN, method: "DELETE" });
-  assert.equal(res.status, 200);
-  assert.equal(res.body.data.productsAffected, 1, "reports what still references it");
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, "CATEGORY_HAS_PRODUCTS");
+  assert.match(res.body.error, /Please reassign the products before deleting this category/);
 
+  const off = await api(`/categories/${product.categoryId}/status`, { token: ADMIN, method: "PATCH", body: { isActive: false } });
+  assert.equal(off.status, 200);
   const row = await prisma.category.findUnique({ where: { id: product.categoryId } });
-  assert.ok(row, "the row survives — order history still resolves");
+  assert.ok(row && !row.deletedAt, "the row survives — order history still resolves");
   assert.equal(row.isActive, false);
 
   // The product keeps its link rather than being orphaned.
-  const after = await prisma.product.findUnique({ where: { sku: s } });
-  assert.equal(after.categoryId, product.categoryId);
+  const later = await prisma.product.findUnique({ where: { sku: s } });
+  assert.equal(later.categoryId, product.categoryId);
 });

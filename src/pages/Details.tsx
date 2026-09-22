@@ -25,6 +25,7 @@ import { useWishlist } from "../App";
 import { useAuthGuard } from "../components/auth/AuthGuard";
 import { useAuthSession } from "../components/auth/AuthContext";
 import { useBuyerProductBySlug, useBuyerProducts } from "../lib/products";
+import { useCategoryTree } from "../lib/categories";
 import { addToRfq } from "../lib/rfq-cart-store";
 import { addToCart } from "../lib/cart-store";
 import { useToast } from "../components/ui/Toast";
@@ -51,6 +52,7 @@ export default function Details() {
   const guard = useAuthGuard();
   const toast = useToast();
   const allProducts = useBuyerProducts(); // real catalog — for related products
+  const categoryTree = useCategoryTree(allProducts);
 
   // BUSINESS RULE: guests may browse listings but NOT open a product page.
   // On a guest visit we open the ONE shared auth modal and stash a pending
@@ -132,8 +134,14 @@ export default function Details() {
   }
 
   const wishlisted = has(product._id || product.id);
-  const related = allProducts.filter((p) => p.category === product.category && p.slug !== product.slug).slice(0, 12);
+  // Related = same admin-managed category (by Category id, falling back to the
+  // legacy name slug for rows without a link).
+  const related = allProducts
+    .filter((p) => p.slug !== product.slug && (product.categoryId ? p.categoryId === product.categoryId : p.category === product.category))
+    .slice(0, 12);
   const mockupType = typeToMockup[product.category] || "mailer";
+  const categoryNode = categoryTree.find((c) => c.dbId === product.categoryId);
+  const subNode = categoryNode?.subcategories.find((sc) => sc.id === product.subcategoryId);
 
   // Share via the native share sheet where available; otherwise copy the link.
   const shareProduct = async () => {
@@ -240,6 +248,19 @@ export default function Details() {
           <Link to="/" className="hover:text-dark-900">Home</Link>
           <ChevronRight className="h-3 w-3" />
           <Link to="/products" className="hover:text-dark-900">Products</Link>
+          {/* Category / subcategory from the admin-managed tree (only while active). */}
+          {categoryNode && (
+            <>
+              <ChevronRight className="h-3 w-3" />
+              <Link to={`/category/${categoryNode.slug}`} className="hover:text-dark-900">{categoryNode.name}</Link>
+            </>
+          )}
+          {categoryNode && subNode && (
+            <>
+              <ChevronRight className="h-3 w-3" />
+              <Link to={`/category/${categoryNode.slug}/${subNode.pathSlug}`} className="hover:text-dark-900">{subNode.name}</Link>
+            </>
+          )}
           <ChevronRight className="h-3 w-3" />
           <span className="text-dark-700 font-medium line-clamp-1">{product.name}</span>
         </div>

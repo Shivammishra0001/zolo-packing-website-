@@ -378,23 +378,35 @@ export function ProductFormDrawer({
               <span className={LABEL}>Category *</span>
               <Select value={categoryId} onChange={(v) => { setCategoryId(v); setSubcategoryId(""); }} className={cn("w-full", errors.category && FIELD_ERR)} aria-label="Category">
                 <option value="">— Select a category —</option>
+                {/* Active categories only — plus the product's current one, so an
+                    edit still resolves after its category was deactivated. */}
                 {categories.filter((c) => c.isActive || c.id === categoryId).map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                  <option key={c.id} value={c.id}>{c.name}{c.isActive ? "" : " (inactive)"}</option>
                 ))}
               </Select>
               {categories.length === 0 && <span className="mt-1 block text-[11px] erp-text-faint">Loading categories from the database…</span>}
+              {categories.length > 0 && !categories.some((c) => c.isActive) && <span className="mt-1 block text-[11px] erp-text-faint">No active category yet — <a href="/admin/catalog/categories" className="font-semibold text-primary-600 hover:underline">add one</a>.</span>}
               <FieldError msg={errors.category} />
             </label>
           </div>
           <div className={twoCol}>
             <label className="block">
               <span className={LABEL}>Subcategory</span>
-              <Select value={subcategoryId} onChange={setSubcategoryId} className="w-full" aria-label="Subcategory">
-                <option value="">— None —</option>
-                {(selectedCategory?.subcategories ?? []).map((sc) => (
-                  <option key={sc.id} value={sc.id}>{sc.name}</option>
-                ))}
-              </Select>
+              {(() => {
+                const subs = (selectedCategory?.subcategories ?? []).filter((sc) => sc.isActive || sc.id === subcategoryId);
+                const none = Boolean(selectedCategory) && subs.length === 0;
+                return (
+                  <>
+                    <Select value={subcategoryId} onChange={setSubcategoryId} className="w-full" aria-label="Subcategory">
+                      <option value="">{none ? "No subcategories in this category" : "— None —"}</option>
+                      {subs.map((sc) => (
+                        <option key={sc.id} value={sc.id}>{sc.name}{sc.isActive ? "" : " (inactive)"}</option>
+                      ))}
+                    </Select>
+                    {none && <span className="mt-1 block text-[11px] erp-text-faint">Optional — this category has no active subcategories.</span>}
+                  </>
+                );
+              })()}
             </label>
             <label className="block">
               <span className={LABEL}>Type</span>

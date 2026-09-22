@@ -6,6 +6,9 @@ export type Product = {
   slug: string;
   category: string;
   subcategory?: string;
+  /** Category table ids (null for legacy rows without a link). */
+  categoryId?: string | null;
+  subcategoryId?: string | null;
 moq: number; // minimum order quantity
   unit: string;
   image: string; // gradient/emoji based
@@ -26,19 +29,31 @@ sizes: string[];
 };
 
 export type SubCategory = {
+  /** Category table id (absent for the product-derived fallback tree). */
+  id?: string;
   name: string;
+  /** DB slug, globally unique (e.g. "boxes-gift-boxes"). */
   slug: string;
+  /** Short slug used in URLs under the parent (e.g. "gift-boxes"). */
+  pathSlug: string;
   count: number;
+  image?: string | null;
 };
 
 export type Category = {
+  /** Slug (the storefront's stable handle for URLs and filters). */
   id: string;
+  /** Category table id (absent for the product-derived fallback tree). */
+  dbId?: string;
   name: string;
   slug: string;
-  icon: string; // emoji
+  icon: string; // legacy emoji slot, unused
   count: number;
-  /** Representative product image (transparent PNG/WebP) or null. */
+  description?: string | null;
+  /** Admin-uploaded image, else a representative product image, else null. */
   image?: string | null;
+  /** Where `image` came from — "uploaded" images win over curated artwork. */
+  imageSource?: "uploaded" | "product" | null;
   subcategories: SubCategory[];
 };
 

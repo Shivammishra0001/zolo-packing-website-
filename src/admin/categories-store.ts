@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { API_BASE } from "@/lib/api-config";
+import { categoriesApi, type CategoryInput, type CategoryTreeNode } from "@/lib/api/categories";
 
 // ============================================================
 // Admin category store — the SAME canonical categories the storefront and the
@@ -10,22 +10,8 @@ import { API_BASE } from "@/lib/api-config";
 // rendered blank even though every product had a category.
 // ============================================================
 
-export interface AdminSubcategory {
-  id: string;
-  name: string;
-  slug: string;
-  isActive: boolean;
-  productCount: number;
-}
-
-export interface AdminCategory {
-  id: string;
-  name: string;
-  slug: string;
-  isActive: boolean;
-  productCount: number;
-  subcategories: AdminSubcategory[];
-}
+export type AdminSubcategory = CategoryTreeNode["subcategories"][number];
+export type AdminCategory = CategoryTreeNode;
 
 let tree: AdminCategory[] = [];
 let hydrated = false;
@@ -48,13 +34,15 @@ export async function hydrateCategories(force = false): Promise<void> {
   if (inFlight) return inFlight;
   inFlight = (async () => {
     try {
-      const res = await fetch(`${API_BASE}/categories`);
-      const body = await res.json();
-      if (body?.success && Array.isArray(body.data?.tree)) {
-        tree = body.data.tree as AdminCategory[];
-        hydrated = true;
-        emit();
-      }
+      // Admin scope: inactive categories/subcategories are included so the
+      // management page can show them and an Edit Product form can still
+      // resolve a product whose category was deactivated later.
+      const body = await categoriesApi.adminTree();
+      tree = body.tree;
+      hydrated = true;
+      emit();
+    } catch {
+      /* keep whatever we had; callers show their own error state */
     } finally {
       inFlight = null;
     }
@@ -80,16 +68,32 @@ export function categoryOptions(): { value: string; label: string }[] {
 
 /** Create a category (or a subcategory when `parentId` is given). Admin-only on the server. */
 export async function createCategory(name: string, parentId?: string): Promise<AdminCategory | null> {
-  const { catalogApi } = await import("@/lib/catalog-api");
-  const category = await catalogApi.createCategory(name, parentId);
+  const category = await categoriesApi.create({ name, parentId: parentId ?? null });
   await hydrateCategories(true);
-  return category ? (tree.find((c) => c.id === category.id) ?? null) : null;
+  return tree.find((c) => c.id === category.id) ?? null;
 }
 
-/** Deactivate a category (soft; products keep their link). Admin-only on the server. */
+/** Full-form create / edit used by the Categories page. Refreshes the shared tree. */
+export async function saveCategory(id: string | null, input: CategoryInput) {
+  const saved = id ? await categoriesApi.update(id, input) : await categoriesApi.create(input);
+  await hydrateCategories(true);
+  return saved;
+}
+
+export async function setCategoryStatus(id: string, isActive: boolean) {
+  const saved = await categoriesApi.setStatus(id, isActive);
+  await hydrateCategories(true);
+  return saved;
+}
+
+export async function reorderCategories(parentId: string | null, ids: string[]) {
+  await categoriesApi.reorder(parentId, ids);
+  await hydrateCategories(true);
+}
+
+/** Archive (soft). Throws ApiError CATEGORY_HAS_PRODUCTS while products reference it. */
 export async function archiveCategory(id: string): Promise<{ productsAffected: number }> {
-  const { catalogApi } = await import("@/lib/catalog-api");
-  const res = await catalogApi.archiveCategory(id);
+  const res = await categoriesApi.archive(id);
   await hydrateCategories(true);
   return res;
 }

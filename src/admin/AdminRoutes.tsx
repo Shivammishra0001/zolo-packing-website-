@@ -20,6 +20,7 @@ import Catalog from "./pages/Catalog";
 import ProductDetail from "./pages/ProductDetail";
 import PackagingTemplates from "./pages/PackagingTemplates";
 import ImportHistory from "./pages/ImportHistory";
+import CategoriesPage from "./pages/catalog/CategoriesPage";
 
 // Operations
 import Artwork from "./pages/Artwork";
@@ -81,6 +82,7 @@ export default function AdminRoutes() {
         {/* Catalog */}
         <Route path="catalog" element={<Catalog />} />
         <Route path="catalog/imports" element={<ImportHistory />} />
+        <Route path="catalog/categories" element={<CategoriesPage />} />
         <Route path="catalog/:id" element={<ProductDetail />} />
         <Route path="templates" element={<PackagingTemplates />} />
 

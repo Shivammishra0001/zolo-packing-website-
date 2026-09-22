@@ -18,8 +18,9 @@ import catOthers from "../../images/category_others.svg";
 import catTapes from "../../images/category_tapes.png";
 import catPharma from "../../images/category_pharma.png";
 
-// Maps the REAL category slugs (derived from catalog data) onto the existing
-// artwork. An unmapped category falls back to catOthers rather than breaking.
+// Bundled artwork per category slug — used only when the admin has NOT
+// uploaded an image for the category (Product Catalog → Categories). Order:
+// admin image → this artwork → a product image from the category → placeholder.
 const catImages: Record<string, string> = {
   // real catalog slugs
   "food-packaging": catFood,
@@ -44,11 +45,13 @@ const catImages: Record<string, string> = {
 };
 
 export default function Categories() {
-  // Derived from the live catalog, so new categories from an import appear here
-  // automatically and counts are always real. Subcategories are intentionally
-  // not shown — each card links straight to the category's products.
+  // The admin-managed tree (active categories, in the admin's display order),
+  // so a category created in Admin appears here without a deployment.
+  // Subcategories are listed as quick links under each card.
   const products = useBuyerProducts();
   const CATEGORIES = useCategoryTree(products);
+  const imageFor = (c: (typeof CATEGORIES)[number]) =>
+    (c.imageSource === "uploaded" ? c.image : null) ?? catImages[c.id] ?? c.image ?? catOthers;
 
   return (
     <main className="py-12">
@@ -61,7 +64,7 @@ export default function Categories() {
         />
 
         <div className="mt-12 grid-cards-lg">
-          {CATEGORIES.filter((c) => c.id !== "others").map((c, i) => (
+          {CATEGORIES.map((c, i) => (
             <motion.div
               key={c.id}
               initial={{ opacity: 0, y: 20 }}
@@ -71,10 +74,10 @@ export default function Categories() {
               whileHover={{ y: -6 }}
               className="bg-white rounded-2xl border border-dark-100 overflow-hidden card-shadow card-shadow-hover group"
             >
-              <Link to={`/products?category=${c.slug}`} className="block">
+              <Link to={`/category/${c.slug}`} className="block">
                 <div className="relative h-48 bg-white flex items-center justify-center overflow-hidden border-b border-dark-100 p-4">
                   <img
-                    src={catImages[c.id] ?? catOthers}
+                    src={imageFor(c)}
                     alt={c.name}
                     className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
                   />
@@ -92,6 +95,17 @@ export default function Categories() {
                   </span>
                 </div>
               </Link>
+              {c.subcategories.length > 0 && (
+                <ul className="flex flex-wrap gap-1.5 px-5 pb-5">
+                  {c.subcategories.map((sc) => (
+                    <li key={sc.slug}>
+                      <Link to={`/category/${c.slug}/${sc.pathSlug}`} className="inline-block rounded-full bg-dark-50 px-2.5 py-1 text-xs font-semibold text-dark-600 hover:bg-primary-50 hover:text-primary-700">
+                        {sc.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </motion.div>
           ))}
         </div>

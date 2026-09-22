@@ -61,7 +61,13 @@ const NAV_GROUPS: NavGroup[] = [
           { to: "/admin/returns/eco-settings", label: "Eco Reward Settings" },
         ],
       },
-      { to: "/admin/catalog", label: "Product Catalog", icon: Package },
+      {
+        to: "/admin/catalog", label: "Product Catalog", icon: Package, end: true,
+        children: [
+          { to: "/admin/catalog", label: "Products", end: true },
+          { to: "/admin/catalog/categories", label: "Categories" },
+        ],
+      },
       { to: "/admin/shipping", label: "Shipping", icon: Truck },
       { to: "/admin/finance", label: "Finance", icon: Wallet },
       { to: "/admin/reports", label: "Reports", icon: ReceiptText },

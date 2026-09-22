@@ -73,6 +73,9 @@ export function toStoreProduct(p: CatalogProduct): Product & {
     slug: p.slug ?? slugify(p.name),
     category: CATEGORY_SLUG[p.category] ?? slugify(p.category),
     subcategory: p.subcategory,
+    // Real taxonomy links — category filters match on these, not on names.
+    categoryId: p.categoryId ?? null,
+    subcategoryId: p.subcategoryId ?? null,
     moq: p.moq,
     unit: "pcs",
     image: images[0],
