@@ -22,7 +22,8 @@ import polyMailer from "../../../images/poly mailer.png";
 import compostableMailer from "../../../images/compostable mailer.png";
 import sticker from "../../../images/packing-tape.png";
 import hangTag from "../../../images/hang tag.png";
-import shoppingBag from "../../../images/bag-1-1.png";
+// bag-1-1.png was removed from /images; paper-bag.png stands in until a new asset is chosen.
+import shoppingBag from "../../../images/paper-bag.png";
 import print from "../../../images/category_print.png";
 import device from "../../../images/category_device.png";
 import coffeeCup from "../../../images/cup-1-1.png";

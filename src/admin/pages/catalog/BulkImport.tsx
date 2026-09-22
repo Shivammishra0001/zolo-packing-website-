@@ -1,699 +1,347 @@
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Download,
-  FileArchive,
-  FileSpreadsheet,
-  History,
-  ImageOff,
-  Upload,
-  X,
-  XCircle,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Download, FileSpreadsheet, FileUp, Images, Loader2, Upload, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/utils/cn";
 import { useToast } from "@/components/ui/Toast";
-import { Badge, Button, Dialog } from "../../components/ui";
-import { getProductBySku, hydrateCatalog } from "../../catalog-store";
+import { ApiError, request } from "@/lib/api/client";
+import { catalogApi } from "@/lib/catalog-api";
+import { hydrateCatalog } from "../../catalog-store";
 import { hydrateCategories } from "../../categories-store";
 import { hydrateCategoryTree } from "@/lib/categories";
-import { catalogApi } from "@/lib/catalog-api";
-import { getCategories } from "../../categories-store";
-import type { CatalogProduct } from "../../types";
+import { Badge, Button, Dialog } from "../../components/ui";
+import { parseZip, formatBytes, MIME_BY_EXT, type ZipContents } from "./bulk-import-lib";
 import {
-  LIMITS,
-  MIME_BY_EXT,
-  buildErrorReportCsv,
-  buildTemplateWorkbook,
-  buildZipExample,
-  formatBytes,
-  parseSpreadsheetBuffer,
-  parseZip,
-  validateRows,
-  type ParsedRow,
-  type ZipContents,
-  type ZipImage,
-} from "./bulk-import-lib";
-import { extractEmbeddedImages, indexEmbeddedImagesByRow } from "./xlsx-embedded-images";
+  autoMap, applyImageUrls, buildTemplate, groupProducts, matchZipImages, parseWorkbook, toPayload, OPTION_NAMES, SYSTEM_FIELDS,
+  type ColumnTarget, type ImportProduct, type Mapping, type SystemField, type Workbook,
+} from "./import-wizard-lib";
 
 // ============================================================
-// Bulk product import — XLSX / XLS / CSV / ZIP (spreadsheet + images).
-// ZIP images are matched to SKUs (or the Image column), turned into object
-// URLs via the app's existing image pipeline (product.images[] strings — the
-// same field the manual editor uses), and imported into the shared catalog
-// store so they appear in the admin catalog AND the buyer website.
-// No base64 is stored; no parallel import module.
+// Product import wizard — Upload → Map columns → Validate → Preview → Import.
+//
+// Simple AND variable products, single-sheet (one row = one variant, same
+// Product ID = one product) or the two-sheet Products + Variants format, plus
+// an optional ZIP of images matched by file name / SKU / Product ID. Nothing
+// touches the database until the server-side validation passes and the admin
+// confirms; the import itself is one transaction (all or nothing).
 // ============================================================
 
+type Step = 1 | 2 | 3 | 4 | 5;
+const STEPS = ["Upload", "Map columns", "Validate", "Preview", "Import"];
 const ACCEPT = ".xlsx,.xls,.csv,.zip";
 
-/** Uint8Array → base64 (chunked to stay under call-stack limits). */
+interface ValidationReport {
+  ok: boolean;
+  summary: { products: number; simple: number; variable: number; variants: number; categoriesMatched: number; subcategoriesMatched: number; newCategories: string[]; newSubcategories: string[]; toCreate: number; toUpdate: number; toSkip: number; productsWithoutImages: number };
+  errors: { product: string; field: string | null; message: string }[];
+  warnings: { product: string; field: string | null; message: string }[];
+  preview: { ref: string; name: string; kind: "simple" | "variable"; category?: string; subcategory?: string; action: string; sku?: string; images: number; variants: { sku: string; label: string; priceMinor: number; stock: number; moq: number; image?: string }[] }[];
+}
+interface ImportResult { created: number; updated: number; skipped: number; variantsWritten: number; products: { id: string; sku: string; name: string; kind: string; action: string }[]; importId: string | null }
+
 function u8ToBase64(u8: Uint8Array): string {
   let bin = "";
-  for (let i = 0; i < u8.length; i += 0x8000) {
-    bin += String.fromCharCode(...u8.subarray(i, i + 0x8000));
-  }
+  for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode(...u8.subarray(i, i + 0x8000));
   return btoa(bin);
 }
-
-type DupeMode = "update" | "skip" | "create";
-
-interface ImportResult {
-  processed: number;
-  created: number;
-  updated: number;
-  skipped: number;
-  failed: number;
-  imagesUploaded: number;
+function download(name: string, wb: XLSX.WorkBook) {
+  const out = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+  const url = URL.createObjectURL(new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  const a = document.createElement("a"); a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
+const inr = (minor: number) => (minor ? `₹${(minor / 100).toLocaleString("en-IN")}` : "On quote");
+const SELECT = "h-9 w-full rounded-md border erp-border erp-surface px-2 text-sm erp-text outline-none focus:border-primary-500";
 
-function download(name: string, data: Blob) {
-  const url = URL.createObjectURL(data);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
+// ---------- step 2: mapping table ----------
 
-function downloadTemplate() {
-  XLSX.writeFile(buildTemplateWorkbook(), "zolo-product-import-template.xlsx");
-}
-
-function downloadZipExample() {
-  const bytes = buildZipExample();
-  const copy = new Uint8Array(bytes); // detach from any shared buffer typing
-  download("zolo-import-example.zip", new Blob([copy.buffer], { type: "application/zip" }));
-}
-
-/** Clean "No Image" placeholder — never a browser broken-image icon. */
-function NoImage({ size, label = "No Image" }: { size: string; label?: string }) {
+function MappingTable({ title, headers, sample, mapping, onChange, scope }: {
+  title: string; headers: string[]; sample: Record<string, string | number>[]; mapping: Mapping; onChange: (m: Mapping) => void; scope: "single" | "product" | "variant";
+}) {
+  const fields = SYSTEM_FIELDS.filter((f) => scope === "single" || f.scope === "both" || f.scope === scope || f.key === "ignore");
+  const targetValue = (t: ColumnTarget | undefined) => (!t ? "ignore" : "option" in t ? `option:${t.option}` : t.field);
+  const set = (header: string, value: string) => {
+    if (value === "option:__custom") { const name = window.prompt("Option name (e.g. Ply, Capacity)"); if (name?.trim()) onChange({ ...mapping, [header]: { option: name.trim() } }); return; }
+    onChange({ ...mapping, [header]: value.startsWith("option:") ? { option: value.slice(7) } : { field: value as SystemField } });
+  };
+  const used = new Map<string, string>();
+  for (const [h, t] of Object.entries(mapping)) { const v = targetValue(t); if (v !== "ignore") used.set(v, used.has(v) ? `${used.get(v)}, ${h}` : h); }
   return (
-    <span
-      className={cn(size, "flex flex-col items-center justify-center gap-0.5 rounded-lg erp-surface-2 text-center")}
-      title="Image missing"
-    >
-      <ImageOff className="h-4 w-4 erp-text-faint" aria-hidden />
-      <span className="text-[8px] leading-none erp-text-faint">{label}</span>
-    </span>
+    <div className="rounded-lg border erp-border">
+      <div className="border-b erp-border px-3 py-2 text-xs font-bold uppercase tracking-wide erp-text-faint">{title}</div>
+      <table className="w-full text-sm">
+        <thead className="text-left text-[11px] font-bold uppercase tracking-wide erp-text-faint"><tr><th className="px-3 py-2">Excel column</th><th className="px-3 py-2">Example</th><th className="px-3 py-2">→ System field</th></tr></thead>
+        <tbody className="divide-y erp-border">
+          {headers.map((h) => {
+            const v = targetValue(mapping[h]);
+            const dup = v !== "ignore" && (used.get(v) ?? "").includes(",");
+            return (
+              <tr key={h}>
+                <td className="px-3 py-2 font-semibold erp-text">{h}</td>
+                <td className="max-w-[220px] truncate px-3 py-2 text-xs erp-text-muted">{sample.map((r) => String(r[h] ?? "")).find(Boolean) ?? "—"}</td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <select value={v} onChange={(e) => set(h, e.target.value)} className={cn(SELECT, "max-w-[280px]", dup && "border-amber-500")} aria-label={`Map column ${h}`}>
+                      <optgroup label="Product / variant fields">{fields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}</optgroup>
+                      {scope !== "product" && (
+                        <optgroup label="Variant option (Size, Color…)">
+                          {[...new Set([...OPTION_NAMES, ...(v.startsWith("option:") ? [v.slice(7)] : [])])].map((o) => <option key={o} value={`option:${o}`}>Option: {o}</option>)}
+                          <option value="option:__custom">Option: custom…</option>
+                        </optgroup>
+                      )}
+                    </select>
+                    {v !== "ignore" && !dup && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" aria-label="Mapped" />}
+                    {dup && <span className="text-[11px] text-amber-700" title={used.get(v)}>also used by {used.get(v)?.split(", ").filter((x) => x !== h).join(", ")}</span>}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-/**
- * Small thumb that renders a real image for URLs and text for emoji. If the
- * image URL fails to load it falls back to the placeholder instead of showing a
- * broken-image icon — the table never breaks and React never crashes.
- */
-function Thumb({ src, size = "h-9 w-9" }: { src?: string; size?: string }) {
-  const [failed, setFailed] = useState(false);
-  // Reset the error state when the source changes.
-  useEffect(() => setFailed(false), [src]);
-
-  if (!src) return <NoImage size={size} />;
-  const isUrl = /^(blob:|data:|https?:|\/)/.test(src);
-  if (!isUrl) {
-    // emoji / text placeholder
-    return <span className={cn(size, "flex items-center justify-center rounded-lg erp-surface-2 text-lg")}>{src}</span>;
-  }
-  if (failed) return <NoImage size={size} />;
-  return (
-    <img
-      src={src}
-      alt=""
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className={cn(size, "rounded-lg object-cover erp-surface-2")}
-    />
-  );
-}
+// ---------- the wizard ----------
 
 export function BulkImportButton() {
   const toast = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const zipRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<Step>(1);
   const [file, setFile] = useState<File | null>(null);
-  const [rows, setRows] = useState<ParsedRow[] | null>(null);
-  const [zip, setZip] = useState<ZipContents | null>(null);
-  const [parsing, setParsing] = useState(false);
-  const [dupeMode, setDupeMode] = useState<DupeMode>("update"); // default: update existing
-  const [dragOver, setDragOver] = useState(false);
+  const [wb, setWb] = useState<Workbook | null>(null);
+  const [zip, setZip] = useState<{ name: string; contents: ZipContents } | null>(null);
+  const [pMap, setPMap] = useState<Mapping>({});
+  const [vMap, setVMap] = useState<Mapping>({});
+  const [mode, setMode] = useState<"update" | "skip">("update");
+  const [createCategories, setCreateCategories] = useState(false);
+  const [products, setProducts] = useState<ImportProduct[] | null>(null);
+  const [imageInfo, setImageInfo] = useState<{ matched: number; unmatched: string[]; toUpload: number } | null>(null);
+  const [report, setReport] = useState<ValidationReport | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<ImportResult | null>(null);
-  const [importing, setImporting] = useState(false);
-  // Live progress for large imports (thousands of images take minutes).
-  const [progress, setProgress] = useState<{ productsDone: number; productsTotal: number; imagesDone: number; imagesTotal: number } | null>(null);
-  const cancelRef = useRef(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  // One object URL per zip image, shared by preview + import. URLs consumed by
-  // imported products stay alive; the rest are revoked on close/reset.
-  const urlMap = useRef<Map<string, string>>(new Map());
-  const usedUrls = useRef<Set<string>>(new Set());
+  const [dragOver, setDragOver] = useState(false);
 
-  const revokeUnused = () => {
-    for (const [, url] of urlMap.current) {
-      if (!usedUrls.current.has(url)) URL.revokeObjectURL(url);
-    }
-    urlMap.current.clear();
-    usedUrls.current.clear();
-  };
+  const reset = () => { setStep(1); setFile(null); setWb(null); setZip(null); setPMap({}); setVMap({}); setProducts(null); setImageInfo(null); setReport(null); setBusy(null); setResult(null); setExpanded(new Set()); };
+  const close = () => { if (busy) return; setOpen(false); reset(); };
 
-  const reset = () => {
-    revokeUnused();
-    setFile(null);
-    setRows(null);
-    setZip(null);
-    setParsing(false);
-    setResult(null);
-  };
-  const close = () => { setOpen(false); reset(); };
-  // Safety net: revoke on unmount
-  useEffect(() => () => revokeUnused(), []);
-
-  const urlFor = (zipKey: string | undefined): string | undefined => {
-    if (!zipKey || !zip) return undefined;
-    const cached = urlMap.current.get(zipKey);
-    if (cached) return cached;
-    const img = zip.images.get(zipKey);
-    if (!img) return undefined;
-    const copy = new Uint8Array(img.data);
-    const url = URL.createObjectURL(new Blob([copy.buffer], { type: MIME_BY_EXT[img.ext] ?? "image/jpeg" }));
-    urlMap.current.set(zipKey, url);
-    return url;
-  };
-
-  const handleFile = async (f: File) => {
-    const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
-    const isZip = ext === "zip";
-    if (!["xlsx", "xls", "csv", "zip"].includes(ext)) {
-      toast.error("Unsupported file", "Upload an .xlsx, .xls, .csv or .zip file.");
-      return;
-    }
-    if (isZip && f.size > LIMITS.ZIP_MAX_BYTES) {
-      toast.error("ZIP too large", `Maximum ZIP size is ${formatBytes(LIMITS.ZIP_MAX_BYTES)}.`);
-      return;
-    }
-    if (!isZip && f.size > LIMITS.SPREADSHEET_MAX_BYTES) {
-      toast.error("File too large", `Maximum spreadsheet size is ${formatBytes(LIMITS.SPREADSHEET_MAX_BYTES)}.`);
-      return;
-    }
-
-    setFile(f);
-    setParsing(true);
+  const readFile = async (f: File) => {
+    setBusy("Reading file…");
     try {
-      let zipContents: ZipContents | null = null;
-      let sheetData: ArrayBuffer | Uint8Array;
-
-      if (isZip) {
-        zipContents = parseZip(new Uint8Array(await f.arrayBuffer()));
-        if (!zipContents.spreadsheet) {
-          toast.error("No spreadsheet in ZIP", "Include products.xlsx / .xls / .csv inside the ZIP.");
-          reset();
-          return;
-        }
-        sheetData = zipContents.spreadsheet.data;
-      } else {
-        sheetData = await f.arrayBuffer();
-      }
-
-      const raws = parseSpreadsheetBuffer(sheetData);
-      if (raws.length === 0) {
-        toast.error("Empty file", "No product rows found in the spreadsheet.");
-        setRows([]);
-        setZip(zipContents);
+      const buf = new Uint8Array(await f.arrayBuffer());
+      if (/\.zip$/i.test(f.name)) {
+        const contents = parseZip(buf);
+        setZip({ name: f.name, contents });
+        if (contents.spreadsheet) { const parsed = parseWorkbook(contents.spreadsheet.data); setWb(parsed); setFile(f); setPMap(autoMap(parsed.products.headers)); setVMap(parsed.variants ? autoMap(parsed.variants.headers) : {}); }
+        else if (!wb) toast.success("Images loaded", `${contents.images.size} image(s). Now add the Excel file.`);
         return;
       }
-
-      // Recover pictures embedded INSIDE the workbook (SheetJS drops the
-      // drawing layer, which is why such products previously showed "No
-      // Image"). They are merged into the same image map the ZIP path uses, so
-      // preview, upload and commit stay on one code path.
-      const sheetU8 = sheetData instanceof Uint8Array ? sheetData : new Uint8Array(sheetData);
-      const embedded = ext === "xlsx" || isZip ? extractEmbeddedImages(sheetU8) : [];
-      const embeddedByRow = indexEmbeddedImagesByRow(embedded);
-
-      const images = new Map<string, ZipImage>(zipContents?.images ?? []);
-      const embeddedKeys = new Map<number, { key: string }[]>();
-      for (const [sheetRow, imgs] of embeddedByRow) {
-        const keys: { key: string }[] = [];
-        imgs.forEach((img, n) => {
-          // Namespaced key so an embedded picture can never collide with a
-          // ZIP entry of the same filename.
-          const key = `embedded:${sheetRow}:${n}`;
-          images.set(key, { path: img.path, base: img.base, ext: img.ext, data: img.data });
-          keys.push({ key });
-        });
-        embeddedKeys.set(sheetRow, keys);
-      }
-
-      const parsed = validateRows(raws, {
-        existingSku: (sku) => !!getProductBySku(sku),
-        // Real category list from the API-backed store (hydrated on page load),
-        // not the old mock array that was always empty.
-        knownCategories: getCategories().map((c) => c.name),
-        zipImages: images.size > 0 ? images : undefined,
-        embeddedByRow: embeddedKeys.size > 0 ? embeddedKeys : undefined,
-      });
-
-      // Preview/commit read images from `zip.images`; synthesize a container
-      // when the workbook carried pictures but no ZIP was uploaded.
-      const merged: ZipContents =
-        zipContents ?? { spreadsheet: null, images: new Map(), skipped: [], totalUncompressedBytes: 0 };
-      merged.images = images;
-      setZip(images.size > 0 ? merged : zipContents);
-      setRows(parsed);
-      if (embedded.length > 0) {
-        toast.success(
-          "Embedded images found",
-          `Recovered ${embedded.length} original image${embedded.length === 1 ? "" : "s"} from the workbook.`,
-        );
-      }
+      const parsed = parseWorkbook(buf);
+      setWb(parsed); setFile(f); setPMap(autoMap(parsed.products.headers)); setVMap(parsed.variants ? autoMap(parsed.variants.headers) : {});
     } catch (e) {
-      toast.error("Couldn't read file", e instanceof Error ? e.message : "The file may be corrupt.");
-      reset();
-    } finally {
-      setParsing(false);
-    }
+      toast.error("Could not read the file", e instanceof Error ? e.message : "Unsupported file.");
+    } finally { setBusy(null); }
+  };
+  const onDrop = async (files: FileList | null) => { for (const f of Array.from(files ?? [])) await readFile(f); };
+
+  /** Step 2 → 3: group rows, match ZIP images, ask the server to validate. */
+  const validate = async () => {
+    if (!wb) return;
+    setBusy("Validating…");
+    try {
+      const grouped = groupProducts(wb, pMap, wb.variants ? vMap : undefined);
+      const imgs = matchZipImages(grouped, zip?.contents ?? null);
+      setProducts(grouped);
+      setImageInfo({ matched: imgs.matched, unmatched: imgs.unmatched, toUpload: imgs.uploads.length });
+      const r = await request<ValidationReport>("/products/import/validate", { method: "POST", body: { products: toPayload(grouped, true), mode, createCategories } });
+      setReport(r);
+      setStep(3);
+    } catch (e) {
+      toast.error("Validation failed", e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Please try again.");
+    } finally { setBusy(null); }
   };
 
-  const counts = rows
-    ? {
-        total: rows.length,
-        ready: rows.filter((r) => r.status === "ready").length,
-        warning: rows.filter((r) => r.status === "warning").length,
-        error: rows.filter((r) => r.status === "error").length,
-        imagesFound: zip?.images.size ?? 0,
-        imagesMatched: rows.filter((r) => r.imageMatch.primary).length,
-        imagesMissing: rows.filter((r) => r.status !== "error" && !r.imageMatch.primary).length,
-        // Category insight: how many distinct categories the file references,
-        // and which of those don't exist yet (the importer will create them).
-        categories: new Set(rows.map((r) => r.category.trim().toLowerCase()).filter(Boolean)).size,
-        newCategories: new Set(
-          rows
-            .map((r) => r.category.trim())
-            .filter((c) => c && !getCategories().some((k) => k.name.toLowerCase() === c.toLowerCase()))
-            .map((c) => c.toLowerCase()),
-        ).size,
-        duplicateSkus: rows.filter((r) => r.isDuplicate).length,
-      }
-    : null;
-
+  /** Step 5: upload matched ZIP images, then import everything in one request. */
   const runImport = async () => {
-    if (!rows) return;
-    setImporting(true);
-    cancelRef.current = false;
-    // Rows that will actually import (errors are skipped) and their total image
-    // count, so the progress bars have real denominators.
-    const importRows = rows.filter((r) => r.status !== "error");
-    const imagesTotal = zip
-      ? importRows.reduce((n, r) => n + (r.imageMatch.primary ? 1 : 0) + r.imageMatch.gallery.length, 0)
-      : 0;
-    setProgress({ productsDone: 0, productsTotal: importRows.length, imagesDone: 0, imagesTotal });
+    if (!products || !wb) return;
+    setStep(5);
     try {
-      let uploaded = 0;
-      let localFailed = 0;
-      let cancelled = false;
-      const payload: CatalogProduct[] = [];
-
-      for (const r of rows) {
-        if (r.status === "error") { localFailed++; continue; }
-        // Cancel stops between products — already-uploaded images stay on disk
-        // (harmless orphans) but nothing is written to the catalog.
-        if (cancelRef.current) { cancelled = true; break; }
-        setProgress((p) => (p ? { ...p, productsDone: p.productsDone + 1 } : p));
-
-        // ZIP images → uploaded to the server (files on disk, real URLs) so
-        // they survive refresh. Never blob:/base64 in the database.
-        let primaryUrl: string | undefined;
-        const gallery: string[] = [];
-        if (zip) {
-          // An individual image upload that fails must NOT fail the product —
-          // the product imports without that image (image is optional). We
-          // swallow the per-image error and just skip that URL.
-          const upload = async (key: string | undefined) => {
-            if (!key) return undefined;
-            const img = zip.images.get(key);
-            if (!img) return undefined;
-            try {
-              const url = await catalogApi.uploadImage(
-                img.path.split("/").pop() ?? key,
-                MIME_BY_EXT[img.ext] ?? "image/jpeg",
-                u8ToBase64(img.data),
-              );
-              uploaded++;
-              setProgress((p) => (p ? { ...p, imagesDone: p.imagesDone + 1 } : p));
-              return url;
-            } catch {
-              return undefined; // image upload failed → product still imports
-            }
-          };
-          primaryUrl = await upload(r.imageMatch.primary);
-          for (const g of r.imageMatch.gallery) {
-            const u = await upload(g);
-            if (u) gallery.push(u);
-          }
-        }
-        if (!primaryUrl && r.imageName && /^https?:\/\//i.test(r.imageName)) primaryUrl = r.imageName;
-
-        payload.push({
-          ...(r.data as CatalogProduct),
-          id: `PRD-${Math.floor(2000 + Math.random() * 8000)}`,
-          imageEmoji: primaryUrl ?? "📦",
-          images: primaryUrl ? [primaryUrl, ...gallery] : ["📦"],
-          variants: [{ id: "V1", label: "Default", sku: r.sku, moq: r.data.moq ?? 500, basePrice: r.data.basePrice ?? 0, inStock: r.data.stock ?? 0 }],
-          updatedAt: new Date().toISOString(),
-        });
+      const imgs = matchZipImages(products, zip?.contents ?? null);
+      const urlByFile = new Map<string, string>();
+      let done = 0;
+      for (const { name, image } of imgs.uploads) {
+        setBusy(`Uploading images ${done + 1} / ${imgs.uploads.length}…`);
+        const mime = MIME_BY_EXT[image.ext] ?? "image/jpeg";
+        try { urlByFile.set(name, await catalogApi.uploadImage(name, mime, u8ToBase64(image.data))); }
+        catch (e) { toast.error(`Image ${name} skipped`, e instanceof Error ? e.message : "Upload failed."); }
+        done++;
       }
-
-      // Cancelled before any DB write — nothing saved, report and stop.
-      if (cancelled) {
-        toast.info("Import cancelled", `No products were saved. ${uploaded} image(s) had already uploaded.`);
-        return;
-      }
-
-      // Upsert by SKU in PostgreSQL, then re-hydrate the store from the DB so
-      // the UI shows exactly what was saved (survives refresh + restart).
-      const server = await catalogApi.importBatch(payload, dupeMode, {
-        fileName: file?.name,
-        fileSizeBytes: file?.size,
-        imagesMatched: payload.filter((p) => Array.isArray(p.images) && p.images.some((u) => /^https?:|^\//.test(u))).length,
-      });
-      // Re-read BOTH products and the category tree from the database: an
-      // import creates categories/subcategories, and Admin + storefront must
-      // reflect them without a page reload.
-      await Promise.all([
-        hydrateCatalog(),
-        hydrateCategories(true),
-        hydrateCategoryTree(true),
-      ]);
-
-      setResult({
-        processed: rows.length,
-        created: server.created,
-        updated: server.updated,
-        skipped: server.skipped,
-        failed: localFailed + server.failed,
-        imagesUploaded: uploaded,
-      });
-      const serverErrs = server.errors.map((e) => `${e.sku}: ${e.error}`).join("; ");
-      toast.success(
-        "Import saved to database",
-        `Created ${server.created} · Updated ${server.updated} · Skipped ${server.skipped} · Failed ${localFailed + server.failed}${serverErrs ? ` · ${serverErrs}` : ""}`,
-      );
+      applyImageUrls(products, urlByFile);
+      setBusy("Importing products…");
+      const r = await request<ImportResult>("/products/import", { method: "POST", body: { format: "v2", products: toPayload(products), mode, createCategories, fileName: file?.name ?? zip?.name ?? null, fileSizeBytes: file?.size ?? null, imagesMatched: urlByFile.size } });
+      setResult(r);
+      await Promise.all([hydrateCatalog(), hydrateCategories(true), hydrateCategoryTree(true)]);
+      toast.success("Import complete", `${r.created} created, ${r.updated} updated, ${r.variantsWritten} variant(s) written.`);
     } catch (e) {
-      // No silent failures and no fake local-only fallback. The message must
-      // name the actual cause — `request()` already turns an unreachable API
-      // and non-JSON responses into specific text, so surface it verbatim
-      // rather than replacing it with a generic string.
-      toast.error(
-        "Import failed — nothing saved",
-        e instanceof Error ? e.message : "Unknown error while saving to the database.",
-      );
-    } finally {
-      setImporting(false);
-      setProgress(null);
-      cancelRef.current = false;
-    }
+      const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Import failed.";
+      toast.error("Nothing was imported", msg);
+      setStep(3);
+      if (e instanceof ApiError && e.code === "IMPORT_INVALID") void validate();
+    } finally { setBusy(null); }
   };
 
-  const errorRows = rows?.filter((r) => r.messages.length > 0) ?? [];
-  const importable = counts ? counts.ready + counts.warning : 0;
+  const grouped = useMemo(() => (wb ? (() => { try { return groupProducts(wb, pMap, wb.variants ? vMap : undefined); } catch { return []; } })() : []), [wb, pMap, vMap]);
+  const canMap = Boolean(wb) && Object.values(pMap).some((t) => "field" in t && t.field === "name") && (wb?.format === "two-sheet" ? Object.values(vMap).some((t) => "field" in t && t.field === "productId") : true);
 
   return (
     <>
-      <Button variant="secondary" icon={Upload} onClick={() => setOpen(true)}>Bulk Import</Button>
-      <Link to="/admin/catalog/imports" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold erp-text-muted hover:erp-text">
-        <History className="h-4 w-4" aria-hidden /> Import History
-      </Link>
-      <Dialog
-        open={open}
-        onClose={close}
-        title="Bulk import products"
-        description="Upload Excel, CSV, or ZIP to add products in bulk. ZIP files can include product images."
-        footer={
-          result ? (
-            <>
-              {errorRows.length > 0 && (
-                <Button
-                  variant="ghost"
-                  icon={Download}
-                  onClick={() => download("zolo-import-errors.csv", new Blob([buildErrorReportCsv(rows!)], { type: "text/csv" }))}
-                >
-                  Download Error Report
-                </Button>
-              )}
-              <Button variant="primary" onClick={close}>Done</Button>
-            </>
-          ) : rows && rows.length > 0 ? (
-            <>
-              <div className="mr-auto flex items-center gap-2 text-xs">
-                <span className="erp-text-muted">Duplicate SKU:</span>
-                <select
-                  value={dupeMode}
-                  onChange={(e) => setDupeMode(e.target.value as DupeMode)}
-                  className="h-8 rounded-md border erp-border erp-surface px-2 text-xs erp-text"
-                  aria-label="Duplicate SKU behaviour"
-                >
-                  <option value="update">Update existing product</option>
-                  <option value="skip">Skip existing product</option>
-                  <option value="create">Create new SKU</option>
-                </select>
-              </div>
-              {importing ? (
-                <Button variant="ghost" onClick={() => { cancelRef.current = true; }}>Cancel import</Button>
-              ) : (
-                <Button variant="ghost" onClick={reset}>Cancel</Button>
-              )}
-              <Button variant="primary" disabled={importable === 0} loading={importing} onClick={runImport}>
-                Import {importable} Product{importable === 1 ? "" : "s"}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button variant="ghost" icon={Download} onClick={downloadTemplate}>Download Template</Button>
-              <Button variant="ghost" icon={FileArchive} onClick={downloadZipExample}>Download ZIP Example</Button>
-              <Button variant="ghost" onClick={close}>Cancel</Button>
-            </>
-          )
-        }
-      >
-        {importing && progress && (
-          // ---------- Live progress (large imports) ----------
-          <div className="mb-4 space-y-3 rounded-xl border erp-border-soft erp-surface-2 p-4">
-            <div className="flex items-center gap-2 text-sm font-bold erp-text">
-              <Upload className="h-4 w-4 animate-pulse text-primary-500" aria-hidden /> Importing…
-            </div>
-            {file && (
-              <p className="text-xs erp-text-muted">{file.name} · {formatBytes(file.size)}</p>
-            )}
-            {[
-              { label: "Products", done: progress.productsDone, total: progress.productsTotal },
-              ...(progress.imagesTotal > 0 ? [{ label: "Images", done: progress.imagesDone, total: progress.imagesTotal }] : []),
-            ].map((bar) => (
-              <div key={bar.label}>
-                <div className="mb-1 flex justify-between text-xs erp-text-muted">
-                  <span>{bar.label}</span>
-                  <span className="tabular-nums">{bar.done.toLocaleString("en-IN")} / {bar.total.toLocaleString("en-IN")}</span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-full erp-surface">
-                  <div
-                    className="h-full rounded-full bg-primary-500 transition-all"
-                    style={{ width: `${bar.total ? Math.round((bar.done / bar.total) * 100) : 0}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {result ? (
-          // ---------- Result ----------
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm font-bold erp-text">
-              <CheckCircle2 className="h-5 w-5 text-emerald-500" aria-hidden /> Import completed
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-center">
-              {[
-                { label: "Processed", value: result.processed },
-                { label: "Created", value: result.created },
-                { label: "Updated", value: result.updated },
-                { label: "Skipped", value: result.skipped },
-                { label: "Failed", value: result.failed },
-                { label: "Images uploaded", value: result.imagesUploaded },
-              ].map((c) => (
-                <div key={c.label} className="rounded-lg border erp-border-soft erp-surface-2 p-2.5">
-                  <div className="text-lg font-extrabold erp-text">{c.value}</div>
-                  <div className="text-[11px] erp-text-muted">{c.label}</div>
-                </div>
-              ))}
-            </div>
-            {errorRows.length > 0 && (
-              <div className="max-h-36 overflow-y-auto rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-                {errorRows.slice(0, 20).map((r) => (
-                  <p key={r.row}>Row {r.row} · {r.sku || "—"} — {r.messages.join("; ")}</p>
-                ))}
-                {errorRows.length > 20 && <p>…and {errorRows.length - 20} more (see report).</p>}
-              </div>
-            )}
-            <p className="text-xs erp-text-faint">
-              Imported products are live in the Product Catalog and on the buyer website.
-            </p>
-          </div>
-        ) : !rows ? (
-          // ---------- Upload ----------
-          <div className="space-y-3">
-            {!file ? (
+      <Button variant="secondary" icon={FileUp} onClick={() => setOpen(true)}>Bulk Import</Button>
+      <Dialog open={open} onClose={close} width="max-w-5xl" title="Import products" description="Simple and variable products from Excel — validated before anything is written.">
+        <div className="space-y-4">
+          {/* stepper */}
+          <ol className="flex flex-wrap gap-1 text-xs" aria-label="Import steps">
+            {STEPS.map((s, i) => { const n = (i + 1) as Step; return (
+              <li key={s} className={cn("flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold", n === step ? "bg-primary-500 text-white" : n < step ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300" : "erp-surface-2 erp-text-faint")}>
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white/30 text-[10px]">{n < step ? "✓" : n}</span>{s}
+              </li>
+            ); })}
+          </ol>
+
+          {/* ---- 1 Upload ---- */}
+          {step === 1 && (
+            <div className="space-y-4">
               <div
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); }}
-                onClick={() => inputRef.current?.click()}
-                className={cn(
-                  "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-9 text-center transition-colors",
-                  dragOver ? "border-primary-500 bg-primary-50 dark:bg-primary-500/10" : "erp-border erp-surface-2",
-                )}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={(e) => { e.preventDefault(); setDragOver(false); void onDrop(e.dataTransfer.files); }}
+                className={cn("rounded-xl border-2 border-dashed p-6 text-center", dragOver ? "border-primary-500 bg-primary-50/50" : "erp-border")}
               >
-                <span className="flex h-11 w-11 items-center justify-center rounded-full erp-surface erp-text-muted">
-                  <Upload className="h-5 w-5" aria-hidden />
-                </span>
-                <p className="text-sm font-semibold erp-text">Drag &amp; drop your file here</p>
-                <p className="text-xs erp-text-faint">or click to browse</p>
-                <div className="mt-1 space-y-0.5 text-[11px] erp-text-faint">
-                  <p>Supported: XLSX, XLS, CSV, ZIP</p>
-                  <p>Spreadsheet max {formatBytes(LIMITS.SPREADSHEET_MAX_BYTES)} · ZIP with images max {formatBytes(LIMITS.ZIP_MAX_BYTES)}</p>
+                <FileSpreadsheet className="mx-auto h-8 w-8 erp-text-faint" aria-hidden />
+                <p className="mt-2 text-sm font-semibold erp-text">{wb ? `${file?.name ?? zip?.name} — ${wb.format === "two-sheet" ? `Products (${wb.products.rows.length}) + Variants (${wb.variants?.rows.length ?? 0})` : `${wb.products.rows.length} rows`}` : "Drop the Excel file here"}</p>
+                <p className="mt-1 text-xs erp-text-muted">.xlsx / .csv — single sheet (one row = one variant) or Products + Variants sheets. Optionally a .zip with images (or a .zip holding both).</p>
+                <div className="mt-3 flex flex-wrap justify-center gap-2">
+                  <Button size="sm" icon={Upload} onClick={() => fileRef.current?.click()} loading={busy === "Reading file…"}>{wb ? "Replace Excel" : "Choose Excel"}</Button>
+                  <Button size="sm" icon={Images} onClick={() => zipRef.current?.click()}>{zip ? `Images: ${zip.contents.images.size} (${zip.name})` : "Add images ZIP (optional)"}</Button>
                 </div>
-                <input ref={inputRef} type="file" accept={ACCEPT} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+                <input ref={fileRef} type="file" accept={ACCEPT} className="sr-only" onChange={(e) => void onDrop(e.target.files)} aria-label="Excel file" />
+                <input ref={zipRef} type="file" accept=".zip" className="sr-only" onChange={(e) => void onDrop(e.target.files)} aria-label="Images ZIP" />
               </div>
-            ) : (
-              <div className="flex items-center gap-3 rounded-xl border erp-border erp-surface-2 p-3">
-                {file.name.toLowerCase().endsWith(".zip")
-                  ? <FileArchive className="h-8 w-8 text-primary-500" aria-hidden />
-                  : <FileSpreadsheet className="h-8 w-8 text-emerald-500" aria-hidden />}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold erp-text">{file.name}</p>
-                  <p className="text-xs erp-text-faint">{file.name.split(".").pop()?.toUpperCase()} · {formatBytes(file.size)}</p>
-                </div>
-                {parsing ? (
-                  <span className="text-xs erp-text-muted">Parsing…</span>
-                ) : (
-                  <button onClick={reset} aria-label="Remove file" className="flex h-8 w-8 items-center justify-center rounded-lg erp-text-muted hover:erp-surface">
-                    <X className="h-4 w-4" aria-hidden />
-                  </button>
-                )}
+              <div className="flex flex-wrap items-center gap-2 rounded-lg erp-surface-2 p-3 text-xs erp-text-muted">
+                <Download className="h-4 w-4 shrink-0" aria-hidden />
+                <span className="font-semibold erp-text">Download Product Import Template:</span>
+                <Button size="sm" variant="ghost" onClick={() => download("zolo-simple-product-template.xlsx", buildTemplate("simple"))}>Simple Product Template</Button>
+                <Button size="sm" variant="ghost" onClick={() => download("zolo-variable-product-template.xlsx", buildTemplate("variable"))}>Variable Product Template</Button>
+                <span className="basis-full">Both include a “How to Import Products” sheet: one row = one variant, same Product ID = same product, unique SKUs, existing categories, numeric price / stock / MOQ, image file names matched from a ZIP.</span>
               </div>
-            )}
-            <p className="text-center text-xs erp-text-faint">
-              ZIP structure: <code className="font-mono">products.xlsx</code> + <code className="font-mono">images/SKU.jpg</code>.{" "}
-              <button onClick={downloadZipExample} className="font-semibold text-primary-600 hover:underline dark:text-primary-400">Download the ZIP example</button>.
-            </p>
-          </div>
-        ) : rows.length === 0 ? (
-          <div className="py-8 text-center text-sm erp-text-muted">No valid rows found. Check your file and try again.</div>
-        ) : (
-          // ---------- Preview ----------
-          <div className="space-y-3">
-            <p className="text-sm font-semibold erp-text">
-              {counts!.total} product{counts!.total === 1 ? "" : "s"} found
-              {zip && (
-                <span className="font-normal erp-text-muted">
-                  {" "}· {counts!.imagesFound} images found · {counts!.imagesMatched} matched · {counts!.imagesMissing} missing
-                </span>
+              <div className="flex justify-end"><Button variant="primary" disabled={!wb} onClick={() => setStep(2)}>Next: map columns</Button></div>
+            </div>
+          )}
+
+          {/* ---- 2 Map ---- */}
+          {step === 2 && wb && (
+            <div className="space-y-3">
+              <p className="text-xs erp-text-muted">Columns were detected automatically. Change any mapping below — pick “Option: …” for a column that varies between variants (Size, Color, Capacity, Ply…).</p>
+              {wb.format === "two-sheet" ? (
+                <>
+                  <MappingTable title={`Sheet “${wb.products.name}” → product fields`} headers={wb.products.headers} sample={wb.products.rows.slice(0, 3)} mapping={pMap} onChange={setPMap} scope="product" />
+                  <MappingTable title={`Sheet “${wb.variants!.name}” → variant fields`} headers={wb.variants!.headers} sample={wb.variants!.rows.slice(0, 3)} mapping={vMap} onChange={setVMap} scope="variant" />
+                </>
+              ) : (
+                <MappingTable title={`Sheet “${wb.products.name}” — one row per variant`} headers={wb.products.headers} sample={wb.products.rows.slice(0, 3)} mapping={pMap} onChange={setPMap} scope="single" />
               )}
-              <span className="font-normal erp-text-muted"> · {counts!.error} invalid</span>
-            </p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs erp-text-muted">{grouped.length} product(s) · {grouped.reduce((n, p) => n + p.variants.length, 0)} variant(s) detected{!canMap && " — map Product Name (and Product ID on the Variants sheet) to continue"}</span>
+                <div className="flex gap-2"><Button onClick={() => setStep(1)}>Back</Button><Button variant="primary" disabled={!canMap} loading={busy === "Validating…"} onClick={validate}>Next: validate</Button></div>
+              </div>
+            </div>
+          )}
 
-            <div className="grid grid-cols-3 gap-2 text-center sm:grid-cols-6">
-              {[
-                { label: "Total", value: counts!.total },
-                { label: "Ready", value: counts!.ready },
-                { label: "Warnings", value: counts!.warning },
-                { label: "Errors", value: counts!.error },
-                { label: "Images Found", value: counts!.imagesMatched },
-                { label: "Images Missing", value: counts!.imagesMissing },
-                { label: "Categories", value: counts!.categories },
-                { label: "New Categories", value: counts!.newCategories },
-                { label: "Duplicate SKUs", value: counts!.duplicateSkus },
-              ].map((c) => (
-                <div key={c.label} className="rounded-lg border erp-border-soft erp-surface-2 p-2">
-                  <div className="text-lg font-extrabold erp-text">{c.value}</div>
-                  <div className="text-[11px] erp-text-muted">{c.label}</div>
+          {/* ---- 3 Validate ---- */}
+          {step === 3 && report && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[
+                  [`${report.summary.products} products detected`, `${report.summary.simple} simple · ${report.summary.variable} variable`],
+                  [`${report.summary.variants} variants detected`, `${report.summary.toCreate} new · ${report.summary.toUpdate} to update${report.summary.toSkip ? ` · ${report.summary.toSkip} skipped` : ""}`],
+                  [`${report.summary.categoriesMatched} categories matched`, report.summary.newCategories.length ? `${report.summary.newCategories.length} will be created` : "all existing"],
+                  [`${report.summary.subcategoriesMatched} subcategories matched`, imageInfo ? `${imageInfo.matched} image file(s) matched` : ""],
+                ].map(([t, sub]) => (
+                  <div key={t} className="rounded-lg border erp-border p-3"><div className="flex items-center gap-1.5 text-sm font-semibold erp-text"><CheckCircle2 className="h-4 w-4 text-emerald-500" aria-hidden />{t}</div><div className="mt-0.5 text-[11px] erp-text-muted">{sub}</div></div>
+                ))}
+              </div>
+              {report.errors.length > 0 && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-500/30 dark:bg-red-500/10">
+                  <div className="flex items-center gap-1.5 text-sm font-bold text-red-700 dark:text-red-300"><XCircle className="h-4 w-4" aria-hidden />{report.errors.length} error{report.errors.length === 1 ? "" : "s"} — fix these in the file (or the mapping) and validate again</div>
+                  <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs text-red-800 dark:text-red-200">{report.errors.map((e, i) => <li key={i}><span className="font-mono font-semibold">{e.product}</span>: {e.message}</li>)}</ul>
                 </div>
-              ))}
+              )}
+              {(report.warnings.length > 0 || (imageInfo?.unmatched.length ?? 0) > 0) && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+                  <div className="flex items-center gap-1.5 text-sm font-bold text-amber-800 dark:text-amber-200"><AlertTriangle className="h-4 w-4" aria-hidden />{report.warnings.length + (imageInfo?.unmatched.length ?? 0)} warning(s) — the import can proceed</div>
+                  <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-xs text-amber-900 dark:text-amber-100">
+                    {imageInfo?.unmatched.map((n) => <li key={`img-${n}`}>Image <span className="font-mono">{n}</span> is not in the ZIP</li>)}
+                    {report.warnings.map((w, i) => <li key={i}><span className="font-mono font-semibold">{w.product}</span>: {w.message}</li>)}
+                  </ul>
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-4 rounded-lg erp-surface-2 p-3 text-xs">
+                <label className="flex items-center gap-2 erp-text"><span className="font-semibold">Existing products:</span>
+                  <select value={mode} onChange={(e) => setMode(e.target.value as "update" | "skip")} className={cn(SELECT, "w-auto")}><option value="update">Update them</option><option value="skip">Skip them</option></select>
+                </label>
+                <label className="flex items-center gap-2 erp-text"><input type="checkbox" checked={createCategories} onChange={(e) => setCreateCategories(e.target.checked)} className="h-4 w-4 accent-primary-500" /> Create missing categories / subcategories</label>
+                <Button size="sm" variant="ghost" loading={busy === "Validating…"} onClick={validate}>Validate again</Button>
+              </div>
+              <div className="flex justify-between"><Button onClick={() => setStep(2)}>Back</Button><Button variant="primary" disabled={!report.ok} onClick={() => setStep(4)}>Next: preview</Button></div>
             </div>
+          )}
 
-            <div className="max-h-64 overflow-x-auto overflow-y-auto rounded-lg border erp-border">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 z-10 erp-surface-2">
-                  <tr className="text-left erp-text-faint">
-                    {["Image", "SKU", "Product", "Category", "Price", "Image Status", "Status", "Issues"].map((h) => (
-                      <th key={h} className="whitespace-nowrap px-2.5 py-2 font-bold uppercase tracking-wide">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => {
-                    const issues = [...r.errors, ...r.warnings];
-                    return (
-                      <tr key={r.row} className="border-t erp-border-soft align-top">
-                        <td className="px-2.5 py-1.5">
-                          <Thumb src={urlFor(r.imageMatch.primary) ?? (r.imageName && /^https?:/.test(r.imageName) ? r.imageName : undefined)} size="h-9 w-9" />
-                        </td>
-                        <td className="max-w-28 truncate px-2.5 py-1.5 font-mono erp-text" title={r.sku || undefined}>{r.sku || "—"}</td>
-                        <td className="max-w-40 truncate px-2.5 py-1.5 erp-text" title={r.name || undefined}>{r.name || "—"}</td>
-                        <td className="max-w-28 truncate px-2.5 py-1.5 erp-text-muted" title={r.category || undefined}>{r.category || "—"}</td>
-                        <td className="whitespace-nowrap px-2.5 py-1.5 erp-text-muted">{r.price != null ? `₹${r.price.toLocaleString("en-IN")}` : "Quote"}</td>
-                        <td className="whitespace-nowrap px-2.5 py-1.5">
-                          {r.imageMatch.primary ? (
-                            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-                              {r.imageMatch.source === "embedded" ? "Original (embedded)"
-                                : r.imageMatch.source === "sku" ? "Matched by SKU"
-                                : r.imageMatch.source === "column" ? "Matched by name"
-                                : "External URL"}
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1 erp-text-faint">
-                              <ImageOff className="h-3.5 w-3.5" aria-hidden />
-                              Missing
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-2.5 py-1.5">
-                          <span className="flex items-center gap-1.5">
-                            {r.status === "ready" && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />}
-                            {r.status === "warning" && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
-                            {r.status === "error" && <XCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />}
-                            <Badge tone={r.status === "ready" ? "success" : r.status === "warning" ? "warning" : "danger"}>
-                              {r.status === "ready" ? "Ready" : r.status === "warning" ? "Warning" : "Error"}
-                            </Badge>
-                          </span>
-                        </td>
-                        <td className="max-w-52 px-2.5 py-1.5">
-                          {issues.length === 0 ? (
-                            <span className="erp-text-faint">—</span>
-                          ) : (
-                            <span className="block" title={issues.join(" · ")}>
-                              {r.errors.map((e) => (
-                                <span key={e} className="mr-1 inline-block whitespace-nowrap text-red-600 dark:text-red-400">✕ {e}</span>
-                              ))}
-                              {r.warnings.map((w) => (
-                                <span key={w} className="mr-1 inline-block whitespace-nowrap text-amber-600 dark:text-amber-400">⚠ {w}</span>
-                              ))}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          {/* ---- 4 Preview ---- */}
+          {step === 4 && report && (
+            <div className="space-y-3">
+              <p className="text-xs erp-text-muted">What will be written — {report.summary.products} product(s), {report.summary.variants} variant(s). Nothing has been saved yet.</p>
+              <ul className="max-h-[50vh] divide-y erp-border overflow-y-auto rounded-lg border erp-border">
+                {report.preview.map((p) => { const isOpen = expanded.has(p.ref); return (
+                  <li key={p.ref} className="px-3 py-2">
+                    <button type="button" onClick={() => setExpanded((s) => { const n = new Set(s); if (n.has(p.ref)) n.delete(p.ref); else n.add(p.ref); return n; })} className="flex w-full items-center gap-2 text-left" aria-expanded={isOpen}>
+                      {p.kind === "variable" ? (isOpen ? <ChevronDown className="h-4 w-4 erp-text-faint" /> : <ChevronRight className="h-4 w-4 erp-text-faint" />) : <span className="w-4" />}
+                      <span className="font-semibold erp-text">{p.name}</span>
+                      <Badge tone={p.kind === "variable" ? "primary" : "neutral"}>{p.kind === "variable" ? `${p.variants.length} variants` : `simple · ${p.sku}`}</Badge>
+                      <Badge tone={p.action === "create" ? "success" : p.action === "update" ? "info" : "neutral"}>{p.action}</Badge>
+                      <span className="ml-auto truncate text-xs erp-text-muted">{p.category}{p.subcategory ? ` › ${p.subcategory}` : ""}{p.images ? ` · ${p.images} image(s)` : ""}</span>
+                    </button>
+                    {p.kind === "variable" && isOpen && (
+                      <ul className="mt-1 space-y-0.5 pl-6 text-xs">
+                        {p.variants.map((v, i) => <li key={v.sku} className="flex items-center gap-2 erp-text-muted"><span className="erp-text-faint">{i === p.variants.length - 1 ? "└──" : "├──"}</span><span className="font-semibold erp-text">{v.label || "Default"}</span><span className="font-mono">{v.sku}</span><span>{inr(v.priceMinor)}</span><span>stock {v.stock}</span><span>MOQ {v.moq}</span>{v.image && <span className="text-emerald-600">image</span>}</li>)}
+                      </ul>
+                    )}
+                  </li>
+                ); })}
+              </ul>
+              <div className="flex justify-between"><Button onClick={() => setStep(3)}>Back</Button><Button variant="primary" icon={FileUp} onClick={runImport}>Import Products</Button></div>
             </div>
-            <p className="text-xs erp-text-faint">
-              <strong>{importable}</strong> importable (Ready + Warnings) · <strong>{counts!.error}</strong> skipped.
-              Warnings still import — e.g. "Image not found" imports the product without an image. Only Error rows are skipped.
-            </p>
-          </div>
-        )}
+          )}
+
+          {/* ---- 5 Import ---- */}
+          {step === 5 && (
+            <div className="space-y-4 py-2">
+              {busy && <div className="flex items-center gap-2 text-sm erp-text"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />{busy}</div>}
+              {result && (
+                <>
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+                    <div className="flex items-center gap-2 font-bold"><CheckCircle2 className="h-5 w-5" aria-hidden />Import complete</div>
+                    <p className="mt-1">{result.created} product(s) created · {result.updated} updated · {result.skipped} skipped · {result.variantsWritten} variant(s) written{zip ? ` · ${formatBytes(zip.contents.totalUncompressedBytes)} of images processed` : ""}.</p>
+                  </div>
+                  <ul className="max-h-48 divide-y erp-border overflow-y-auto rounded-lg border erp-border text-xs">
+                    {result.products.map((p) => <li key={p.id} className="flex items-center gap-2 px-3 py-1.5"><Badge tone={p.action === "create" ? "success" : "info"}>{p.action}</Badge><Link to={`/admin/catalog/${p.id}`} className="font-semibold text-primary-600 hover:underline dark:text-primary-400">{p.name}</Link><span className="font-mono erp-text-muted">{p.sku}</span><span className="erp-text-faint">{p.kind}</span></li>)}
+                  </ul>
+                  <div className="flex justify-end gap-2">{result.importId && <Link to="/admin/catalog/imports"><Button>Import history</Button></Link>}<Button variant="primary" onClick={close}>Done</Button></div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </Dialog>
     </>
   );

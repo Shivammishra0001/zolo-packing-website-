@@ -47,19 +47,34 @@ async function buildPricedItems(userId, tx = prisma) {
     include: { priceTiers: { orderBy: { minQty: "asc" } } },
   });
   const byId = new Map(products.map((p) => [p.id, p]));
+  const variantIds = items.map((i) => i.variantId).filter(Boolean);
+  const variants = variantIds.length ? await tx.productVariant.findMany({ where: { id: { in: variantIds } } }) : [];
+  const vById = new Map(variants.map((v) => [v.id, v]));
 
   const priced = items.map((it) => {
     const p = byId.get(it.productId);
     if (!p || p.deletedAt || p.status !== "active") {
       throw badRequest(`"${p?.name ?? "A product"}" is no longer available`, "PRODUCT_UNAVAILABLE");
     }
-    if (it.quantity > availableStock(p)) {
-      throw badRequest(`"${p.name}" has only ${availableStock(p)} in stock`, "INSUFFICIENT_STOCK");
+    // VARIABLE product: the variant is the sellable unit — its price, stock
+    // and MOQ are used, and the line remembers exactly which one.
+    const v = it.variantId ? vById.get(it.variantId) : null;
+    if (p.hasVariants && (!v || v.deletedAt || !v.isActive || v.productId !== p.id)) {
+      throw badRequest(`The chosen option of "${p.name}" is no longer available`, "VARIANT_UNAVAILABLE");
+    }
+    const availableFor = v ? Math.max(0, v.stock - v.reservedStock) : availableStock(p);
+    if (it.quantity > availableFor) {
+      throw badRequest(`"${p.name}${v ? ` (${v.label})` : ""}" has only ${availableFor} in stock`, "INSUFFICIENT_STOCK");
+    }
+    const moqFor = v ? v.moq : p.moq;
+    if (it.quantity < moqFor) {
+      throw badRequest(`"${p.name}${v ? ` (${v.label})` : ""}" has a minimum order of ${moqFor}`, "BELOW_MOQ");
     }
     // Tiered B2B pricing: the highest minQty not exceeding this quantity wins.
     // Falls back to the product's effective base price when it has no ladder.
-    const tierPrice = p.priceTiers?.length ? resolveUnitPriceMinor(p, it.quantity) : null;
-    const unitPriceMinor = tierPrice ?? effectiveUnitPriceMinor(p);
+    // Variant lines use the variant's own price (tiers are per product).
+    const tierPrice = !v && p.priceTiers?.length ? resolveUnitPriceMinor(p, it.quantity) : null;
+    const unitPriceMinor = v ? v.priceMinor : tierPrice ?? effectiveUnitPriceMinor(p);
     const lineTotalMinor = unitPriceMinor * it.quantity;
     // Coupon restrictions need to know how the line was priced.
     const isSaleItem = Boolean(p.salePriceMinor && p.salePriceMinor > 0 && p.salePriceMinor < p.basePriceMinor);
@@ -73,21 +88,28 @@ async function buildPricedItems(userId, tx = prisma) {
       product: p,
       productId: p.id,
       productName: p.name,
-      sku: p.sku,
-      variant: it.variant,
+      sku: v?.sku ?? p.sku,
+      variant: v?.label ?? it.variant,
+      variantId: v?.id ?? null,
+      variantAttributes: v?.attributes ?? {},
+      moq: moqFor,
       quantity: it.quantity,
       unitPriceMinor,
       lineTotalMinor,
       isSaleItem,
       isTierDiscounted,
       specs: {
+        ...(v?.attributes ?? {}),
         dimensions:
-          p.length || p.width || p.height
-            ? { length: p.length, width: p.width, height: p.height, unit: p.dimUnit }
+          (v?.length || p.length)
+            ? v?.length
+              ? { length: v.length, width: v.width, height: v.height, unit: v.dimUnit }
+              : { length: p.length, width: p.width, height: p.height, unit: p.dimUnit }
             : undefined,
+        weightGrams: v?.weightGrams ?? p.weightGrams ?? undefined,
         gsm: p.gsm ?? undefined,
-        color: p.color ?? undefined,
-        material: p.material ?? undefined,
+        color: v?.attributes?.Color ?? p.color ?? undefined,
+        material: v?.material ?? p.material ?? undefined,
         printing: p.printing ?? undefined,
       },
     };
@@ -252,6 +274,14 @@ export async function placeOrder(user, input) {
     // reads-then-writes. The ledger row is appended immediately after in the
     // same transaction, so Product.stock and the ledger still reconcile.
     for (const it of priced) {
+      if (it.variantId) {
+        // Variant stock is the source of truth; the parent's roll-up follows.
+        const res = await tx.productVariant.updateMany({
+          where: { id: it.variantId, stock: { gte: it.quantity } },
+          data: { stock: { decrement: it.quantity } },
+        });
+        if (res.count === 0) throw conflict(`"${it.productName} (${it.variant})" just went out of stock`, "INSUFFICIENT_STOCK");
+      }
       const res = await tx.product.updateMany({
         where: { id: it.productId, stock: { gte: it.quantity } },
         data: { stock: { decrement: it.quantity } },
@@ -259,9 +289,10 @@ export async function placeOrder(user, input) {
       if (res.count === 0) throw conflict(`"${it.productName}" just went out of stock`, "INSUFFICIENT_STOCK");
       const movement = await postLedger(tx, {
         productId: it.productId,
+        variantId: it.variantId ?? null,
         type: "DISPATCH",
         delta: -it.quantity,
-        reason: "Order placed",
+        reason: `Order placed${it.variant ? ` — ${it.variant}` : ""}`,
         refType: "Order",
         actorId: user.id,
       });
@@ -304,6 +335,9 @@ export async function placeOrder(user, input) {
             productName: it.productName,
             sku: it.sku,
             variant: it.variant,
+            variantId: it.variantId ?? null,
+            variantAttributes: it.variantAttributes ?? {},
+            moq: it.moq ?? null,
             specs: it.specs ?? {},
             quantity: it.quantity,
             unitPriceMinor: it.unitPriceMinor,
@@ -476,6 +510,7 @@ function shapeOrder(o, includeUser = false) {
     billingAddress: { name: o.billName, phone: o.billPhone, line1: o.billLine1, line2: o.billLine2, city: o.billCity, state: o.billState, postalCode: o.billPostalCode, country: o.billCountry },
     items: (o.items ?? []).map((it) => ({
       id: it.id, productId: it.productId, productName: it.productName, sku: it.sku, variant: it.variant,
+      variantId: it.variantId ?? null, variantAttributes: it.variantAttributes ?? {}, moq: it.moq ?? null,
       specs: it.specs, quantity: it.quantity, unitPriceMinor: it.unitPriceMinor,
       discountMinor: it.discountMinor, taxMinor: it.taxMinor, lineTotalMinor: it.lineTotalMinor,
     })),
@@ -512,9 +547,11 @@ export async function cancelMyOrder(userId, orderId, reason) {
     // Restock through the ledger so the return is explainable.
     for (const it of order.items) {
       if (!it.productId) continue;
+      if (it.variantId) await tx.productVariant.updateMany({ where: { id: it.variantId }, data: { stock: { increment: it.quantity } } });
       await tx.product.updateMany({ where: { id: it.productId }, data: { stock: { increment: it.quantity } } });
       await postLedger(tx, {
         productId: it.productId,
+        variantId: it.variantId ?? null,
         type: "RETURN",
         delta: it.quantity,
         reason: "Order cancelled by customer",
@@ -628,9 +665,11 @@ export async function adminUpdateStatus(adminUser, orderId, { status, note, cour
     if (status === "CANCELLED") {
       for (const it of order.items) {
         if (!it.productId) continue;
+        if (it.variantId) await tx.productVariant.updateMany({ where: { id: it.variantId }, data: { stock: { increment: it.quantity } } });
         await tx.product.updateMany({ where: { id: it.productId }, data: { stock: { increment: it.quantity } } });
         await postLedger(tx, {
           productId: it.productId,
+          variantId: it.variantId ?? null,
           type: "RETURN",
           delta: it.quantity,
           reason: note ?? "Cancelled by admin",
@@ -707,7 +746,7 @@ export async function adminUpdateStatus(adminUser, orderId, { status, note, cour
  *
  * `delta` is signed and must match what was applied to Product.stock.
  */
-async function postLedger(tx, { productId, type, delta, reason = null, refType = null, refId = null, actorId = null }) {
+async function postLedger(tx, { productId, variantId = null, type, delta, reason = null, refType = null, refId = null, actorId = null }) {
   const product = await tx.product.findUnique({ where: { id: productId }, select: { stock: true } });
   if (!product) return; // product vanished mid-transaction; nothing to record
 
@@ -734,7 +773,7 @@ async function postLedger(tx, { productId, type, delta, reason = null, refType =
   }
 
   return tx.stockMovement.create({
-    data: { productId, type, quantity: delta, balance: product.stock, reason, refType, refId, actorId },
+    data: { productId, variantId, type, quantity: delta, balance: product.stock, reason, refType, refId, actorId },
   });
 }
 

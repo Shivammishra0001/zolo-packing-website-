@@ -184,7 +184,7 @@ export async function approveAnalysis(analysisId, { overrides = {}, dupeMode = "
     stock: 0, // no invented inventory
     imageEmoji: imageUrl,
     images: [imageUrl],
-    variants: [],
+    hasVariants: false,
   };
 
   let product;

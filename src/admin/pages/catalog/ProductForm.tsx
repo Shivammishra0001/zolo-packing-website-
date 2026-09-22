@@ -13,6 +13,8 @@ import { useToast } from "@/components/ui/Toast";
 import { Button, Drawer, Select } from "../../components/ui";
 import { createProduct, saveProduct } from "../../catalog-store";
 import { useCategories, hydrateCategories } from "../../categories-store";
+import { VariantsEditor, blankDraft, newKey, type VariantDraft } from "./VariantsEditor";
+import type { VariantOption } from "../../types";
 import { CatalogApiError, describeCatalogError, type ProductWriteInput } from "@/lib/catalog-api";
 import type { CatalogProduct, ProductStatus } from "../../types";
 
@@ -57,7 +59,7 @@ function FieldError({ msg }: { msg?: string }) {
   return msg ? <span role="alert" className="mt-1 block text-[11px] font-medium text-red-600 dark:text-red-400">{msg}</span> : null;
 }
 
-type Errors = Partial<Record<"name" | "sku" | "category" | "price" | "moq" | "stock" | "dims" | "gsm" | "images" | "featuredOrder" | "newArrivalOrder" | "form", string>>;
+type Errors = Partial<Record<"name" | "sku" | "category" | "price" | "moq" | "stock" | "dims" | "gsm" | "images" | "featuredOrder" | "newArrivalOrder" | "variants" | "form", string>>;
 
 /** On/off switch in the admin style (role=switch, keyboard operable). */
 function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
@@ -120,6 +122,11 @@ export function ProductFormDrawer({
   const [newArrivalOrder, setNewArrivalOrder] = useState("");
   const [imgs, setImgs] = useState<DraftImage[]>([]);
   const [primary, setPrimary] = useState(0);
+  // Simple = this product is sold as one item. Variable = its variants are sold.
+  const [kind, setKind] = useState<"simple" | "variable">("simple");
+  const [options, setOptions] = useState<VariantOption[]>([]);
+  const [variants, setVariants] = useState<VariantDraft[]>([]);
+  const [brand, setBrand] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -161,16 +168,42 @@ export function ProductFormDrawer({
       setNewArrivalOrder(product.newArrivalOrder != null ? String(product.newArrivalOrder) : "");
       setImgs((product.images ?? []).filter(isStoredUrl).map((url, i) => ({ key: `u${i}-${url}`, url, preview: url })));
       setPrimary(0);
+      setBrand(product.brand ?? "");
+      setKind(product.kind === "variable" ? "variable" : "simple");
+      setOptions((product.variantOptions ?? []).map((o) => ({ name: o.name, values: [...o.values] })));
+      setVariants((product.variants ?? []).map((v) => ({
+        key: newKey(), id: v.id, sku: v.sku, skuTouched: true, attributes: { ...v.attributes },
+        price: v.priceMinor ? String(v.priceMinor / 100) : "", compareAt: v.compareAtPriceMinor ? String(v.compareAtPriceMinor / 100) : "",
+        stock: String(v.stock), moq: String(v.moq), image: v.image ?? null, isActive: v.isActive,
+      })));
     } else {
       setName(""); setSku(""); setCategoryId(""); setSubcategoryId(""); setDescription("");
       setLen(""); setWid(""); setHei(""); setUnit("cm"); setGsm(""); setMaterial(""); setProductType(""); setColor("");
       setPrice(""); setMoq(""); setStock(""); setLowLevel(""); setStatus("draft");
       setIsFeatured(false); setFeaturedOrder(""); setIsNewArrival(false); setNewArrivalOrder("");
       setImgs([]); setPrimary(0);
+      setBrand(""); setKind("simple"); setOptions([]); setVariants([]);
     }
     // categories may arrive after the drawer opens; re-run then so the edit
     // form pre-selects the right option instead of showing a blank dropdown.
   }, [open, product, categories]);
+
+  /** Simple → Variable: the product's own SKU / size / color / price / stock become variant #1 (nothing is lost). */
+  const switchKind = (next: "simple" | "variable") => {
+    setKind(next);
+    if (next === "variable" && variants.length === 0) {
+      const seeded: VariantOption[] = [];
+      const attributes: Record<string, string> = {};
+      const sizeValue = product?.sizeLabel || (len.trim() && wid.trim() && hei.trim() ? `${len}x${wid}x${hei} ${unit}` : "");
+      if (sizeValue) { seeded.push({ name: "Size", values: [sizeValue] }); attributes.Size = sizeValue; }
+      if (color.trim()) { seeded.push({ name: "Color", values: [color.trim()] }); attributes.Color = color.trim(); }
+      if (!seeded.length) seeded.push({ name: "Size", values: [] });
+      setOptions(seeded);
+      if (Object.keys(attributes).length) {
+        setVariants([blankDraft(attributes, sku, seeded, { sku: sku.trim().toUpperCase(), skuTouched: true, price, stock, moq })]);
+      }
+    }
+  };
 
   // ---- images ----
   const addFiles = (files: FileList | File[]) => {
@@ -221,12 +254,25 @@ export function ProductFormDrawer({
     if (sku.trim().length < 2) e.sku = "SKU is required.";
     else if (!/^[A-Za-z0-9][A-Za-z0-9._\-/ ]*$/.test(sku.trim())) e.sku = "SKU may only contain letters, numbers, dots, dashes and underscores.";
     if (!categoryId) e.category = "Choose a category.";
-    const priceN = Number(price);
-    if (price.trim() === "" || !Number.isFinite(priceN) || priceN < 0) e.price = "Enter a valid price (0 = quotation-based).";
-    const moqN = Number(moq);
-    if (moq.trim() === "" || !Number.isInteger(moqN) || moqN < 1) e.moq = "MOQ must be a whole number of at least 1.";
-    const stockN = stock.trim() === "" ? 0 : Number(stock);
-    if (!Number.isInteger(stockN) || stockN < 0) e.stock = "Stock must be a whole number of 0 or more.";
+    if (kind === "simple") {
+      const priceN = Number(price);
+      if (price.trim() === "" || !Number.isFinite(priceN) || priceN < 0) e.price = "Enter a valid price (0 = quotation-based).";
+      const moqN = Number(moq);
+      if (moq.trim() === "" || !Number.isInteger(moqN) || moqN < 1) e.moq = "MOQ must be a whole number of at least 1.";
+      const stockN = stock.trim() === "" ? 0 : Number(stock);
+      if (!Number.isInteger(stockN) || stockN < 0) e.stock = "Stock must be a whole number of 0 or more.";
+    } else {
+      const clean = options.filter((o) => o.name.trim());
+      if (!clean.length || clean.some((o) => !o.values.length)) e.variants = "Add at least one option with values.";
+      else if (!variants.length) e.variants = "Generate or add at least one variant.";
+      else {
+        const bad = variants.find((v) => !/^[A-Za-z0-9][A-Za-z0-9._\-/]*$/.test(v.sku.trim()) || !/^(\d+(\.\d{1,2})?)?$/.test(v.price.trim()) || !/^(\d+(\.\d{1,2})?)?$/.test(v.compareAt.trim()) || !/^\d*$/.test(v.stock.trim()) || !/^\d*$/.test(v.moq.trim()) || (v.moq.trim() && Number(v.moq) < 1));
+        if (bad) e.variants = `Check the highlighted values on variant "${bad.sku || "?"}" (SKU, price, stock and MOQ must be valid numbers).`;
+        const skus = variants.map((v) => v.sku.trim().toUpperCase());
+        const dup = skus.find((x, i) => skus.indexOf(x) !== i);
+        if (dup) e.variants = `SKU ${dup} is used by two variants.`;
+      }
+    }
     const dims = [len, wid, hei].map((v) => v.trim());
     const filled = dims.filter(Boolean).length;
     if (filled > 0 && filled < 3) e.dims = "Enter length, width and height together (or leave all blank).";
@@ -251,7 +297,7 @@ export function ProductFormDrawer({
       return changed ? next : cur;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, sku, categoryId, price, moq, stock, len, wid, hei, gsm, isFeatured, featuredOrder, isNewArrival, newArrivalOrder]);
+  }, [name, sku, categoryId, price, moq, stock, len, wid, hei, gsm, isFeatured, featuredOrder, isNewArrival, newArrivalOrder, kind, options, variants]);
 
   const save = async () => {
     const e = validate();
@@ -286,9 +332,19 @@ export function ProductFormDrawer({
         material: material.trim() || null,
         productType: productType.trim() || null,
         color: color.trim() || null,
-        basePriceMinor: Math.round(Number(price) * 100),
-        moq: Number(moq),
-        stock: stock.trim() === "" ? 0 : Number(stock),
+        brand: brand.trim() || null,
+        ...(kind === "simple"
+          ? { kind: "simple" as const, basePriceMinor: Math.round(Number(price) * 100), moq: Number(moq), stock: stock.trim() === "" ? 0 : Number(stock) }
+          : {
+            kind: "variable" as const,
+            variantOptions: options.filter((o) => o.name.trim()).map((o) => ({ name: o.name.trim(), values: o.values })),
+            variants: variants.map((v, i) => ({
+              ...(v.id ? { id: v.id } : {}), sku: v.sku.trim().toUpperCase(), attributes: v.attributes,
+              priceMinor: v.price.trim() ? Math.round(Number(v.price) * 100) : 0,
+              compareAtPriceMinor: v.compareAt.trim() ? Math.round(Number(v.compareAt) * 100) : null,
+              stock: v.stock.trim() ? Number(v.stock) : 0, moq: v.moq.trim() ? Number(v.moq) : 1, image: v.image, isActive: v.isActive, sortOrder: i,
+            })),
+          }),
         lowStockLevel: lowLevel.trim() ? Number(lowLevel) : null,
         status,
         // Off ⇒ order is cleared; on with an empty order ⇒ sorted after ordered picks.
@@ -316,6 +372,7 @@ export function ProductFormDrawer({
             const p = i.path;
             if (p === "name") next.name = i.message;
             else if (p === "sku") next.sku = i.message;
+            else if (p.startsWith("variants") || p.startsWith("variantOptions")) next.variants = i.message;
             else if (p === "basePriceMinor") next.price = i.message;
             else if (p === "moq") next.moq = i.message;
             else if (p === "stock") next.stock = i.message;
@@ -482,29 +539,49 @@ export function ProductFormDrawer({
         </Section>
 
         {/* Specifications */}
+        <Section title="Product type">
+          <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Product type">
+            {([["simple", "Simple Product", "Sold as one item — one SKU, one price, one stock figure."], ["variable", "Variable Product", "Comes in sizes, colours or other options — each combination has its own SKU, price, stock and MOQ."]] as const).map(([k, title, hint]) => (
+              <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => switchKind(k)} className={cn("rounded-lg border p-3 text-left transition-colors", kind === k ? "border-primary-500 bg-primary-50 dark:bg-primary-500/10" : "erp-border hover:erp-surface-2")}>
+                <span className="block text-sm font-semibold erp-text">{title}</span>
+                <span className="mt-0.5 block text-[11px] erp-text-muted">{hint}</span>
+              </button>
+            ))}
+          </div>
+          {editing && product?.kind === "variable" && kind === "simple" && <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300">Switching to Simple retires this product's variants; its own price and stock below become the sellable values.</p>}
+        </Section>
+
+        {kind === "variable" && (
+          <Section title="Variant configuration">
+            <VariantsEditor baseSku={sku} options={options} onOptionsChange={setOptions} variants={variants} onVariantsChange={setVariants} error={errors.variants} />
+          </Section>
+        )}
+
         <Section title="Specifications">
           <div className={twoCol}>
+            <label className="block"><span className={LABEL}>Brand</span><input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Optional" className={FIELD} /></label>
             <label className="block"><span className={LABEL}>Material</span><input value={material} onChange={(e) => setMaterial(e.target.value)} placeholder="e.g. Kraft, Corrugated E-flute" className={FIELD} /></label>
             <label className="block"><span className={LABEL}>GSM</span><input type="number" min={0} value={gsm} onChange={(e) => setGsm(e.target.value)} className={cn(FIELD, errors.gsm && FIELD_ERR)} /><FieldError msg={errors.gsm} /></label>
-            <label className="block"><span className={LABEL}>Color</span><input value={color} onChange={(e) => setColor(e.target.value)} placeholder="e.g. Natural Kraft" className={FIELD} /></label>
+            {kind === "simple" && <label className="block"><span className={LABEL}>Color</span><input value={color} onChange={(e) => setColor(e.target.value)} placeholder="e.g. Natural Kraft" className={FIELD} /></label>}
           </div>
+          {kind === "variable" && <p className="text-[11px] erp-text-faint">Colour, size, price, stock and MOQ are set per variant above.</p>}
         </Section>
 
         {/* Commercial */}
-        <Section title="Commercial">
+        {kind === "simple" && <Section title="Commercial">
           <div className={twoCol}>
             <label className="block"><span className={LABEL}>Price (₹) *</span><input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className={cn(FIELD, errors.price && FIELD_ERR)} aria-invalid={!!errors.price} /><FieldError msg={errors.price} /></label>
             <label className="block"><span className={LABEL}>MOQ *</span><input type="number" min={1} value={moq} onChange={(e) => setMoq(e.target.value)} className={cn(FIELD, errors.moq && FIELD_ERR)} aria-invalid={!!errors.moq} /><FieldError msg={errors.moq} /></label>
           </div>
-        </Section>
+        </Section>}
 
         {/* Inventory */}
         <Section title="Inventory">
           <div className={twoCol}>
-            <label className="block"><span className={LABEL}>{editing ? "Stock quantity" : "Opening stock"}</span><input type="number" min={0} value={stock} onChange={(e) => setStock(e.target.value)} className={cn(FIELD, errors.stock && FIELD_ERR)} /><FieldError msg={errors.stock} /></label>
+            {kind === "simple" && <label className="block"><span className={LABEL}>{editing ? "Stock quantity" : "Opening stock"}</span><input type="number" min={0} value={stock} onChange={(e) => setStock(e.target.value)} className={cn(FIELD, errors.stock && FIELD_ERR)} /><FieldError msg={errors.stock} /></label>}
             <label className="block"><span className={LABEL}>Low stock level</span><input type="number" min={0} value={lowLevel} onChange={(e) => setLowLevel(e.target.value)} className={FIELD} /></label>
           </div>
-          <p className="text-[11px] erp-text-faint">Stock status (In stock / Low / Out of stock) is derived from quantity and never changes the product status.</p>
+          <p className="text-[11px] erp-text-faint">{kind === "variable" ? "Stock is kept per variant; the product total is the sum of its variants." : "Stock status (In stock / Low / Out of stock) is derived from quantity and never changes the product status."}</p>
         </Section>
 
         {/* Status */}

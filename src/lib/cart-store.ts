@@ -96,10 +96,12 @@ export function lineTotalMinor(it: StoredItem): number {
 
 export async function addToCart(input: {
   productId: string;
+  /** The exact ProductVariant for a variable product (required by the server for those). */
+  variantId?: string | null;
   variant?: string | null;
   quantity: number;
 }): Promise<void> {
-  const view = await cartApi.add({ productId: input.productId, variant: input.variant ?? null, quantity: input.quantity });
+  const view = await cartApi.add({ productId: input.productId, variantId: input.variantId ?? null, variant: input.variant ?? null, quantity: input.quantity });
   hydrated = true;
   setItems(view.items);
 }

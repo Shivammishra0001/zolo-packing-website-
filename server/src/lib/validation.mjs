@@ -239,6 +239,7 @@ export const changePasswordSchema = z.object({
 export const addToCartSchema = z.object({
   productId: z.string().min(1),
   variant: z.string().max(200).optional().nullable(),
+  variantId: z.string().max(64).optional().nullable(),
   quantity: z.number().int().min(1).max(1_000_000),
 });
 

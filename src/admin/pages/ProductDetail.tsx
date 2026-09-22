@@ -156,13 +156,13 @@ export default function ProductDetail() {
     { key: "label", header: "Variant", render: (v) => <span className="font-semibold erp-text">{v.label}</span> },
     { key: "sku", header: "SKU", render: (v) => <span className="font-mono text-xs erp-text-muted">{v.sku}</span> },
     { key: "moq", header: "MOQ", render: (v) => <span className="tabular-nums erp-text-muted">{v.moq.toLocaleString("en-IN")}</span>, hideBelow: "sm" },
-    { key: "price", header: "Base Price", render: (v) => <span className="tabular-nums erp-text">{priceLabel(v.basePrice)}</span> },
+    { key: "price", header: "Price", render: (v) => <span className="tabular-nums erp-text">{priceLabel(v.priceMinor / 100)}</span> },
     {
       key: "stock",
       header: "In Stock",
       render: (v) => (
-        <span className={v.inStock === 0 ? "font-semibold text-red-600 dark:text-red-400" : "erp-text"}>
-          {v.inStock.toLocaleString("en-IN")}
+        <span className={v.stock === 0 ? "font-semibold text-red-600 dark:text-red-400" : "erp-text"}>
+          {v.stock.toLocaleString("en-IN")}
         </span>
       ),
     },

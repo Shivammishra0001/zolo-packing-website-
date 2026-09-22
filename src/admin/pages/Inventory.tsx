@@ -172,7 +172,7 @@ function FinishedGoods() {
           emoji: p.imageEmoji,
           variant: v.label,
           sku: v.sku,
-          inStock: v.inStock,
+          inStock: v.stock,
           status: p.status,
         })),
       ),

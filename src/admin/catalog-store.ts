@@ -24,7 +24,7 @@ function slugify(s: string): string {
 
 /** Ensure coherent derived fields (stockStatus, slug) on every record. */
 function normalize(p: CatalogProduct): CatalogProduct {
-  const stock = p.stock ?? p.variants.reduce((s, v) => s + v.inStock, 0);
+  const stock = p.stock ?? p.variants.reduce((s, v) => s + v.stock, 0);
   const low = p.lowStockLevel ?? Math.max(Math.round(p.moq / 2), 1);
   return {
     ...p,

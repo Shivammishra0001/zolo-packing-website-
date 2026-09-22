@@ -14,6 +14,7 @@ import { put, getUrl, remove as removeStored, supportedMime } from "../lib/stora
 import { badRequest, conflict, notFound } from "../lib/http.mjs";
 import { resolveCategory, resolveSubcategory, hasImageMagic, IMAGE_MAX_BYTES, slugify } from "./catalog.mjs";
 import { recordEvent } from "./events.mjs";
+import { syncVariants, listVariants, rollUp } from "./variants.mjs";
 
 const MAX_IMAGES = 10;
 const UPLOAD_TOKEN = /^upload:(\d+)$/;
@@ -62,7 +63,14 @@ export const productWriteSchema = z.object({
   // Ordered gallery: existing URLs and/or "upload:N" tokens into imageUploads.
   images: z.array(z.string().max(1000)).max(MAX_IMAGES).optional(),
   imageUploads: z.array(uploadSchema).max(MAX_IMAGES).optional(),
-  variants: z.array(z.record(z.string(), z.unknown())).optional(),
+  brand: optText(120),
+  manufacturer: optText(120),
+  // SIMPLE (default) or VARIABLE. A variable product carries its option axes
+  // and the FULL variant list (see services/variants.mjs); a simple product
+  // sends neither. Legacy callers may still send `variants` as free JSON.
+  kind: z.enum(["simple", "variable"]).optional(),
+  variantOptions: z.array(z.object({ name: z.string(), values: z.array(z.string()) })).max(6).optional(),
+  variants: z.array(z.record(z.string(), z.unknown())).max(500).optional(),
 }).strict();
 
 /** Cross-field rules zod cannot express per key. */
@@ -201,7 +209,7 @@ async function uniqueSlug(name, sku, tx, excludeId = null) {
 const SCALARS = [
   "name", "description", "length", "width", "height", "dimUnit", "gsm", "color", "material",
   "productType", "thickness", "sizeLabel", "basePriceMinor", "salePriceMinor", "moq", "stock",
-  "lowStockLevel", "status", "variants",
+  "lowStockLevel", "status", "brand", "manufacturer",
   "isFeatured", "featuredOrder", "isNewArrival", "newArrivalOrder",
 ];
 
@@ -245,18 +253,22 @@ export async function createProduct(input, { actorId = null } = {}) {
           subcategoryId: subcategory?.id ?? null,
           images,
           imageEmoji: images[0] ?? "📦",
-          variants: p.variants ?? [],
+          hasVariants: p.kind === "variable",
         },
       });
-      if ((p.stock ?? 0) > 0) {
+      if (p.kind === "variable") {
+        // Variable product: the variant rows are the sellable units; the
+        // parent's price/stock/moq become roll-ups (set by syncVariants).
+        await syncVariants(tx, row, p.variants, p.variantOptions);
+      } else if ((p.stock ?? 0) > 0) {
         // Opening stock goes into the inventory ledger so Inventory → history
         // can explain where the on-hand quantity came from.
         await tx.stockMovement.create({
           data: { productId: row.id, type: "RECEIPT", quantity: p.stock, balance: p.stock, reason: "Opening stock (product created)", refType: "product_form", actorId },
         });
       }
-      await recordEvent({ eventType: "product.created", actorId, entityType: "Product", entityId: row.id, metadata: { sku: row.sku, name: row.name, category: row.category, images: images.length } }, tx);
-      return row;
+      await recordEvent({ eventType: "product.created", actorId, entityType: "Product", entityId: row.id, metadata: { sku: row.sku, name: row.name, category: row.category, images: images.length, kind: p.kind ?? "simple" } }, tx);
+      return tx.product.findUnique({ where: { id: row.id } });
     });
     return product;
   } catch (e) {
@@ -300,15 +312,28 @@ export async function updateProduct(id, input, { actorId = null } = {}) {
         data.images = images;
         data.imageEmoji = images[0] ?? "📦";
       }
+      if (p.kind === "simple" && existing.hasVariants) {
+        // Variable → simple: the variants stop being sold; the product's own
+        // sku/price/stock (from this payload) are the sellable unit again.
+        await tx.productVariant.updateMany({ where: { productId: id, deletedAt: null }, data: { deletedAt: new Date(), isActive: false } });
+        data.hasVariants = false; data.variantOptions = [];
+      }
       const row = await tx.product.update({ where: { id }, data });
-      if (p.stock !== undefined && p.stock !== existing.stock) {
+      if (p.kind === "variable" || (existing.hasVariants && p.kind !== "simple" && p.variants !== undefined)) {
+        await syncVariants(tx, row, p.variants ?? (await listVariants(id, tx)), p.variantOptions ?? existing.variantOptions);
+      } else if (p.kind !== "simple" && existing.hasVariants) {
+        // Untouched variable product (e.g. rails/status edit): keep roll-ups honest.
+        await rollUp(tx, id);
+      }
+      if (!row.hasVariants && p.kind !== "variable" && !existing.hasVariants && p.stock !== undefined && p.stock !== existing.stock) {
         // Signed delta + resulting balance, matching services/inventory.mjs.
         await tx.stockMovement.create({
           data: { productId: id, type: "ADJUSTMENT", quantity: p.stock - existing.stock, balance: p.stock, reason: "Edited in product form", refType: "product_form", actorId },
         });
       }
       await recordEvent({ eventType: "product.updated", actorId, entityType: "Product", entityId: id, metadata: { sku: row.sku, fields: Object.keys(data) } }, tx);
-      return row;
+      // Re-read: the variant sync / roll-up may have changed price, stock, kind.
+      return tx.product.findUnique({ where: { id } });
     });
     if (images) {
       const dropped = existing.images.filter((u) => !images.includes(u));

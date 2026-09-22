@@ -246,13 +246,41 @@ export type StockChangeReason =
   | "correction"
   | "other";
 
+/** One option axis of a variable product, e.g. { name: "Size", values: ["6x6x4", "8x8x6"] }. */
+export interface VariantOption {
+  name: string;
+  values: string[];
+}
+
+/**
+ * One sellable combination of a VARIABLE product (a ProductVariant row).
+ * Money is integer paise, like the API.
+ */
 export interface ProductVariant {
   id: string;
-  label: string;
+  productId?: string;
   sku: string;
+  /** Option values keyed by option name: { Size: "6x6x4", Color: "Kraft Brown" } */
+  attributes: Record<string, string>;
+  /** "6x6x4 / Kraft Brown" */
+  label: string;
+  priceMinor: number;
+  compareAtPriceMinor: number | null;
+  costMinor?: number | null;
+  stock: number;
+  reservedStock?: number;
+  available?: number;
   moq: number;
-  basePrice: number;
-  inStock: number;
+  weightGrams: number | null;
+  length: number | null;
+  width: number | null;
+  height: number | null;
+  dimUnit: string | null;
+  material: string | null;
+  thickness: string | null;
+  image: string | null;
+  isActive: boolean;
+  sortOrder: number;
 }
 
 export interface ProductDimensions {
@@ -271,7 +299,12 @@ export interface CatalogProduct {
   status: ProductStatus;
   basePrice: number;
   moq: number;
+  /** "simple" = this row is sold; "variable" = its variants are sold. */
+  kind: "simple" | "variable";
+  variantOptions: VariantOption[];
   variants: ProductVariant[];
+  brand?: string | null;
+  manufacturer?: string | null;
   /** Emoji stand-in used as the primary thumbnail (no real image backend yet). */
   imageEmoji: string;
   updatedAt: string;
