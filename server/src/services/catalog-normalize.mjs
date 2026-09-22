@@ -41,6 +41,42 @@ export function slugify(value, fallback = "item") {
 /** Canonical comparison key: "  BOXES " and "boxes" collapse to one. */
 export const categoryKey = (name) => String(name ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
+/**
+ * Multi-value cells. Size and Colour are ONE string column each; a cell may
+ * hold several values separated by comma, pipe, semicolon or a line break.
+ * " / " is deliberately NOT a separator: "Yellow / Black" (two-tone tape) and
+ * "1/2 inch" are single values that exist in the live catalog.
+ *
+ * Mirrors src/lib/product-options.ts — keep the two in sync.
+ */
+export const MULTI_VALUE_SEPARATOR = /\s*[,|;\r\n]+\s*/;
+export const MULTI_VALUE_JOINER = ", ";
+export const MAX_OPTION_VALUES = 50;
+
+/** Trimmed, de-duplicated (case-insensitive, first spelling wins) values. */
+export function splitMultiValue(raw) {
+  if (raw == null) return [];
+  const parts = Array.isArray(raw) ? raw.flatMap((v) => splitMultiValue(v)) : String(raw).split(MULTI_VALUE_SEPARATOR);
+  const seen = new Set();
+  const out = [];
+  for (const part of parts) {
+    const value = part.trim().replace(/\s+/g, " ");
+    if (!value || isBlank(value)) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+    if (out.length >= MAX_OPTION_VALUES) break;
+  }
+  return out;
+}
+
+/** Canonical stored form for a multi-value column: "a, b, c" (null when empty). */
+export function joinMultiValue(values) {
+  const clean = splitMultiValue(values ?? []);
+  return clean.length ? clean.join(MULTI_VALUE_JOINER) : null;
+}
+
 const UNIT_ALIASES = { inch: "in", inches: "in", in: "in", '"': "in", cm: "cm", centimeter: "cm", mm: "mm", millimeter: "mm" };
 
 /**
@@ -51,26 +87,37 @@ const UNIT_ALIASES = { inch: "in", inches: "in", in: "in", '"': "in", cm: "cm", 
  * 2D sheet ("3 x 4 inch") is not a length/width/height and would be garbage in
  * those columns — it is preserved verbatim in sizeLabel instead.
  *
- * The raw text is ALWAYS returned as sizeLabel so nothing from the source is
+ * The full list is ALWAYS returned as sizeLabel so nothing from the source is
  * lost, including for rows that do parse.
+ *
+ * A cell may list SEVERAL sizes ("6x6x4, 8x8x6 | 10x8x6 in"). Every value is
+ * kept in sizeLabel (canonical "a, b, c" form — the existing column, no new
+ * table); `dimensions` come from the FIRST value that is a 3-axis measurement.
  */
 export function parseSize(raw) {
-  const label = text(raw);
-  if (!label) return { dimensions: null, sizeLabel: null };
+  const sizes = splitMultiValue(raw);
+  if (!sizes.length) return { dimensions: null, sizeLabel: null, sizes };
 
+  let dimensions = null;
+  for (const label of sizes) {
+    const parsed = parseOneSize(label);
+    if (parsed) { dimensions = parsed; break; }
+  }
+  return { dimensions, sizeLabel: sizes.join(MULTI_VALUE_JOINER), sizes };
+}
+
+/** One size string → structured dimensions, or null when it is not L×W×H. */
+export function parseOneSize(label) {
   const m = /^\s*(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)\s*([a-z"]+)?\s*$/i.exec(label);
-  if (!m) return { dimensions: null, sizeLabel: label }; // capacity / 2D / A4 / free text
+  if (!m) return null; // capacity / 2D / A4 / free text
 
   const unitRaw = (m[4] ?? "in").toLowerCase();
   const unit = UNIT_ALIASES[unitRaw];
   // A trailing token we don't recognise as a length unit (e.g. "12 x 4 x 4 oz")
   // means this is not a dimension we can trust.
-  if (!unit) return { dimensions: null, sizeLabel: label };
+  if (!unit) return null;
 
-  return {
-    dimensions: { length: Number(m[1]), width: Number(m[2]), height: Number(m[3]), unit },
-    sizeLabel: label,
-  };
+  return { length: Number(m[1]), width: Number(m[2]), height: Number(m[3]), unit };
 }
 
 const VALID_STATUS = new Set(["draft", "active", "archived"]);
@@ -98,8 +145,8 @@ export function normalizeRow(raw) {
   const category = text(pick("category", "Category"));
   const subcategory = text(pick("subcategory", "Subcategory"));
 
-  const { dimensions, sizeLabel } = parseSize(pick("size", "Size", "sizeLabel"));
-  if (sizeLabel && !dimensions) {
+  const { dimensions, sizeLabel, sizes } = parseSize(pick("size", "Size", "sizeLabel"));
+  if (sizeLabel && !dimensions && sizes.length === 1) {
     warnings.push(`Size "${sizeLabel}" is not a 3-axis measurement — kept as a size label`);
   }
 
@@ -127,7 +174,8 @@ export function normalizeRow(raw) {
     name,
     description: text(pick("description", "Description")),
     material: text(pick("material", "Material")),
-    color: text(pick("color", "Color", "Colour")),
+    // Multi-value colours ("Brown | White") are stored canonically as "Brown, White".
+    color: joinMultiValue(pick("color", "Color", "Colour")),
     productType: text(pick("type", "Type", "productType")),
     thickness: text(pick("thickness", "Thickness")),
     sizeLabel,

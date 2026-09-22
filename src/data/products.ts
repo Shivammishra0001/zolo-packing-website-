@@ -16,8 +16,14 @@ moq: number; // minimum order quantity
   accent: string;
   description: string;
   shortDesc: string;
-sizes: string[];
+  /** Every size the product offers (from the stored size label / dimensions). Empty = no size info. */
+  sizes: string[];
+  /** Every colour the product offers (from the stored colour column). Empty = no colour info. */
+  colors: string[];
+  /** Material chips: material, thickness/ply, GSM. Never colours. */
   materials: string[];
+  /** Short spec tag for cards, e.g. "5 Ply • Kraft Paper". */
+  specTag?: string;
   /** Only present when real review data exists — never fabricated. */
   rating?: number;
   reviews?: number;

@@ -202,3 +202,108 @@ test("error report lists clean rows too and attributes a field", () => {
   assert.ok(lines.some((l) => l.includes("READY")));
   assert.ok(lines.some((l) => l.includes("ERROR") && l.includes("SKU")));
 });
+
+// ---------- Multi-value Size / Colour cells ----------
+
+test("multi-value Size cell keeps every size in sizeLabel; dims come from the first 3-axis value", () => {
+  const [r] = validateRows([{ sku: "S1", name: "Multi", category: "Boxes", size: "6x6x4 in | 8x8x6 in\n10 x 8 x 6 in" }], opts());
+  assert.equal(r.data.sizeLabel, "6x6x4 in, 8x8x6 in, 10 x 8 x 6 in");
+  assert.deepEqual(r.data.dimensions, { length: 6, width: 6, height: 4, unit: "in" });
+});
+
+test("multi-value Colour cell is stored comma-separated; ' / ' stays inside one value", () => {
+  const [r] = validateRows([{ sku: "C1", name: "Tape", category: "Boxes", color: "Yellow / Black | White; Brown, White" }], opts());
+  assert.equal(r.data.color, "Yellow / Black, White, Brown");
+});
+
+// ---------- Category / subcategory validation against the real tree ----------
+
+const TREE = [
+  { id: "c1", name: "Corrugated Boxes", slug: "corrugated-boxes", subcategories: [{ id: "s1", name: "Mailer Boxes", slug: "corrugated-boxes-mailer-boxes" }] },
+  { id: "c2", name: "Paper Bags", slug: "paper-bags", subcategories: [{ id: "s2", name: "Kraft Bags", slug: "paper-bags-kraft-bags" }] },
+];
+
+test("category is matched case/whitespace-insensitively and stamped with the official DB name + id", () => {
+  const [r] = validateRows([{ sku: "K1", name: "Box", category: "  corrugated   boxes ", subcategory: "MAILER BOXES" }], opts({ categoryTree: TREE }));
+  assert.equal(r.status, "ready");
+  assert.equal(r.data.category, "Corrugated Boxes");
+  assert.equal(r.data.categoryId, "c1");
+  assert.equal(r.data.subcategory, "Mailer Boxes");
+  assert.equal(r.data.subcategoryId, "s1");
+});
+
+test("misspelled category is a blocking ERROR with the closest existing category suggested", () => {
+  const [r] = validateRows([{ sku: "K2", name: "Box", category: "Corrugated Box" }], opts({ categoryTree: TREE }));
+  assert.equal(r.status, "error");
+  assert.ok(r.errors.some((m) => m === 'Category "Corrugated Box" does not exist. Possible existing category: "Corrugated Boxes"'), r.errors.join(" | "));
+});
+
+test("subcategory must belong to the row's category", () => {
+  const [r] = validateRows([{ sku: "K3", name: "Box", category: "Corrugated Boxes", subcategory: "Kraft Bags" }], opts({ categoryTree: TREE }));
+  assert.equal(r.status, "error");
+  assert.ok(r.errors.some((m) => m.startsWith('Subcategory "Kraft Bags" belongs to "Paper Bags", not "Corrugated Boxes"')), r.errors.join(" | "));
+});
+
+test("with createMissingCategories the unknown category becomes a warning and the row imports", () => {
+  const [r] = validateRows([{ sku: "K4", name: "Box", category: "Corrugated Box" }], opts({ categoryTree: TREE, createMissingCategories: true }));
+  assert.equal(r.status, "warning");
+  assert.ok(r.warnings.some((m) => m.includes("will be created")));
+});
+
+// ---------- ZIP image matching: SKU → Product ID → filename → name slug ----------
+
+const img = (path) => {
+  const file = path.split("/").pop().toLowerCase();
+  const segs = path.toLowerCase().split("/");
+  return [path.toLowerCase(), { path, base: file.replace(/\.[a-z0-9]+$/, ""), ext: file.split(".").pop(), dir: segs.length > 1 ? segs[segs.length - 2] : "", data: new Uint8Array() }];
+};
+const zip = (...paths) => new Map(paths.map(img));
+
+test("SKU-N.jpg series and folder-per-SKU both attach every image, SKU file first", () => {
+  const m = matchImages("BOX001", undefined, zip("images/BOX001.jpg", "images/BOX001-2.jpg", "images/BOX001-1.jpg", "BOX001/front.jpg", "other.jpg"));
+  assert.equal(m.primary, "images/box001.jpg");
+  assert.equal(m.source, "sku");
+  assert.deepEqual(m.gallery, ["images/box001-1.jpg", "images/box001-2.jpg", "box001/front.jpg"]);
+});
+
+test("series without a bare SKU file still matches (BOX001-1.jpg becomes the primary)", () => {
+  const m = matchImages("BOX001", undefined, zip("BOX001-1.jpg", "BOX001-3.jpg", "BOX001-2.jpg"));
+  assert.equal(m.primary, "box001-1.jpg");
+  assert.deepEqual(m.gallery, ["box001-2.jpg", "box001-3.jpg"]);
+});
+
+test("folder-per-SKU images do not collide across SKUs (same filename in two folders)", () => {
+  const images = zip("BOX001/image1.jpg", "BOX002/image1.jpg");
+  assert.equal(images.size, 2);
+  assert.equal(matchImages("BOX001", undefined, images).primary, "box001/image1.jpg");
+  assert.equal(matchImages("BOX002", undefined, images).primary, "box002/image1.jpg");
+});
+
+test("Product ID and product-name slug are fallbacks after SKU", () => {
+  const images = zip("PRD-4282.png", "kraft-mailer-box.jpg");
+  const byId = matchImages("NOPE", undefined, images, { productId: "PRD-4282", name: "Kraft Mailer Box" });
+  assert.equal(byId.primary, "prd-4282.png");
+  assert.equal(byId.source, "productId");
+  const byName = matchImages("NOPE", undefined, images, { name: "Kraft Mailer Box" });
+  assert.equal(byName.primary, "kraft-mailer-box.jpg");
+  assert.equal(byName.source, "name");
+});
+
+test("Image column lists several files; missing ones are per-file warnings, not errors", () => {
+  const images = zip("a.jpg", "b.jpg");
+  const m = matchImages("X1", "a.jpg | b.jpg, c.jpg", images);
+  assert.equal(m.primary, "a.jpg");
+  assert.equal(m.source, "column");
+  assert.deepEqual(m.gallery, ["b.jpg"]);
+  assert.deepEqual(m.missing, ["c.jpg"]);
+  const [r] = validateRows([{ sku: "X1", name: "Box", category: "Boxes", imageName: "a.jpg | b.jpg, c.jpg" }], opts({ zipImages: images }));
+  assert.equal(r.status, "warning");
+  assert.ok(r.warnings.includes("Image not found: c.jpg"));
+  assert.ok(!r.warnings.some((w) => w.startsWith("Image not found —")), "no generic missing-image warning when a primary was found");
+});
+
+test("Image column files are attached IN ADDITION to the SKU match (never overwrite)", () => {
+  const m = matchImages("BOX001", "extra.jpg", zip("BOX001.jpg", "extra.jpg"));
+  assert.equal(m.primary, "box001.jpg");
+  assert.deepEqual(m.gallery, ["extra.jpg"]);
+});

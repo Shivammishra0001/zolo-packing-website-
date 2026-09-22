@@ -2,8 +2,18 @@
 // Run: npm test  (from server/)
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { startServer, stopServer, api, adminToken } from "./helpers.mjs";
+import { startServer, stopServer, api as rawApi, adminToken } from "./helpers.mjs";
 import { prisma } from "../src/lib/prisma.mjs";
+
+// The taxonomy tests in this file exercise category CREATION during import.
+// The API only creates categories when the admin explicitly opts in (the
+// importer's "Create missing categories" checkbox), so every import here sends
+// that flag. The opt-OUT path (unknown category = row error + suggestion) has
+// its own tests below.
+const api = (path, opts) =>
+  path === "/products/import" && opts?.body
+    ? rawApi(path, { ...opts, body: { createMissingCategories: true, ...opts.body } })
+    : rawApi(path, opts);
 
 const rnd = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 const created = [];
@@ -442,4 +452,57 @@ test("a category with products cannot be archived — it is deactivated instead;
   // The product keeps its link rather than being orphaned.
   const later = await prisma.product.findUnique({ where: { sku: s } });
   assert.equal(later.categoryId, product.categoryId);
+});
+
+test("unknown category is a row ERROR with a close-match suggestion — nothing is created", async () => {
+  const cat = `Corrugated Boxes ${rnd()}`;
+  createdCats.push(cat);
+  // Seed the real category first (opt-in create), then import a misspelling WITHOUT the flag.
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: sku("SEED"), name: "Seed", category: cat }], mode: "update" } });
+  const before = await prisma.category.count();
+  const typo = cat.replace("Boxes", "Box");
+  const s = sku("TYPO");
+  const { body } = await rawApi("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "Typo Row", category: typo }], mode: "update" } });
+  assert.equal(body.data.failed, 1);
+  assert.equal(body.data.created, 0);
+  const err = body.data.errors.find((e) => e.sku === s);
+  assert.match(err.error, /does not exist/);
+  assert.ok(err.error.includes(`did you mean "${cat}"`), err.error);
+  assert.equal(await prisma.category.count(), before, "no category row was created");
+  assert.equal(await prisma.product.findUnique({ where: { sku: s } }), null);
+});
+
+test("category match is case/whitespace-insensitive and keeps the official DB name", async () => {
+  const cat = `Rigid Boxes ${rnd()}`;
+  createdCats.push(cat);
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: sku("OFF"), name: "Official", category: cat }], mode: "update" } });
+  const s = sku("CASE");
+  const { body } = await rawApi("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "Lower", category: `  ${cat.toLowerCase()}  ` }], mode: "update" } });
+  assert.equal(body.data.failed, 0);
+  const p = await prisma.product.findUnique({ where: { sku: s } });
+  assert.equal(p.category, cat);
+  assert.ok(p.categoryId);
+});
+
+test("unknown SUBcategory under a real category is a row error; subcategory must belong to that category", async () => {
+  const cat = `Bags ${rnd()}`;
+  createdCats.push(cat, `Paper Bags`);
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: sku("SUB"), name: "Seed", category: cat, subcategory: "Paper Bags" }], mode: "update" } });
+  const s = sku("BADSUB");
+  const { body } = await rawApi("/products/import", { token: ADMIN, method: "POST", body: { products: [{ sku: s, name: "Bad Sub", category: cat, subcategory: "Paper Bag" }], mode: "update" } });
+  assert.equal(body.data.failed, 1);
+  const err = body.data.errors.find((e) => e.sku === s);
+  assert.match(err.error, /Subcategory "Paper Bag" does not exist under/);
+  assert.ok(err.error.includes('did you mean "Paper Bags"'), err.error);
+});
+
+test("multi-value Size and Colour cells are stored as comma-separated lists; dims come from the first 3-axis size", async () => {
+  const s = sku("MULTI");
+  await api("/products/import", { token: ADMIN, method: "POST", body: { products: [
+    { sku: s, name: "Multi Box", category: "Boxes", size: "6x6x4 in | 8x8x6 in\n10 x 8 x 6 in", color: "Brown, White | Black; Brown" },
+  ], mode: "update" } });
+  const p = await prisma.product.findUnique({ where: { sku: s } });
+  assert.equal(p.sizeLabel, "6x6x4 in, 8x8x6 in, 10 x 8 x 6 in");
+  assert.deepEqual([p.length, p.width, p.height, p.dimUnit], [6, 6, 4, "in"]);
+  assert.equal(p.color, "Brown, White, Black");
 });

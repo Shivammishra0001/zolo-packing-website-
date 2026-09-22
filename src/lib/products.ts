@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useCatalog, getProduct as getCatalogProductById } from "@/admin/catalog-store";
 import type { CatalogProduct } from "@/admin/types";
 import type { Product } from "@/data/products";
+import { formatDimensions, normalizeProductColors, normalizeProductSizes } from "@/lib/product-options";
 
 // ============================================================
 // Unified product source for the BUYER website.
@@ -66,6 +67,16 @@ export function toStoreProduct(p: CatalogProduct): Product & {
   const realImages = [...new Set((p.images ?? []).filter(isRealImageUrl))];
   const images = realImages.length ? realImages : [p.imageEmoji];
   const dims = p.dimensions;
+  const sizes = normalizeProductSizes(p.sizeLabel, dims);
+  const colors = normalizeProductColors(p.color);
+  // Material chips are material facts only (material, ply/thickness, GSM).
+  // The old adapter put the colour here, which is why the detail page showed
+  // "Natural Kraft" under "Choose Material" and nothing under colours.
+  const materials = [
+    ...(p.thickness ? [p.thickness] : []),
+    ...(p.material ? [p.material] : []),
+    ...(p.gsm ? [`${p.gsm} GSM`] : []),
+  ];
   const inStock = (p.stock ?? 0) > 0 && p.stockStatus !== "out_of_stock";
   return {
     id: p.id,
@@ -83,8 +94,14 @@ export function toStoreProduct(p: CatalogProduct): Product & {
     accent: "#f97316",
     description: p.description ?? `${p.name} — premium custom packaging.`,
     shortDesc: p.description?.slice(0, 80) ?? p.name,
-    sizes: dims ? [`${dims.length}×${dims.width}×${dims.height} ${dims.unit}`] : ["Standard"],
-    materials: [p.color ?? "Kraft", ...(p.gsm ? [`${p.gsm} GSM`] : [])],
+    // Sizes and colours come from the EXISTING string columns (sizeLabel,
+    // color) via the shared normalizer — "6x6x4, 8x8x6" or "A | B" both become
+    // chips. Empty arrays mean "no information": the UI hides the label instead
+    // of printing "Standard" / "Kraft" placeholders that were never entered.
+    sizes,
+    colors,
+    materials,
+    specTag: materials.length ? materials.slice(0, 2).join(" • ") : undefined,
     // No rating/reviews/bestseller: there is no review or sales-rank data yet,
     // and fabricating "4.6 (24)" for every product misled buyers. The UI hides
     // these elements when the fields are absent.
@@ -98,9 +115,9 @@ export function toStoreProduct(p: CatalogProduct): Product & {
     newArrivalOrder: p.newArrivalOrder ?? null,
     inStock,
     features: [
-      dims ? `Dimensions ${dims.length}×${dims.width}×${dims.height} ${dims.unit}` : "Custom sizing",
-      p.gsm ? `${p.gsm} GSM board` : "Premium board",
-      p.color ? `Colour: ${p.color}` : "Custom colours",
+      sizes.length ? `Sizes: ${sizes.join(", ")}` : dims ? `Dimensions ${formatDimensions(dims)}` : "Custom sizing",
+      p.material ? `Material: ${p.material}` : p.gsm ? `${p.gsm} GSM board` : "Premium board",
+      colors.length ? `Colours: ${colors.join(", ")}` : "Custom colours",
       `MOQ ${p.moq.toLocaleString("en-IN")}`,
     ],
     // extras

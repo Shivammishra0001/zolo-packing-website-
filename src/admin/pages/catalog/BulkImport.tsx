@@ -33,6 +33,7 @@ import {
   parseZip,
   validateRows,
   type ParsedRow,
+  type RawRow,
   type ZipContents,
   type ZipImage,
 } from "./bulk-import-lib";
@@ -135,6 +136,13 @@ export function BulkImportButton() {
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  // Optional second upload: an images-only ZIP next to a plain spreadsheet
+  // ("products.xlsx + products.zip together").
+  const [imagesFile, setImagesFile] = useState<File | null>(null);
+  // Parsed inputs kept so validation can re-run when an option changes
+  // (e.g. ticking "Create missing categories") without re-reading the files.
+  const [analysis, setAnalysis] = useState<{ raws: RawRow[]; images: Map<string, ZipImage>; embeddedKeys: Map<number, { key: string }[]>; zipContents: ZipContents | null } | null>(null);
+  const [createMissingCategories, setCreateMissingCategories] = useState(false);
   const [rows, setRows] = useState<ParsedRow[] | null>(null);
   const [zip, setZip] = useState<ZipContents | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -162,6 +170,9 @@ export function BulkImportButton() {
   const reset = () => {
     revokeUnused();
     setFile(null);
+    setImagesFile(null);
+    setAnalysis(null);
+    setCreateMissingCategories(false);
     setRows(null);
     setZip(null);
     setParsing(false);
@@ -183,38 +194,72 @@ export function BulkImportButton() {
     return url;
   };
 
-  const handleFile = async (f: File) => {
-    const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
-    const isZip = ext === "zip";
-    if (!["xlsx", "xls", "csv", "zip"].includes(ext)) {
-      toast.error("Unsupported file", "Upload an .xlsx, .xls, .csv or .zip file.");
-      return;
-    }
-    if (isZip && f.size > LIMITS.ZIP_MAX_BYTES) {
-      toast.error("ZIP too large", `Maximum ZIP size is ${formatBytes(LIMITS.ZIP_MAX_BYTES)}.`);
-      return;
-    }
-    if (!isZip && f.size > LIMITS.SPREADSHEET_MAX_BYTES) {
-      toast.error("File too large", `Maximum spreadsheet size is ${formatBytes(LIMITS.SPREADSHEET_MAX_BYTES)}.`);
-      return;
-    }
+  /**
+   * Run validation over the parsed inputs. Categories come from the REAL
+   * category tree (API-backed store), images from the ZIP + embedded pictures.
+   */
+  const validate = (a: NonNullable<typeof analysis>, createMissing: boolean) =>
+    validateRows(a.raws, {
+      existingSku: (sku) => !!getProductBySku(sku),
+      existingProductId: (sku) => getProductBySku(sku)?.id,
+      knownCategories: getCategories().map((c) => c.name),
+      categoryTree: getCategories().map((c) => ({
+        id: c.id, name: c.name, slug: c.slug,
+        subcategories: c.subcategories.map((sc) => ({ id: sc.id, name: sc.name, slug: sc.slug })),
+      })),
+      createMissingCategories: createMissing,
+      zipImages: a.images.size > 0 ? a.images : undefined,
+      embeddedByRow: a.embeddedKeys.size > 0 ? a.embeddedKeys : undefined,
+    });
 
-    setFile(f);
+  const toggleCreateMissing = (v: boolean) => {
+    setCreateMissingCategories(v);
+    if (analysis) setRows(validate(analysis, v));
+  };
+
+  /**
+   * Accepts one spreadsheet, one ZIP (spreadsheet + images), or BOTH a
+   * spreadsheet and an images-only ZIP dropped/selected together. A second
+   * drop adds to what is already there (e.g. the ZIP after the xlsx).
+   */
+  const handleFiles = async (incoming: File[]) => {
+    let sheetFile = file && !file.name.toLowerCase().endsWith(".zip") ? file : null;
+    let zipFile = imagesFile ?? (file?.name.toLowerCase().endsWith(".zip") ? file : null);
+    for (const f of incoming) {
+      const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+      if (ext === "zip") {
+        if (f.size > LIMITS.ZIP_MAX_BYTES) { toast.error("ZIP too large", `Maximum ZIP size is ${formatBytes(LIMITS.ZIP_MAX_BYTES)}.`); return; }
+        zipFile = f;
+      } else if (["xlsx", "xls", "csv"].includes(ext)) {
+        if (f.size > LIMITS.SPREADSHEET_MAX_BYTES) { toast.error("File too large", `Maximum spreadsheet size is ${formatBytes(LIMITS.SPREADSHEET_MAX_BYTES)}.`); return; }
+        sheetFile = f;
+      } else {
+        toast.error("Unsupported file", "Upload an .xlsx, .xls, .csv or .zip file.");
+        return;
+      }
+    }
+    if (!sheetFile && !zipFile) return;
+
+    setFile(sheetFile ?? zipFile);
+    setImagesFile(sheetFile && zipFile ? zipFile : null);
     setParsing(true);
     try {
       let zipContents: ZipContents | null = null;
-      let sheetData: ArrayBuffer | Uint8Array;
+      let sheetData: ArrayBuffer | Uint8Array | null = null;
+      let sheetExt = sheetFile ? (sheetFile.name.split(".").pop()?.toLowerCase() ?? "") : "";
 
-      if (isZip) {
-        zipContents = parseZip(new Uint8Array(await f.arrayBuffer()));
-        if (!zipContents.spreadsheet) {
-          toast.error("No spreadsheet in ZIP", "Include products.xlsx / .xls / .csv inside the ZIP.");
-          reset();
-          return;
-        }
+      if (zipFile) zipContents = parseZip(new Uint8Array(await zipFile.arrayBuffer()));
+      if (sheetFile) {
+        sheetData = await sheetFile.arrayBuffer();
+      } else if (zipContents?.spreadsheet) {
         sheetData = zipContents.spreadsheet.data;
+        sheetExt = zipContents.spreadsheet.name.split(".").pop()?.toLowerCase() ?? "xlsx";
       } else {
-        sheetData = await f.arrayBuffer();
+        // Images-only ZIP with no sheet yet: keep it and wait for the xlsx.
+        toast.info("Images ZIP received", "Now add the products spreadsheet (.xlsx / .csv) to match them.");
+        setFile(null);
+        setImagesFile(zipFile);
+        return;
       }
 
       const raws = parseSpreadsheetBuffer(sheetData);
@@ -230,7 +275,7 @@ export function BulkImportButton() {
       // Image"). They are merged into the same image map the ZIP path uses, so
       // preview, upload and commit stay on one code path.
       const sheetU8 = sheetData instanceof Uint8Array ? sheetData : new Uint8Array(sheetData);
-      const embedded = ext === "xlsx" || isZip ? extractEmbeddedImages(sheetU8) : [];
+      const embedded = sheetExt === "xlsx" ? extractEmbeddedImages(sheetU8) : [];
       const embeddedByRow = indexEmbeddedImagesByRow(embedded);
 
       const images = new Map<string, ZipImage>(zipContents?.images ?? []);
@@ -241,20 +286,15 @@ export function BulkImportButton() {
           // Namespaced key so an embedded picture can never collide with a
           // ZIP entry of the same filename.
           const key = `embedded:${sheetRow}:${n}`;
-          images.set(key, { path: img.path, base: img.base, ext: img.ext, data: img.data });
+          images.set(key, { path: img.path, base: img.base, ext: img.ext, dir: "", data: img.data });
           keys.push({ key });
         });
         embeddedKeys.set(sheetRow, keys);
       }
 
-      const parsed = validateRows(raws, {
-        existingSku: (sku) => !!getProductBySku(sku),
-        // Real category list from the API-backed store (hydrated on page load),
-        // not the old mock array that was always empty.
-        knownCategories: getCategories().map((c) => c.name),
-        zipImages: images.size > 0 ? images : undefined,
-        embeddedByRow: embeddedKeys.size > 0 ? embeddedKeys : undefined,
-      });
+      const a = { raws, images, embeddedKeys, zipContents };
+      setAnalysis(a);
+      const parsed = validate(a, createMissingCategories);
 
       // Preview/commit read images from `zip.images`; synthesize a container
       // when the workbook carried pictures but no ZIP was uploaded.
@@ -287,7 +327,8 @@ export function BulkImportButton() {
         imagesMatched: rows.filter((r) => r.imageMatch.primary).length,
         imagesMissing: rows.filter((r) => r.status !== "error" && !r.imageMatch.primary).length,
         // Category insight: how many distinct categories the file references,
-        // and which of those don't exist yet (the importer will create them).
+        // and which of those don't exist in the database (row errors unless
+        // "Create missing categories" is ticked).
         categories: new Set(rows.map((r) => r.category.trim().toLowerCase()).filter(Boolean)).size,
         newCategories: new Set(
           rows
@@ -376,8 +417,9 @@ export function BulkImportButton() {
       // the UI shows exactly what was saved (survives refresh + restart).
       const server = await catalogApi.importBatch(payload, dupeMode, {
         fileName: file?.name,
-        fileSizeBytes: file?.size,
+        fileSizeBytes: (file?.size ?? 0) + (imagesFile?.size ?? 0),
         imagesMatched: payload.filter((p) => Array.isArray(p.images) && p.images.some((u) => /^https?:|^\//.test(u))).length,
+        createMissingCategories,
       });
       // Re-read BOTH products and the category tree from the database: an
       // import creates categories/subcategories, and Admin + storefront must
@@ -447,7 +489,11 @@ export function BulkImportButton() {
             </>
           ) : rows && rows.length > 0 ? (
             <>
-              <div className="mr-auto flex items-center gap-2 text-xs">
+              <div className="mr-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                <label className="flex items-center gap-1.5 erp-text-muted" title="Unknown categories/subcategories are created on import instead of failing the row. Off by default so a typo never creates a duplicate category.">
+                  <input type="checkbox" checked={createMissingCategories} onChange={(e) => toggleCreateMissing(e.target.checked)} className="h-3.5 w-3.5 accent-primary-500" />
+                  Create missing categories
+                </label>
                 <span className="erp-text-muted">Duplicate SKU:</span>
                 <select
                   value={dupeMode}
@@ -546,7 +592,7 @@ export function BulkImportButton() {
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); }}
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); const fs = Array.from(e.dataTransfer.files ?? []); if (fs.length) void handleFiles(fs); }}
                 onClick={() => inputRef.current?.click()}
                 className={cn(
                   "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-9 text-center transition-colors",
@@ -556,13 +602,13 @@ export function BulkImportButton() {
                 <span className="flex h-11 w-11 items-center justify-center rounded-full erp-surface erp-text-muted">
                   <Upload className="h-5 w-5" aria-hidden />
                 </span>
-                <p className="text-sm font-semibold erp-text">Drag &amp; drop your file here</p>
-                <p className="text-xs erp-text-faint">or click to browse</p>
+                <p className="text-sm font-semibold erp-text">Drag &amp; drop your file(s) here</p>
+                <p className="text-xs erp-text-faint">or click to browse — a spreadsheet, a ZIP, or products.xlsx + products.zip together</p>
                 <div className="mt-1 space-y-0.5 text-[11px] erp-text-faint">
                   <p>Supported: XLSX, XLS, CSV, ZIP</p>
                   <p>Spreadsheet max {formatBytes(LIMITS.SPREADSHEET_MAX_BYTES)} · ZIP with images max {formatBytes(LIMITS.ZIP_MAX_BYTES)}</p>
                 </div>
-                <input ref={inputRef} type="file" accept={ACCEPT} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+                <input ref={inputRef} type="file" accept={ACCEPT} multiple className="hidden" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) void handleFiles(fs); e.target.value = ""; }} />
               </div>
             ) : (
               <div className="flex items-center gap-3 rounded-xl border erp-border erp-surface-2 p-3">
@@ -571,7 +617,7 @@ export function BulkImportButton() {
                   : <FileSpreadsheet className="h-8 w-8 text-emerald-500" aria-hidden />}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold erp-text">{file.name}</p>
-                  <p className="text-xs erp-text-faint">{file.name.split(".").pop()?.toUpperCase()} · {formatBytes(file.size)}</p>
+                  <p className="text-xs erp-text-faint">{file.name.split(".").pop()?.toUpperCase()} · {formatBytes(file.size)}{imagesFile ? ` + ${imagesFile.name} (${formatBytes(imagesFile.size)})` : ""}</p>
                 </div>
                 {parsing ? (
                   <span className="text-xs erp-text-muted">Parsing…</span>
@@ -582,8 +628,20 @@ export function BulkImportButton() {
                 )}
               </div>
             )}
+            {imagesFile && !file && (
+              <div className="flex items-center gap-3 rounded-xl border erp-border erp-surface-2 p-3">
+                <FileArchive className="h-8 w-8 text-primary-500" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold erp-text">{imagesFile.name}</p>
+                  <p className="text-xs erp-text-faint">Images ZIP · {formatBytes(imagesFile.size)} · now add the products spreadsheet</p>
+                </div>
+                <button onClick={reset} aria-label="Remove file" className="flex h-8 w-8 items-center justify-center rounded-lg erp-text-muted hover:erp-surface">
+                  <X className="h-4 w-4" aria-hidden />
+                </button>
+              </div>
+            )}
             <p className="text-center text-xs erp-text-faint">
-              ZIP structure: <code className="font-mono">products.xlsx</code> + <code className="font-mono">images/SKU.jpg</code>.{" "}
+              Images match by SKU (<code className="font-mono">BOX001.jpg</code>, <code className="font-mono">BOX001-2.jpg</code>, <code className="font-mono">BOX001/any.jpg</code>), Product ID, the Image column, or the product name.{" "}
               <button onClick={downloadZipExample} className="font-semibold text-primary-600 hover:underline dark:text-primary-400">Download the ZIP example</button>.
             </p>
           </div>
@@ -648,8 +706,11 @@ export function BulkImportButton() {
                               <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
                               {r.imageMatch.source === "embedded" ? "Original (embedded)"
                                 : r.imageMatch.source === "sku" ? "Matched by SKU"
-                                : r.imageMatch.source === "column" ? "Matched by name"
+                                : r.imageMatch.source === "productId" ? "Matched by Product ID"
+                                : r.imageMatch.source === "column" ? "Matched by filename"
+                                : r.imageMatch.source === "name" ? "Matched by product name"
                                 : "External URL"}
+                              {r.imageMatch.gallery.length > 0 && <span className="erp-text-faint"> +{r.imageMatch.gallery.length}</span>}
                             </span>
                           ) : (
                             <span className="flex items-center gap-1 erp-text-faint">
@@ -690,7 +751,8 @@ export function BulkImportButton() {
             </div>
             <p className="text-xs erp-text-faint">
               <strong>{importable}</strong> importable (Ready + Warnings) · <strong>{counts!.error}</strong> skipped.
-              Warnings still import — e.g. "Image not found" imports the product without an image. Only Error rows are skipped.
+              Warnings still import — e.g. "Image not found" imports the product without that image. Only Error rows are skipped
+              (missing SKU/name, duplicate SKU in the file, or a category/subcategory that does not exist in the database).
             </p>
           </div>
         )}

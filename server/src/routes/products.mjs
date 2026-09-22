@@ -104,12 +104,14 @@ productsRouter.post("/products/bulk-delete", ...adminOnly, wrap(async (req, res)
  * other row still commits.
  */
 productsRouter.post("/products/import", ...adminOnly, wrap(async (req, res) => {
-  const { products = [], mode = "update", fileName = null, fileSizeBytes = null, imagesMatched = 0 } = req.body ?? {};
+  const { products = [], mode = "update", fileName = null, fileSizeBytes = null, imagesMatched = 0, createMissingCategories = false } = req.body ?? {};
   if (!Array.isArray(products)) throw badRequest("`products` must be an array", "BAD_PAYLOAD");
   if (!["update", "skip", "create"].includes(mode)) {
     throw badRequest(`Unknown duplicate mode "${mode}" (use update/skip/create)`, "BAD_MODE");
   }
-  const result = await importProducts(products, mode);
+  // Unknown categories fail their row unless the admin explicitly opted into
+  // creating them (the importer's "Create missing categories" checkbox).
+  const result = await importProducts(products, mode, { createMissingCategories: createMissingCategories === true });
   console.log(`[catalog:import] mode=${mode} processed=${result.processed} created=${result.created} updated=${result.updated} skipped=${result.skipped} failed=${result.failed}`);
   // Persist the run for Import History + audit (Phases 14/16/19). Never blocks
   // or fails the import — history bookkeeping is best-effort. actorId is set

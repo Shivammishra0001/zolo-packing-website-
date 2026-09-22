@@ -25,7 +25,7 @@ export const slugify = normSlug;
  * resolve to a single row instead of spawning duplicates. `cache` memoizes
  * within one import run so a 72-row file does not issue 72 lookups.
  */
-export async function resolveCategory(name, cache = new Map(), tx = prisma) {
+export async function resolveCategory(name, cache = new Map(), tx = prisma, { create = true } = {}) {
   const key = categoryKey(name);
   if (!key) return null;
   if (cache.has(key)) return cache.get(key);
@@ -51,6 +51,12 @@ export async function resolveCategory(name, cache = new Map(), tx = prisma) {
     cache.set(key, existing);
     return existing;
   }
+
+  // Lookup-only callers (the bulk importer unless the admin ticked "create
+  // missing categories") get null instead of a brand-new row. This is what
+  // stops a misspelled "Corrugated Box" from silently becoming a duplicate of
+  // "Corrugated Boxes".
+  if (!create) return null;
 
   // An ARCHIVED category still owns the unique slug, so a plain create would
   // throw P2002 — which used to make every import into that category fail
@@ -93,7 +99,7 @@ export async function resolveCategory(name, cache = new Map(), tx = prisma) {
  * under Boxes and a hypothetical "Gift Boxes" under Bags stay distinct while
  * `slug` remains globally unique.
  */
-export async function resolveSubcategory(name, parent, cache = new Map(), tx = prisma) {
+export async function resolveSubcategory(name, parent, cache = new Map(), tx = prisma, { create = true } = {}) {
   const key = categoryKey(name);
   // "General" is the importer's placeholder for "none given" — never a record.
   if (!key || !parent || key === "general") return null;
@@ -116,6 +122,8 @@ export async function resolveSubcategory(name, parent, cache = new Map(), tx = p
     cache.set(cacheKey, existing);
     return existing;
   }
+
+  if (!create) return null;
 
   // Same restore-on-import rule as resolveCategory: an archived subcategory
   // holds the unique slug, and importing into it revives it rather than
@@ -144,6 +152,46 @@ export async function resolveSubcategory(name, parent, cache = new Map(), tx = p
     cache.set(cacheKey, winner);
     return winner;
   }
+}
+
+/**
+ * Closest existing category name for an error message ("did you mean …").
+ * Cheap similarity: same normalized key, prefix/containment, then a bounded
+ * Levenshtein distance. Returns null when nothing is reasonably close.
+ */
+export function suggestCategoryName(name, candidates) {
+  const key = categoryKey(name);
+  if (!key) return null;
+  let best = null;
+  let bestScore = Infinity;
+  for (const c of candidates) {
+    const ck = categoryKey(c);
+    if (!ck) continue;
+    let score;
+    if (ck === key) score = 0;
+    else if (ck.startsWith(key) || key.startsWith(ck) || ck.includes(key) || key.includes(ck)) score = 1;
+    else score = 2 + levenshtein(key, ck);
+    if (score < bestScore) { bestScore = score; best = c; }
+  }
+  // Allow roughly one typo per 4 characters, never more than 4 edits.
+  const budget = 2 + Math.min(4, Math.max(1, Math.floor(key.length / 4)));
+  return best !== null && bestScore <= budget ? best : null;
+}
+
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let left = i;
+    for (let j = 1; j <= b.length; j++) {
+      const sub = prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1);
+      const cur = Math.min(prev[j] + 1, left + 1, sub);
+      prev[j - 1] = left;
+      left = cur;
+    }
+    prev[b.length] = left;
+  }
+  return prev[b.length];
 }
 
 /** Product ids follow the existing PRD-xxxx convention used across the UI. */
@@ -201,7 +249,7 @@ function pickWritable(input) {
  * Runs in a transaction so a product is never left half-written; the caller
  * loops per row so ONE bad row cannot abort the whole file.
  */
-export async function importProductRow(rawRow, { mode = "update", categoryCache, subcategoryCache } = {}) {
+export async function importProductRow(rawRow, { mode = "update", categoryCache, subcategoryCache, createMissingCategories = false } = {}) {
   // Every write path funnels through ONE normalizer, so a field can never be
   // mapped differently by the importer than by the edit form.
   const normalized = normalizeRow(rawRow);
@@ -231,8 +279,29 @@ export async function importProductRow(rawRow, { mode = "update", categoryCache,
   // Postgres transaction — so the recovery read would fail too and a perfectly
   // valid product row would be lost. Resolved outside, a lost race costs one
   // retry and the product still saves.
-  const category = await resolveCategory(row.category, categoryCache);
-  const subcategory = await resolveSubcategory(row.subcategory, category, subcategoryCache);
+  //
+  // Categories are matched against the REAL table (case/whitespace-insensitive,
+  // by name or slug). A category that does not exist is a row ERROR with a
+  // "did you mean" hint — it is only created when the admin explicitly asked
+  // for that (createMissingCategories), never because a cell was misspelled.
+  const category = await resolveCategory(row.category, categoryCache, prisma, { create: createMissingCategories });
+  if (row.category && !category) {
+    const names = (await prisma.category.findMany({ where: { deletedAt: null, parentId: null }, select: { name: true } })).map((c) => c.name);
+    const hint = suggestCategoryName(row.category, names);
+    throw badRequest(
+      `Category "${row.category}" does not exist${hint ? ` — did you mean "${hint}"?` : ""}`,
+      "CATEGORY_NOT_FOUND",
+    );
+  }
+  const subcategory = await resolveSubcategory(row.subcategory, category, subcategoryCache, prisma, { create: createMissingCategories });
+  if (category && row.subcategory && categoryKey(row.subcategory) !== "general" && !subcategory) {
+    const names = (await prisma.category.findMany({ where: { deletedAt: null, parentId: category.id }, select: { name: true } })).map((c) => c.name);
+    const hint = suggestCategoryName(row.subcategory, names);
+    throw badRequest(
+      `Subcategory "${row.subcategory}" does not exist under "${category.name}"${hint ? ` — did you mean "${hint}"?` : ""}`,
+      "SUBCATEGORY_NOT_FOUND",
+    );
+  }
 
   return prisma.$transaction(async (tx) => {
     const existing = await tx.product.findUnique({ where: { sku } });
@@ -303,7 +372,7 @@ export async function importProductRow(rawRow, { mode = "update", categoryCache,
  * Import many rows. Row-level isolation: each row commits or fails on its own,
  * so one malformed row never prevents the other 71 from importing.
  */
-export async function importProducts(rows, mode = "update") {
+export async function importProducts(rows, mode = "update", { createMissingCategories = false } = {}) {
   const result = {
     processed: 0, created: 0, updated: 0, skipped: 0, failed: 0,
     // Real taxonomy accounting — how many category/subcategory rows this run
@@ -322,7 +391,7 @@ export async function importProducts(rows, mode = "update") {
   for (const row of rows) {
     result.processed++;
     try {
-      const { action, product, renamedFrom, warnings } = await importProductRow(row, { mode, categoryCache, subcategoryCache });
+      const { action, product, renamedFrom, warnings } = await importProductRow(row, { mode, categoryCache, subcategoryCache, createMissingCategories });
       result[action]++;
       result.products.push(product);
       for (const w of warnings ?? []) {

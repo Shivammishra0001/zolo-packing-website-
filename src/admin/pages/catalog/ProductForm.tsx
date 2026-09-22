@@ -15,6 +15,8 @@ import { createProduct, saveProduct } from "../../catalog-store";
 import { useCategories, hydrateCategories } from "../../categories-store";
 import { CatalogApiError, describeCatalogError, type ProductWriteInput } from "@/lib/catalog-api";
 import type { CatalogProduct, ProductStatus } from "../../types";
+import { ChipListInput } from "../../components/ChipListInput";
+import { joinMultiValue, normalizeProductColors, splitMultiValue } from "@/lib/product-options";
 
 const FIELD =
   "h-10 w-full rounded-lg border erp-border erp-surface px-3 text-sm erp-text outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-500/20";
@@ -108,7 +110,11 @@ export function ProductFormDrawer({
   const [gsm, setGsm] = useState("");
   const [material, setMaterial] = useState("");
   const [productType, setProductType] = useState("");
-  const [color, setColor] = useState("");
+  // Sizes and colours are lists in the UI but ONE comma-separated string in
+  // the existing sizeLabel / color columns (see lib/product-options).
+  const [sizes, setSizes] = useState<string[]>([]);
+  const [colors, setColors] = useState<string[]>([]);
+  const [thickness, setThickness] = useState("");
   const [price, setPrice] = useState("");
   const [moq, setMoq] = useState("");
   const [stock, setStock] = useState("");
@@ -149,7 +155,9 @@ export function ProductFormDrawer({
       setGsm(product.gsm != null ? String(product.gsm) : "");
       setMaterial(product.material ?? "");
       setProductType(product.productType ?? "");
-      setColor(product.color ?? "");
+      setSizes(splitMultiValue(product.sizeLabel));
+      setColors(normalizeProductColors(product.color));
+      setThickness(product.thickness ?? "");
       setPrice(product.basePrice ? String(product.basePrice) : "");
       setMoq(String(product.moq));
       setStock(String(product.stock ?? 0));
@@ -163,7 +171,7 @@ export function ProductFormDrawer({
       setPrimary(0);
     } else {
       setName(""); setSku(""); setCategoryId(""); setSubcategoryId(""); setDescription("");
-      setLen(""); setWid(""); setHei(""); setUnit("cm"); setGsm(""); setMaterial(""); setProductType(""); setColor("");
+      setLen(""); setWid(""); setHei(""); setUnit("cm"); setGsm(""); setMaterial(""); setProductType(""); setSizes([]); setColors([]); setThickness("");
       setPrice(""); setMoq(""); setStock(""); setLowLevel(""); setStatus("draft");
       setIsFeatured(false); setFeaturedOrder(""); setIsNewArrival(false); setNewArrivalOrder("");
       setImgs([]); setPrimary(0);
@@ -285,7 +293,10 @@ export function ProductFormDrawer({
         gsm: gsm.trim() ? Number(gsm) : null,
         material: material.trim() || null,
         productType: productType.trim() || null,
-        color: color.trim() || null,
+        thickness: thickness.trim() || null,
+        // Stored in the EXISTING string columns as "a, b, c".
+        sizeLabel: joinMultiValue(sizes),
+        color: joinMultiValue(colors),
         basePriceMinor: Math.round(Number(price) * 100),
         moq: Number(moq),
         stock: stock.trim() === "" ? 0 : Number(stock),
@@ -467,6 +478,16 @@ export function ProductFormDrawer({
 
         {/* Dimensions */}
         <Section title="Dimensions">
+          <div className="mb-3">
+            <span className={LABEL}>Sizes</span>
+            <ChipListInput
+              values={sizes}
+              onChange={setSizes}
+              label="Add size"
+              placeholder="e.g. 6x6x4 in, 8x8x6 in — press Enter after each"
+              hint="Every size this product is offered in. Buyers pick one on the product page; price and stock stay product-level."
+            />
+          </div>
           <div className="grid grid-cols-4 gap-3">
             <label className="block"><span className={LABEL}>Length</span><input type="number" min={0} step="any" value={len} onChange={(e) => setLen(e.target.value)} className={cn(FIELD, errors.dims && FIELD_ERR)} /></label>
             <label className="block"><span className={LABEL}>Width</span><input type="number" min={0} step="any" value={wid} onChange={(e) => setWid(e.target.value)} className={cn(FIELD, errors.dims && FIELD_ERR)} /></label>
@@ -486,7 +507,17 @@ export function ProductFormDrawer({
           <div className={twoCol}>
             <label className="block"><span className={LABEL}>Material</span><input value={material} onChange={(e) => setMaterial(e.target.value)} placeholder="e.g. Kraft, Corrugated E-flute" className={FIELD} /></label>
             <label className="block"><span className={LABEL}>GSM</span><input type="number" min={0} value={gsm} onChange={(e) => setGsm(e.target.value)} className={cn(FIELD, errors.gsm && FIELD_ERR)} /><FieldError msg={errors.gsm} /></label>
-            <label className="block"><span className={LABEL}>Color</span><input value={color} onChange={(e) => setColor(e.target.value)} placeholder="e.g. Natural Kraft" className={FIELD} /></label>
+            <label className="block"><span className={LABEL}>Thickness / Ply</span><input value={thickness} onChange={(e) => setThickness(e.target.value)} placeholder="e.g. 5 Ply, 300 micron" className={FIELD} /></label>
+          </div>
+          <div className="mt-3">
+            <span className={LABEL}>Colors</span>
+            <ChipListInput
+              values={colors}
+              onChange={setColors}
+              label="Add color"
+              placeholder="e.g. Brown, White, Black — press Enter after each"
+              hint="Every colour this product is offered in. Two-tone colours like “Yellow / Black” stay as one chip."
+            />
           </div>
         </Section>
 

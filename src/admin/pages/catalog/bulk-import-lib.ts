@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { unzipSync, zipSync, strToU8 } from "fflate";
 import type { CatalogProduct, ProductStatus } from "../../types";
+import { joinMultiValue, splitMultiValue } from "../../../lib/product-options.ts";
 
 // ============================================================
 // Bulk-import core logic (pure, UI-free) — spreadsheet + ZIP parsing,
@@ -33,6 +34,7 @@ function normHeader(h: string): string {
 
 const HEADER_MAP: Record<string, string> = {
   sku: "sku",
+  productid: "productId", id: "productId",
   productname: "name", name: "name",
   category: "category",
   subcategory: "subcategory",
@@ -51,9 +53,17 @@ const HEADER_MAP: Record<string, string> = {
   stockquantity: "stock", stock: "stock", stockqty: "stock",
   lowstocklevel: "lowStockLevel", lowstock: "lowStockLevel",
   productstatus: "status", status: "status",
-  image: "imageName", primaryimageurl: "imageName", primaryimage: "imageName",
-  additionalimageurls: "imageNames", additionalimages: "imageNames",
+  image: "imageName", images: "imageName", imagename: "imageName", imagefile: "imageName", primaryimageurl: "imageName", primaryimage: "imageName",
+  additionalimageurls: "imageNames", additionalimages: "imageNames", galleryimages: "imageNames",
 };
+
+/** URL-safe slug — same rule as the server (catalog-normalize slugify). */
+export function slugifyName(value: string): string {
+  return String(value ?? "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+}
+
+/** "  Corrugated   Boxes " and "corrugated boxes" collapse to one key. */
+export const categoryKey = (name: string) => String(name ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
 export interface RawRow {
   [key: string]: string | number;
@@ -83,12 +93,18 @@ export interface ZipImage {
   /** lowercase base filename without extension, e.g. "zolo-gb-001" */
   base: string;
   ext: string;
+  /** lowercase name of the immediate parent folder ("" at the zip root) — folder-per-SKU layouts */
+  dir: string;
   data: Uint8Array;
 }
 
 export interface ZipContents {
   spreadsheet: { name: string; data: Uint8Array } | null;
-  /** keyed by lowercase "base.ext" filename */
+  /**
+   * keyed by the lowercase entry PATH ("box001.jpg", "images/box001-2.jpg",
+   * "box001/front.jpg"). Keying by bare filename used to make every
+   * "<sku>/image1.jpg" overwrite the previous folder's image1.jpg.
+   */
   images: Map<string, ZipImage>;
   /** entries ignored for safety/format reasons (path + reason) */
   skipped: { path: string; reason: string }[];
@@ -155,10 +171,12 @@ export function parseZip(u8: Uint8Array): ZipContents {
         continue;
       }
       const file = baseName(path).toLowerCase();
-      out.images.set(file, {
+      const segments = path.toLowerCase().split("/").filter(Boolean);
+      out.images.set(path.toLowerCase(), {
         path,
         base: file.replace(/\.[a-z0-9]+$/i, ""),
         ext,
+        dir: segments.length > 1 ? segments[segments.length - 2] : "",
         data,
       });
     } else {
@@ -171,61 +189,129 @@ export function parseZip(u8: Uint8Array): ZipContents {
 
 // ---------- Image matching ----------
 
+export type ImageSource = "sku" | "productId" | "filename" | "column" | "name" | "embedded" | "url";
+
 export interface ImageMatch {
   /** zip map key of the primary image, if found */
   primary?: string;
-  /** zip map keys of gallery images (SKU-2.jpg, SKU-3.jpg …) */
+  /** zip map keys of gallery images (SKU-2.jpg, SKU-3.jpg, folder files, extra Image-column files …) */
   gallery: string[];
   /** how the primary image was resolved (for the preview's Image Status column) */
-  source?: "sku" | "column" | "embedded" | "url";
+  source?: ImageSource;
+  /** Image-column filenames that were listed but are not in the ZIP (one warning each; never fails the row) */
+  missing: string[];
+}
+
+interface ImageIndex {
+  /** "box001.jpg" → keys of every entry with that filename (any folder) */
+  byFile: Map<string, string[]>;
+  /** "box001" → keys of entries whose base name is exactly that */
+  byBase: Map<string, string[]>;
+  /** "box001" → keys of "box001-1.jpg", "box001-2.png" … in numeric order */
+  bySeries: Map<string, { n: number; key: string }[]>;
+  /** "box001" → keys of every image inside a folder named box001 */
+  byDir: Map<string, string[]>;
+}
+
+const indexCache = new WeakMap<Map<string, ZipImage>, ImageIndex>();
+
+/** Build (once per ZIP) the lookups matchImages needs, so a 25k-image ZIP is not rescanned per row. */
+function indexImages(images: Map<string, ZipImage>): ImageIndex {
+  const cached = indexCache.get(images);
+  if (cached) return cached;
+  const idx: ImageIndex = { byFile: new Map(), byBase: new Map(), bySeries: new Map(), byDir: new Map() };
+  const push = (m: Map<string, string[]>, k: string, v: string) => { const a = m.get(k); if (a) a.push(v); else m.set(k, [v]); };
+  for (const [key, img] of images) {
+    push(idx.byFile, `${img.base}.${img.ext}`, key);
+    push(idx.byBase, img.base, key);
+    const m = /^(.+)-(\d+)$/.exec(img.base);
+    if (m) {
+      const list = idx.bySeries.get(m[1]) ?? [];
+      list.push({ n: Number(m[2]), key });
+      idx.bySeries.set(m[1], list);
+    }
+    if (img.dir) push(idx.byDir, img.dir, key);
+  }
+  for (const list of idx.bySeries.values()) list.sort((a, b) => a.n - b.n || a.key.localeCompare(b.key));
+  for (const list of idx.byDir.values()) list.sort((a, b) => a.localeCompare(b));
+  indexCache.set(images, idx);
+  return idx;
 }
 
 /**
- * Match a row to zip images. Priority: explicit Image column value, then SKU
- * filename. Case-insensitive. `SKU-2.*`, `SKU-3.*` … become gallery images.
+ * Every image that belongs to an identifier: the exact file ("BOX001.jpg"),
+ * its numbered series ("BOX001-1.jpg", "BOX001-2.jpg" …) and a folder of the
+ * same name ("BOX001/front.jpg"). Order: exact file, series, folder.
+ */
+function imagesForIdentifier(id: string, idx: ImageIndex): string[] {
+  const base = id.trim().toLowerCase();
+  if (!base) return [];
+  const out: string[] = [];
+  const add = (k: string) => { if (!out.includes(k)) out.push(k); };
+  // A bare identifier may also be typed with its extension ("box001.jpg").
+  const stripped = base.replace(/\.(jpe?g|png|webp)$/i, "");
+  for (const k of idx.byFile.get(base) ?? []) add(k);
+  for (const k of idx.byBase.get(stripped) ?? []) add(k);
+  for (const { key } of idx.bySeries.get(stripped) ?? []) add(key);
+  for (const k of idx.byDir.get(stripped) ?? []) add(k);
+  return out;
+}
+
+export interface MatchImagesOptions {
+  /** Product ID (PRD-xxxx) — from the sheet's Product ID column or the existing catalog row for this SKU */
+  productId?: string;
+  /** product name; matched as its slug ("kraft-mailer-box.jpg") */
+  name?: string;
+}
+
+/**
+ * Match a row to zip images.
+ *
+ * Priority for the PRIMARY image: SKU → Product ID → filename listed in the
+ * Image column → product-name slug. Case-insensitive. For each identifier the
+ * exact file, its "-N" series and a same-named folder all count, so
+ * "BOX001.jpg", "BOX001-1.jpg … -3.jpg" and "BOX001/image1.jpg" all work.
+ *
+ * Every file the Image column lists ("a.jpg, b.jpg" or "a.jpg | b.jpg") is
+ * attached in addition; the ones not in the ZIP are reported in `missing`
+ * (one warning each — the row still imports).
  */
 export function matchImages(
   sku: string,
   imageColumn: string | undefined,
   images: Map<string, ZipImage>,
+  opts: MatchImagesOptions = {},
 ): ImageMatch {
-  const match: ImageMatch = { gallery: [] };
+  const match: ImageMatch = { gallery: [], missing: [] };
   if (images.size === 0) return match;
+  const idx = indexImages(images);
 
-  const findByName = (name: string): string | undefined => {
-    const lower = name.trim().toLowerCase();
-    if (!lower) return undefined;
-    if (images.has(lower)) return lower; // exact filename w/ extension
-    for (const ext of IMAGE_EXTS) {
-      if (images.has(`${lower}.${ext}`)) return `${lower}.${ext}`; // name without ext
+  // Image column: explicit filenames (URLs are handled by the caller).
+  const columnFiles = splitMultiValue(imageColumn).filter((f) => !/^https?:\/\//i.test(f));
+  const columnFound: string[] = [];
+  for (const f of columnFiles) {
+    const found = imagesForIdentifier(f, idx);
+    if (found.length) columnFound.push(...found);
+    else match.missing.push(f);
+  }
+
+  const nameSlug = opts.name ? slugifyName(opts.name) : "";
+  const candidates: { source: ImageSource; keys: string[] }[] = [
+    { source: "sku", keys: sku ? imagesForIdentifier(sku, idx) : [] },
+    { source: "productId", keys: opts.productId ? imagesForIdentifier(opts.productId, idx) : [] },
+    { source: "column", keys: columnFound },
+    { source: "name", keys: nameSlug ? imagesForIdentifier(nameSlug, idx) : [] },
+  ];
+
+  const all: string[] = [];
+  for (const c of candidates) {
+    for (const k of c.keys) {
+      if (all.includes(k)) continue;
+      all.push(k);
+      if (!match.primary) { match.primary = k; match.source = c.source; }
     }
-    return undefined;
-  };
-
-  // Priority 1 — SKU-named file (most reliable: the filename IS the identity).
-  if (sku) {
-    const bySku = findByName(sku);
-    if (bySku) { match.primary = bySku; match.source = "sku"; }
   }
-  // Priority 2 — the Image column's filename.
-  if (!match.primary && imageColumn) {
-    const byCol = findByName(imageColumn);
-    if (byCol) { match.primary = byCol; match.source = "column"; }
-  }
-
-  // Gallery: "<base>-N" variants of whichever base matched (or the SKU).
-  // NOTE: no suffix-stripping here — SKUs legitimately end in digits
-  // (ZOLO-001), so the variant base is the primary's base verbatim.
-  const base = match.primary ? images.get(match.primary)!.base : sku.trim().toLowerCase();
-  if (base) {
-    const variants: { n: number; key: string }[] = [];
-    for (const [key, img] of images) {
-      if (key === match.primary) continue;
-      const m = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-(\\d+)$`).exec(img.base);
-      if (m) variants.push({ n: Number(m[1]), key });
-    }
-    match.gallery = variants.sort((a, b) => a.n - b.n).map((v) => v.key);
-  }
+  match.gallery = all.slice(1);
   return match;
 }
 
@@ -247,7 +333,11 @@ function isBlockingMessage(m: string): boolean {
   return (
     m.includes("SKU is required") ||
     m.includes("Product Name is required") ||
-    m.includes("Duplicate SKU within file")
+    m.includes("Duplicate SKU within file") ||
+    // Taxonomy must match the REAL database — a misspelled category would
+    // otherwise create a duplicate ("Corrugated Box" beside "Corrugated Boxes").
+    /^(Category|Subcategory) ".*" does not exist/.test(m) ||
+    /^Subcategory ".*" belongs to/.test(m)
   );
 }
 
@@ -256,6 +346,7 @@ export interface ParsedRow {
   sku: string;
   name: string;
   category: string;
+  subcategory?: string;
   price: number | null; // null = quotation-based (no fixed price)
   stock: number;
   imageName?: string;
@@ -300,8 +391,8 @@ const optionalNum = (v: unknown): number | null => {
 };
 
 
-/** Parse "10 x 8 x 4 inch" style size strings. */
-function parseSize(s: string): CatalogProduct["dimensions"] | undefined {
+/** Parse ONE "10 x 8 x 4 inch" style size string (null for capacities, A4, free text). */
+function parseOneSize(s: string): CatalogProduct["dimensions"] | undefined {
   const m = /^\s*(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)\s*(inch|inches|in|cm|mm)?\s*$/i.exec(s);
   if (!m) return undefined;
   const unitRaw = (m[4] ?? "in").toLowerCase();
@@ -309,10 +400,70 @@ function parseSize(s: string): CatalogProduct["dimensions"] | undefined {
   return { length: Number(m[1]), width: Number(m[2]), height: Number(m[3]), unit };
 }
 
+export interface KnownCategory {
+  id: string;
+  name: string;
+  slug?: string;
+  subcategories?: { id: string; name: string; slug?: string }[];
+}
+
+/**
+ * Closest existing name for a "did you mean" hint. Same key → containment →
+ * bounded edit distance; null when nothing is reasonably close.
+ */
+export function suggestName(name: string, candidates: readonly string[]): string | null {
+  const key = categoryKey(name);
+  if (!key) return null;
+  let best: string | null = null;
+  let bestScore = Infinity;
+  for (const c of candidates) {
+    const ck = categoryKey(c);
+    if (!ck) continue;
+    let score: number;
+    if (ck === key) score = 0;
+    else if (ck.startsWith(key) || key.startsWith(ck) || ck.includes(key) || key.includes(ck)) score = 1;
+    else score = 2 + levenshtein(key, ck);
+    if (score < bestScore) { bestScore = score; best = c; }
+  }
+  const budget = 2 + Math.min(4, Math.max(1, Math.floor(key.length / 4)));
+  return best !== null && bestScore <= budget ? best : null;
+}
+
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let left = i;
+    for (let j = 1; j <= b.length; j++) {
+      const sub = prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1);
+      const cur = Math.min(prev[j] + 1, left + 1, sub);
+      prev[j - 1] = left;
+      left = cur;
+    }
+    prev[b.length] = left;
+  }
+  return prev[b.length];
+}
+
 export interface ValidateOptions {
   /** returns true when a SKU already exists in the catalog */
   existingSku: (sku: string) => boolean;
-  /** known category names (empty list ⇒ any category accepted) */
+  /** existing Product ID for a SKU (lets "PRD-4282.jpg" match a row that has no Product ID column) */
+  existingProductId?: (sku: string) => string | undefined;
+  /**
+   * The REAL category tree from the database. Category/subcategory cells are
+   * matched against it (case/whitespace-insensitive, by name or slug) and the
+   * official DB name + id are written to the row. Empty ⇒ fall back to
+   * `knownCategories` name checks.
+   */
+  categoryTree?: KnownCategory[];
+  /**
+   * When false (default) an unknown category/subcategory is a row ERROR with a
+   * suggestion. When true (admin ticked "Create missing categories") it becomes
+   * a warning and the server creates it.
+   */
+  createMissingCategories?: boolean;
+  /** known category names (empty list ⇒ any category accepted) — legacy name-only check */
   knownCategories: string[];
   /** zip images available for matching (empty in plain-spreadsheet mode) */
   zipImages?: Map<string, ZipImage>;
@@ -332,8 +483,10 @@ export function validateRows(rawRows: RawRow[], opts: ValidateOptions): ParsedRo
     const messages: string[] = [];
     const sku = String(raw.sku ?? "").trim();
     const name = String(raw.name ?? "").trim();
-    const category = cleanOptional(raw.category) ?? "";
+    const categoryCell = cleanOptional(raw.category) ?? "";
+    const subcategoryCell = cleanOptional(raw.subcategory);
     const imageName = cleanOptional(raw.imageName);
+    const productIdCell = cleanOptional(raw.productId);
     const statusStr = (cleanOptional(raw.status) ?? "draft").toLowerCase();
 
     // Required fields
@@ -345,8 +498,46 @@ export function validateRows(rawRows: RawRow[], opts: ValidateOptions): ParsedRo
     if (sku && seenSkus.has(skuKey)) messages.push("Duplicate SKU within file");
     if (sku) seenSkus.add(skuKey);
 
-    // Category: unknown is a WARNING (imports may introduce new categories)
-    if (
+    // Category / subcategory: matched against the REAL database tree. A match
+    // is case/whitespace-insensitive (name or slug) and the row is stamped with
+    // the official DB name + id. No match ⇒ error with a close-match hint,
+    // unless the admin explicitly opted into creating missing categories.
+    let category = categoryCell;
+    let categoryId: string | undefined;
+    let subcategory = subcategoryCell && categoryKey(subcategoryCell) !== "general" ? subcategoryCell : undefined;
+    let subcategoryId: string | undefined;
+    const tree = opts.categoryTree ?? [];
+    if (tree.length > 0) {
+      if (categoryCell) {
+        const key = categoryKey(categoryCell);
+        const hit = tree.find((c) => categoryKey(c.name) === key || (c.slug && c.slug === slugifyName(categoryCell)));
+        if (hit) {
+          category = hit.name;
+          categoryId = hit.id;
+          if (subcategory) {
+            const subKey = categoryKey(subcategory);
+            const subs = hit.subcategories ?? [];
+            const subHit = subs.find((sc) => categoryKey(sc.name) === subKey || (sc.slug && sc.slug === slugifyName(subcategory!)));
+            if (subHit) {
+              subcategory = subHit.name;
+              subcategoryId = subHit.id;
+            } else {
+              const elsewhere = tree.find((c) => c.id !== hit.id && (c.subcategories ?? []).some((sc) => categoryKey(sc.name) === subKey));
+              const hint = suggestName(subcategory, subs.map((sc) => sc.name));
+              const problem = elsewhere
+                ? `Subcategory "${subcategory}" belongs to "${elsewhere.name}", not "${hit.name}"`
+                : `Subcategory "${subcategory}" does not exist under "${hit.name}"`;
+              const suggestion = hint ? `. Possible existing subcategory: "${hint}"` : "";
+              messages.push(opts.createMissingCategories ? `New subcategory "${subcategory}" will be created under "${hit.name}"` : `${problem}${suggestion}`);
+            }
+          }
+        } else {
+          const hint = suggestName(categoryCell, tree.map((c) => c.name));
+          const suggestion = hint ? `. Possible existing category: "${hint}"` : "";
+          messages.push(opts.createMissingCategories ? `New category "${categoryCell}" will be created` : `Category "${categoryCell}" does not exist${suggestion}`);
+        }
+      }
+    } else if (
       category &&
       opts.knownCategories.length > 0 &&
       !opts.knownCategories.some((c) => c.toLowerCase() === category.toLowerCase())
@@ -403,8 +594,10 @@ export function validateRows(rawRows: RawRow[], opts: ValidateOptions): ParsedRo
     // image embedded on this spreadsheet row → external URL. A missing image is
     // ALWAYS a warning; the product still imports (Priority 4 = manual upload).
     const sheetRow = index + 2; // +1 for 0-index, +1 for the header row
+    const productId = productIdCell ?? (sku ? opts.existingProductId?.(sku) : undefined);
     const imageMatch: ImageMatch =
-      zipImages.size > 0 ? matchImages(sku, imageName, zipImages) : { gallery: [] };
+      zipImages.size > 0 ? matchImages(sku, imageName, zipImages, { productId, name }) : { gallery: [], missing: [] };
+    for (const f of imageMatch.missing) messages.push(`Image not found: ${f}`);
 
     if (!imageMatch.primary) {
       const embedded = opts.embeddedByRow?.get(sheetRow);
@@ -420,7 +613,7 @@ export function validateRows(rawRows: RawRow[], opts: ValidateOptions): ParsedRo
     }
 
     const hasImageSource = zipImages.size > 0 || (opts.embeddedByRow?.size ?? 0) > 0;
-    if (hasImageSource && !imageMatch.primary) messages.push("Image not found — product imported without an image");
+    if (hasImageSource && !imageMatch.primary && imageMatch.missing.length === 0) messages.push("Image not found — product imported without an image");
 
     const isDuplicate = !!sku && opts.existingSku(sku);
     if (isDuplicate) messages.push("SKU already exists");
@@ -431,6 +624,12 @@ export function validateRows(rawRows: RawRow[], opts: ValidateOptions): ParsedRo
     const warnings = messages.filter((m) => !isBlockingMessage(m));
     const rowStatus: RowStatus = errors.length > 0 ? "error" : warnings.length > 0 ? "warning" : "ready";
 
+    // Size cell → every value ("6x6x4, 8x8x6 | 10x8x6") is kept in the existing
+    // sizeLabel column; structured dimensions come from L/W/H columns, else the
+    // first size that is a real 3-axis measurement.
+    const sizes = splitMultiValue(raw.size);
+    const sizeLabel = joinMultiValue(sizes) ?? undefined;
+    const dimsFromSizes = sizes.map(parseOneSize).find(Boolean);
     // Structured dimensions from Length/Width/Height columns or Size string
     const dims =
       !isBlankValue(raw.length) && !isBlankValue(raw.width) && !isBlankValue(raw.height)
@@ -440,24 +639,16 @@ export function validateRows(rawRows: RawRow[], opts: ValidateOptions): ParsedRo
               ? { length: l, width: w, height: h, unit: (String(raw.unit || "in").trim().toLowerCase() as "in" | "cm" | "mm") }
               : undefined;
           })()
-        : !isBlankValue(raw.size)
-          ? parseSize(String(raw.size))
-          : undefined;
+        : dimsFromSizes;
 
-    // Fold unmapped-but-useful fields into the description tail
-    const extras = [
-      cleanOptional(raw.material) ? `Material: ${cleanOptional(raw.material)}` : null,
-      cleanOptional(raw.thickness) ? `Thickness: ${cleanOptional(raw.thickness)}` : null,
-      cleanOptional(raw.type) ? `Type: ${cleanOptional(raw.type)}` : null,
-    ].filter(Boolean).join(" · ");
-    const description =
-      [cleanOptional(raw.description) || cleanOptional(raw.shortDescription), extras]
-        .filter(Boolean)
-        .join(" — ") || undefined;
+    // Material / Thickness / Type have their own columns (and their own spec
+    // line on the product page), so they are no longer folded into the
+    // description tail where they showed up twice.
+    const description = cleanOptional(raw.description) || cleanOptional(raw.shortDescription) || undefined;
 
     return {
       row: index + 2,
-      sku, name, category,
+      sku, name, category, subcategory,
       price,
       stock,
       imageName,
@@ -470,13 +661,19 @@ export function validateRows(rawRows: RawRow[], opts: ValidateOptions): ParsedRo
       data: {
         sku, name,
         category: category || "Uncategorised",
-        subcategory: cleanOptional(raw.subcategory) || "General",
+        subcategory: subcategory || "General",
+        ...(categoryId ? { categoryId } : {}),
+        ...(subcategoryId ? { subcategoryId } : {}),
         description,
         dimensions: dims,
+        sizeLabel,
+        thickness: cleanOptional(raw.thickness),
+        productType: cleanOptional(raw.type),
         // null/NaN ⇒ leave undefined so the column stays NULL in Postgres.
         gsm: gsmNum !== null && !Number.isNaN(gsmNum) ? Math.round(gsmNum) : undefined,
         material: cleanOptional(raw.material),
-        color: cleanOptional(raw.color),
+        // "Brown | White; Black" → "Brown, White, Black" (the existing column format).
+        color: joinMultiValue(splitMultiValue(raw.color)) ?? undefined,
         // null price ⇒ quotation-based product; stored as 0 and rendered as
         // "Request a Quote" everywhere (never ₹0).
         basePrice: price ?? 0,
@@ -545,11 +742,11 @@ export const TEMPLATE_HEADERS = [
 
 export const TEMPLATE_SAMPLE_ROWS = [
   ["ZOLO-GB-001", "Premium Paper Gift Bag", "Gift Bags", "Paper Bags", "Shopping Bag",
-   "Premium customizable paper gift bag", "Art Paper", 210, "-", "Blue",
-   "10 x 8 x 4 inch", 100, "ZOLO-GB-001.png", "active"],
+   "Premium customizable paper gift bag", "Art Paper", 210, "-", "Blue, White, Black",
+   "10 x 8 x 4 inch, 12 x 10 x 5 inch", 100, "ZOLO-GB-001.png", "active"],
   ["ZOLO-GB-002", "Kraft Mailer Box", "Mailer Boxes", "Standard Mailer", "Mailer",
-   "Durable kraft mailer with self-locking tabs", "Kraft Board", 320, "-", "Natural Kraft",
-   "12 x 9 x 3 inch", 250, "ZOLO-GB-002.jpg", "active"],
+   "Durable kraft mailer with self-locking tabs", "Kraft Board", 320, "3 Ply", "Natural Kraft | White",
+   "12 x 9 x 3 inch | 14 x 10 x 4 inch", 250, "ZOLO-GB-002.jpg, ZOLO-GB-002-2.jpg", "active"],
 ];
 
 export function buildTemplateWorkbook(): XLSX.WorkBook {
@@ -563,19 +760,28 @@ const ZIP_README = `Zolo Packaging — Bulk Import (ZIP with images)
 
 1. Fill products.xlsx (keep the header row).
 2. Give every product a unique SKU.
-3. Put the product's image filename in the "Image" column (e.g. ZOLO-GB-001.jpg).
-4. Put all images inside the /images folder.
+3. Category and Subcategory must already exist in Admin → Catalog → Categories
+   (matching ignores case and spacing; the subcategory must belong to the
+   category). A row with an unknown category is reported with the closest
+   existing name — tick "Create missing categories" only if it really is new.
+4. Several Sizes or Colours go in ONE cell, separated by comma, | or a line
+   break: "6x6x4 in, 8x8x6 in, 10x8x6 in" / "Brown | White | Black".
+5. Images — name files by SKU and put them in the ZIP (any folder):
    - Primary image:  images/ZOLO-GB-001.jpg
    - Extra images:   images/ZOLO-GB-001-2.jpg, images/ZOLO-GB-001-3.jpg
-   - Supported: .jpg .jpeg .png .webp (max 5 MB each)
-5. ZIP the spreadsheet + images folder together (max 50 MB).
-6. In Admin → Product Catalog → Bulk Import, upload the ZIP.
+   - Or one folder per SKU: images/ZOLO-GB-001/front.jpg, .../back.jpg
+   - Or list files in the "Image" column: "a.jpg, b.jpg" or "a.jpg | b.jpg"
+   - Also matched: Product ID (PRD-1234.jpg) and the product name slug.
+   - Supported: .jpg .jpeg .png .webp
+6. Upload the ZIP (spreadsheet + images), or products.xlsx and an images-only
+   ZIP together, in Admin → Product Catalog → Bulk Import.
 7. Review the preview, then click Import.
 
 Notes
 - Price is NOT required: Zolo is quotation-based. Products without a price
   show "Request a Quote" on the website.
-- If an image is missing the product still imports (with a warning).
+- If an image is missing the product still imports (with a warning naming
+  the file, e.g. "Image not found: ZOLO-GB-001-2.jpg").
 `;
 
 /** Tiny valid 1×1 transparent PNG for the example zip. */
@@ -596,6 +802,8 @@ export function buildZipExample(): Uint8Array {
     "README.txt": strToU8(ZIP_README),
     "images/ZOLO-GB-001.png": TINY_PNG,
     "images/ZOLO-GB-001-2.png": TINY_PNG,
+    "images/ZOLO-GB-002/ZOLO-GB-002.png": TINY_PNG,
+    "images/ZOLO-GB-002/ZOLO-GB-002-2.png": TINY_PNG,
   });
 }
 

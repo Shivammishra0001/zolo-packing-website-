@@ -80,7 +80,7 @@ export default function Details() {
   // logged in from the modal the hook count changed between renders and React
   // crashed with "Rendered more hooks than during the previous render".
   const [selectedSize, setSelectedSize] = useState(0);
-  const [selectedMaterial, setSelectedMaterial] = useState(0);
+  const [selectedColor, setSelectedColor] = useState(0);
   const [quantity, setQuantity] = useState(100);
   const [artwork, setArtwork] = useState<string | null>(null);
   const [artworkName, setArtworkName] = useState("");
@@ -94,7 +94,7 @@ export default function Details() {
 
     // Reset selection configurations when navigating to a new product
     setSelectedSize(0);
-    setSelectedMaterial(0);
+    setSelectedColor(0);
     setArtwork(null);
     setArtworkName("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -174,13 +174,21 @@ export default function Details() {
   // the Request Custom Quote CTA below is the purchase path.
   const quoteOnly = !product.priceMinor;
 
+  // Everything the buyer has picked, in one label ("8x8x6 in / White").
+  const selectionLabel = [product.sizes[selectedSize], product.colors[selectedColor]].filter(Boolean).join(" / ");
+  const hasSizes = product.sizes.length > 0;
+  const hasColors = product.colors.length > 0;
+  // Step numbers stay contiguous whichever option groups this product has.
+  const colorStep = hasSizes ? 2 : 1;
+  const artworkStep = 1 + (hasSizes ? 1 : 0) + (hasColors ? 1 : 0);
+
   const handleAddToCart = () => {
     // Guarded: guests get the auth modal, then this resumes automatically.
     guard(
       async () => {
-        // Combine the selected size/material chips into one variant descriptor.
-        const parts = [product.sizes?.[selectedSize], product.materials?.[selectedMaterial]].filter(Boolean);
-        const variant = parts.length ? parts.join(" / ") : null;
+        // The chosen size/colour travel as the existing free-text cart
+        // descriptor. They are product-level options, not priced variants.
+        const variant = selectionLabel || null;
         try {
           await addToCart({ productId: product._id || product.id, variant, quantity });
           toast.success("Added to cart", `${quantity} × ${product.name}`);
@@ -196,8 +204,7 @@ export default function Details() {
   const handleBuyNow = () => {
     guard(
       async () => {
-        const parts = [product.sizes?.[selectedSize], product.materials?.[selectedMaterial]].filter(Boolean);
-        const variant = parts.length ? parts.join(" / ") : null;
+        const variant = selectionLabel || null;
         try {
           await addToCart({ productId: product._id || product.id, variant, quantity });
           nav("/cart");
@@ -227,7 +234,8 @@ export default function Details() {
           unit: product.unit,
           specs: {
             size: product.sizes[selectedSize] || "Default",
-            material: product.materials[selectedMaterial] || "Default",
+            ...(product.colors[selectedColor] ? { color: product.colors[selectedColor] } : {}),
+            material: product.materials.join(", ") || "Default",
             ...(artworkName ? { artwork: artworkName } : {}),
           },
         });
@@ -325,9 +333,9 @@ export default function Details() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
           >
-            <div className="text-xs uppercase tracking-wider text-primary-600 font-bold mb-2">
-              {product.materials[selectedMaterial]}
-            </div>
+            {product.specTag && (
+              <div className="text-xs uppercase tracking-wider text-primary-600 font-bold mb-2">{product.specTag}</div>
+            )}
             <h1 className="font-display text-3xl lg:text-4xl font-extrabold text-dark-900 leading-tight">
               {product.name}
             </h1>
@@ -372,57 +380,67 @@ export default function Details() {
             {/* ===== STEP-BY-STEP SELECTION ===== */}
             <div className="mt-6 space-y-6">
 
-              {/* STEP 1: Choose Size */}
-              <div className="p-5 rounded-2xl border border-dark-100 bg-white">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="h-6 w-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center">1</span>
-                  <div className="text-sm font-bold text-dark-900">Choose Size</div>
-                  <div className="ml-auto text-xs text-primary-600 font-semibold">{product.sizes[selectedSize]}</div>
+              {/* STEP 1: Available Sizes — chips from the product's stored size
+                  list. Product-level information only: one price, one stock. */}
+              {hasSizes && (
+                <div className="p-5 rounded-2xl border border-dark-100 bg-white" data-option="size">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="h-6 w-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center">1</span>
+                    <div className="text-sm font-bold text-dark-900">Available Sizes</div>
+                    <div className="ml-auto text-xs text-primary-600 font-semibold">Selected: {product.sizes[selectedSize]}</div>
+                  </div>
+                  <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Available sizes">
+                    {product.sizes.map((s: string, i: number) => (
+                      <button
+                        key={s}
+                        role="radio"
+                        aria-checked={selectedSize === i}
+                        onClick={() => setSelectedSize(i)}
+                        className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
+                          selectedSize === i
+                            ? "bg-dark-900 text-white border-dark-900 shadow-md"
+                            : "bg-white text-dark-700 border-dark-200 hover:border-dark-400"
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {product.sizes.map((s: string, i: number) => (
-                    <button
-                      key={s}
-                      onClick={() => setSelectedSize(i)}
-                      className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
-                        selectedSize === i
-                          ? "bg-dark-900 text-white border-dark-900 shadow-md"
-                          : "bg-white text-dark-700 border-dark-200 hover:border-dark-400"
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              )}
 
-              {/* STEP 2: Choose Material */}
-              <div className="p-5 rounded-2xl border border-dark-100 bg-white">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="h-6 w-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center">2</span>
-                  <div className="text-sm font-bold text-dark-900">Choose Material</div>
+              {/* STEP 2: Available Colours */}
+              {hasColors && (
+                <div className="p-5 rounded-2xl border border-dark-100 bg-white" data-option="color">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="h-6 w-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center">{colorStep}</span>
+                    <div className="text-sm font-bold text-dark-900">Available Colors</div>
+                    <div className="ml-auto text-xs text-primary-600 font-semibold">Selected: {product.colors[selectedColor]}</div>
+                  </div>
+                  <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Available colors">
+                    {product.colors.map((c: string, i: number) => (
+                      <button
+                        key={c}
+                        role="radio"
+                        aria-checked={selectedColor === i}
+                        onClick={() => setSelectedColor(i)}
+                        className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
+                          selectedColor === i
+                            ? "bg-dark-900 text-white border-dark-900 shadow-md"
+                            : "bg-white text-dark-700 border-dark-200 hover:border-dark-400"
+                        }`}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {product.materials.map((m: string, i: number) => (
-                    <button
-                      key={m}
-                      onClick={() => setSelectedMaterial(i)}
-                      className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
-                        selectedMaterial === i
-                          ? "bg-dark-900 text-white border-dark-900 shadow-md"
-                          : "bg-white text-dark-700 border-dark-200 hover:border-dark-400"
-                      }`}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              )}
 
               {/* STEP 3: Upload Artwork */}
               <div className="p-5 rounded-2xl border border-dark-100 bg-white">
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="h-6 w-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center">3</span>
+                  <span className="h-6 w-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center">{artworkStep}</span>
                   <div className="text-sm font-bold text-dark-900">Upload Artwork</div>
                   <div className="ml-auto text-[10px] text-dark-400 uppercase tracking-wider">Optional</div>
                 </div>
@@ -460,7 +478,7 @@ export default function Details() {
               {/* STEP 4: Quantity */}
               <div className="p-5 rounded-2xl border border-dark-100 bg-white">
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="h-6 w-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center">4</span>
+                  <span className="h-6 w-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center">{artworkStep + 1}</span>
                   <div className="text-sm font-bold text-dark-900">Select Quantity</div>
                   <div className="ml-auto text-xs text-dark-500 flex items-center gap-1">
                     <Info className="h-3 w-3" /> Min: {product.moq}
@@ -503,7 +521,7 @@ export default function Details() {
             <div className="mt-6 p-5 rounded-2xl bg-dark-950 text-white">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-semibold text-dark-300">Your Selection</span>
-                <span className="text-xs text-dark-400">{product.sizes[selectedSize]} · {product.materials[selectedMaterial]}</span>
+                <span className="text-xs text-dark-400">{selectionLabel || product.materials.join(" · ") || "Standard"}</span>
               </div>
               <div className="flex items-baseline justify-between">
                 <div>
@@ -585,8 +603,15 @@ export default function Details() {
               <div className="mt-4 p-4 rounded-xl border border-dark-100 bg-white">
                 {activeTab === "specs" && (
                   <div className="space-y-2 text-sm">
-                    <div className="flex justify-between py-2 border-b border-dark-50"><span className="text-dark-500">Material</span><span className="font-semibold text-dark-900">{product.materials.join(", ")}</span></div>
-                    <div className="flex justify-between py-2 border-b border-dark-50"><span className="text-dark-500">Available Sizes</span><span className="font-semibold text-dark-900">{product.sizes.join(", ")}</span></div>
+                    {product.materials.length > 0 && (
+                      <div className="flex justify-between gap-4 py-2 border-b border-dark-50"><span className="text-dark-500">Material</span><span className="font-semibold text-dark-900 text-right">{product.materials.join(", ")}</span></div>
+                    )}
+                    {hasSizes && (
+                      <div className="flex justify-between gap-4 py-2 border-b border-dark-50"><span className="text-dark-500">Available Sizes</span><span className="font-semibold text-dark-900 text-right">{product.sizes.join(", ")}</span></div>
+                    )}
+                    {hasColors && (
+                      <div className="flex justify-between gap-4 py-2 border-b border-dark-50"><span className="text-dark-500">Available Colors</span><span className="font-semibold text-dark-900 text-right">{product.colors.join(", ")}</span></div>
+                    )}
                     <div className="flex justify-between py-2"><span className="text-dark-500">MOQ</span><span className="font-semibold text-dark-900">{product.moq} {product.unit}s</span></div>
                     {product.rating != null && (
                       <div className="flex justify-between py-2"><span className="text-dark-500">Rating</span><span className="font-semibold text-dark-900">{product.rating}/5 ({product.reviews ?? 0} reviews)</span></div>

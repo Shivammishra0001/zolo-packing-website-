@@ -42,11 +42,14 @@ export const productWriteSchema = z.object({
   height: optNum,
   dimUnit: z.union([z.enum(["in", "cm", "mm"]), z.null()]).optional(),
   gsm: optInt(0, 5000),
-  color: optText(120),
+  // color / sizeLabel hold a comma-separated LIST ("Brown, White, Black",
+  // "6x6x4 in, 8x8x6 in, …") in the existing text columns, so they get room
+  // for up to MAX_OPTION_VALUES entries.
+  color: optText(2000),
   material: optText(120),
   productType: optText(120),
   thickness: optText(60),
-  sizeLabel: optText(120),
+  sizeLabel: optText(2000),
   basePriceMinor: z.number().int().min(0, "Price cannot be negative").max(1_000_000_000).optional(),
   salePriceMinor: optInt(0, 1_000_000_000),
   moq: z.number().int().min(1, "MOQ must be at least 1").max(100_000_000).optional(),

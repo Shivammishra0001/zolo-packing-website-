@@ -19,7 +19,7 @@
 // the `xdr:` prefix is exactly what makes naive extractors find zero images.
 // ============================================================
 import { unzipSync } from "fflate";
-import { IMAGE_EXTS, LIMITS, type ZipImage } from "./bulk-import-lib";
+import { IMAGE_EXTS, LIMITS, type ZipImage } from "./bulk-import-lib.ts";
 
 /** An image recovered from the workbook, tagged with the row it is anchored to. */
 export interface EmbeddedImage extends ZipImage {
@@ -147,6 +147,7 @@ export function extractEmbeddedImages(data: Uint8Array): EmbeddedImage[] {
       path: mediaPath,
       base: baseName.replace(/\.[a-z0-9]+$/i, "").toLowerCase(),
       ext: ext === "jpe" ? "jpeg" : ext,
+      dir: "",
       data: bytes,
       anchorRow,
       anchorCol: Number.isFinite(anchorCol) ? anchorCol : -1,

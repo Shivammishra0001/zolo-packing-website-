@@ -10,6 +10,7 @@ import { useAuthGuard } from "./auth/AuthGuard";
 import { useNavigate } from "react-router-dom";
 import { addToCart } from "../lib/cart-store";
 import { useToast } from "./ui/Toast";
+import { summarizeOptions } from "../lib/product-options";
 
 const typeToMockup: Record<string, "mailer" | "shipping" | "pizza" | "cosmetic" | "pouch" | "jar" | "tube" | "rigid" | "tuck" | "bag"> = {
   mailer: "mailer",
@@ -41,6 +42,8 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
   // that would fail server-side.
   const priceMinor = (product as { priceMinor?: number }).priceMinor ?? 0;
   const quoteOnly = priceMinor <= 0;
+  const sizesSummary = summarizeOptions(product.sizes ?? [], 3);
+  const colorsSummary = summarizeOptions(product.colors ?? [], 3);
   const inStock = product.inStock !== false;
 
   /**
@@ -143,9 +146,14 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
 
       <div className="p-4 flex flex-col flex-1">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-[10px] uppercase tracking-wider text-primary-600 font-bold">{product.materials[0]}</span>
-          <span className="text-dark-300 text-xs">·</span>
-          <span className="text-[10px] uppercase tracking-wider text-dark-500 font-semibold">MOQ {product.moq}</span>
+          {/* Spec tag = material facts ("5 Ply • Kraft Paper"), never the colour. */}
+          {product.specTag && (
+            <>
+              <span className="text-[10px] uppercase tracking-wider text-primary-600 font-bold truncate">{product.specTag}</span>
+              <span className="text-dark-300 text-xs">·</span>
+            </>
+          )}
+          <span className="text-[10px] uppercase tracking-wider text-dark-500 font-semibold shrink-0">MOQ {product.moq}</span>
         </div>
 
         <Link to={`/product/${product.slug}`} className="flex-1">
@@ -153,6 +161,25 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
             {product.name}
           </h3>
         </Link>
+
+        {/* Sizes / colours summary. Each line renders ONLY when the product has
+            values, so a card never shows an empty "Sizes:" label. */}
+        {(sizesSummary || colorsSummary) && (
+          <dl className="mt-2 space-y-0.5 text-[11px] text-dark-600">
+            {sizesSummary && (
+              <div className="flex gap-1 min-w-0">
+                <dt className="font-semibold text-dark-500 shrink-0">Sizes:</dt>
+                <dd className="truncate" title={product.sizes.join(", ")}>{sizesSummary}</dd>
+              </div>
+            )}
+            {colorsSummary && (
+              <div className="flex gap-1 min-w-0">
+                <dt className="font-semibold text-dark-500 shrink-0">Colors:</dt>
+                <dd className="truncate" title={product.colors.join(", ")}>{colorsSummary}</dd>
+              </div>
+            )}
+          </dl>
+        )}
 
         {/* Ratings render only from real review data — never a fabricated score. */}
         {product.rating != null && (
@@ -178,7 +205,7 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
               <div className="font-display text-sm font-bold text-dark-900 leading-none">
                 {quoteOnly
                   ? `${product.moq} ${product.unit}s`
-                  : `₹${(priceMinor / 100).toLocaleString("en-IN")}`}
+                  : `${product.sizes.length > 1 ? "From " : ""}₹${(priceMinor / 100).toLocaleString("en-IN")}`}
               </div>
             </div>
             {!quoteOnly && inStock && (
@@ -279,9 +306,9 @@ export function LargeProductCard({ product, index = 0 }: { product: Product; ind
           )}
         </div>
         <div className="p-6">
-          <div className="text-[10px] uppercase tracking-wider text-primary-600 font-bold mb-1">
-            {product.materials[0]}
-          </div>
+          {product.specTag && (
+            <div className="text-[10px] uppercase tracking-wider text-primary-600 font-bold mb-1">{product.specTag}</div>
+          )}
           <h3 className="font-display text-lg font-bold text-dark-900 group-hover:text-primary-600 transition-colors">
             {product.name}
           </h3>

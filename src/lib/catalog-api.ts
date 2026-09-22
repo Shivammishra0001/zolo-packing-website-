@@ -115,6 +115,8 @@ export interface ProductWriteInput {
   color?: string | null;
   material?: string | null;
   productType?: string | null;
+  thickness?: string | null;
+  sizeLabel?: string | null;
   basePriceMinor?: number;
   moq?: number;
   stock?: number;
@@ -147,6 +149,8 @@ export function toDb(p: CatalogProduct): ProductWriteInput {
     color: p.color ?? null,
     material: p.material ?? null,
     productType: p.productType ?? null,
+    thickness: p.thickness ?? null,
+    sizeLabel: p.sizeLabel ?? null,
     basePriceMinor: Math.round((p.basePrice ?? 0) * 100),
     moq: p.moq,
     stock: p.stock ?? 0,
@@ -273,10 +277,10 @@ export const catalogApi = {
    *   skip   — leave the existing product untouched
    *   create — import under a suffixed SKU, never overwriting
    */
-  importBatch: (products: CatalogProduct[], mode: "update" | "skip" | "create", meta: { fileName?: string; fileSizeBytes?: number; imagesMatched?: number } = {}) =>
+  importBatch: (products: CatalogProduct[], mode: "update" | "skip" | "create", meta: { fileName?: string; fileSizeBytes?: number; imagesMatched?: number; createMissingCategories?: boolean } = {}) =>
     request<{ processed: number; created: number; updated: number; skipped: number; failed: number; importId: string | null; errors: { sku: string; level?: string; error: string }[] }>(
       "/products/import",
-      { method: "POST", body: JSON.stringify({ products: products.map(importRow), mode, fileName: meta.fileName, fileSizeBytes: meta.fileSizeBytes, imagesMatched: meta.imagesMatched }) },
+      { method: "POST", body: JSON.stringify({ products: products.map(importRow), mode, fileName: meta.fileName, fileSizeBytes: meta.fileSizeBytes, imagesMatched: meta.imagesMatched, createMissingCategories: meta.createMissingCategories === true }) },
     ),
 
   uploadImage: (name: string, mime: string, dataBase64: string) =>
@@ -324,6 +328,8 @@ function importRow(p: CatalogProduct): Record<string, unknown> {
     color: p.color ?? null,
     material: p.material ?? null,
     productType: p.productType ?? null,
+    thickness: p.thickness ?? null,
+    sizeLabel: p.sizeLabel ?? null,
     basePriceMinor: Math.round((p.basePrice ?? 0) * 100),
     moq: p.moq,
     stock: p.stock ?? 0,
