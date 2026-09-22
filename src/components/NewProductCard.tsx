@@ -75,202 +75,120 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
   const hasRealImage = /^(blob:|\/|https?:|data:)/.test(product.image) || /\.(png|jpg|jpeg|webp|svg)$/i.test(product.image);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
+    <motion.article
+      initial={{ opacity: 0, y: 10 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.2 }}
-      transition={{ duration: 0.4, delay: Math.min(index * 0.04, 0.3) }}
+      viewport={{ once: true, amount: 0.15 }}
+      transition={{ duration: 0.3, delay: Math.min(index * 0.03, 0.2) }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      whileHover={{ y: -6 }}
-      className="group @container bg-white rounded-2xl overflow-hidden card-shadow card-shadow-hover transition-all border border-dark-100 flex flex-col"
+      className="group @container card card-hover flex h-full flex-col overflow-hidden"
+      data-product-card
     >
-      <Link to={`/product/${product.slug}`} className="block relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-dark-50 to-dark-100">
-        <motion.div
-          animate={{ scale: hovered ? 1.08 : 1 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
-          className="absolute inset-0 flex items-center justify-center p-4"
-        >
+      {/* Fixed 4:3 image stage: every card has the same image area, images
+          are contained (never cropped or stretched) on a mint surface. */}
+      <Link to={`/product/${product.slug}`} className="relative block aspect-[4/3] overflow-hidden bg-green-50">
+        <div className={`absolute inset-0 flex items-center justify-center p-4 transition-transform duration-300 ease-out ${hovered ? "scale-[1.04]" : "scale-100"}`}>
           {hasRealImage ? (
-            <img src={product.image} alt={product.name} className="h-full w-full object-contain rounded-xl bg-white/70 p-3" />
+            <img src={product.image} alt={product.name} loading="lazy" className="h-full w-full object-contain" />
           ) : (
-            <PackagingMockup type={mockupType} color={product.accent} className="w-full h-full" />
-          )}
-        </motion.div>
-
-        {/* Badges */}
-        <div className="absolute top-3 left-3 flex flex-col gap-1.5">
-          {product.bestseller && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary-500 text-white text-[10px] font-bold uppercase tracking-wider shadow-sm">
-              <Zap className="h-2.5 w-2.5" /> Bestseller
-            </span>
-          )}
-          {product.newArrival && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-wider shadow-sm">
-              New
-            </span>
+            <PackagingMockup type={mockupType} color={product.accent} className="h-full w-full" />
           )}
         </div>
 
-        {/* Wishlist */}
+        <div className="absolute left-3 top-3 flex flex-col gap-1">
+          {product.bestseller && <span className="badge bg-primary-500 text-white shadow-sm"><Zap className="h-2.5 w-2.5" aria-hidden /> Bestseller</span>}
+          {product.newArrival && <span className="badge bg-green-500 text-white shadow-sm">New</span>}
+          {quoteOnly && <span className="badge bg-white/90 text-green-700 shadow-sm">Quote based</span>}
+        </div>
+
         <button
           onClick={(e) => { e.preventDefault(); guard(() => toggle(product.id), { label: "save to wishlist" }); }}
           aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
-          className="absolute top-3 right-3 h-9 w-9 rounded-full bg-white flex items-center justify-center hover:scale-110 transition-all shadow-md"
+          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-dark-500 shadow-sm transition-colors hover:text-primary-500"
         >
-          <Heart className={`h-4 w-4 transition-colors ${wishlisted ? "fill-primary-500 text-primary-500" : "text-dark-500"}`} />
+          <Heart className={`h-4 w-4 ${wishlisted ? "fill-primary-500 text-primary-500" : ""}`} />
         </button>
 
-        {/* Hover Overlay with Quick Actions */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: hovered ? 1 : 0 }}
-          className="absolute inset-0 bg-dark-950/40 backdrop-blur-[2px] flex items-end justify-center p-4"
-        >
-          <div className="flex gap-2 w-full">
-            <button
-              onClick={(e) => { e.preventDefault(); guard(() => nav(`/product/${product.slug}`), { label: "view this product" }); }}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg bg-white text-dark-900 text-xs font-semibold hover:bg-primary-500 hover:text-white transition-colors"
-            >
-              <Eye className="h-3.5 w-3.5" /> Quick View
-            </button>
-            <button
-              onClick={(e) => { e.preventDefault(); guard(() => nav(`/product/${product.slug}`), { label: "request a quote" }); }}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg bg-primary-500 text-white text-xs font-semibold hover:bg-primary-600 transition-colors"
-            >
-              <Quote className="h-3.5 w-3.5" /> Quote
-            </button>
-          </div>
-        </motion.div>
+        {/* Quick view on hover (desktop only; touch devices tap the card). */}
+        <span className={`pointer-events-none absolute inset-x-3 bottom-3 hidden items-center justify-center gap-1.5 rounded-lg bg-navy-900/85 py-2 text-xs font-semibold text-white backdrop-blur-sm transition-opacity duration-200 sm:flex ${hovered ? "opacity-100" : "opacity-0"}`}>
+          <Eye className="h-3.5 w-3.5" aria-hidden /> Quick view
+        </span>
       </Link>
 
-      <div className="p-4 flex flex-col flex-1">
-        <div className="flex items-center gap-2 mb-2">
-          {/* Spec tag = material facts ("5 Ply • Kraft Paper"), never the colour. */}
-          {product.specTag && (
-            <>
-              <span className="text-[10px] uppercase tracking-wider text-primary-600 font-bold truncate">{product.specTag}</span>
-              <span className="text-dark-300 text-xs">·</span>
-            </>
-          )}
-          <span className="text-[10px] uppercase tracking-wider text-dark-500 font-semibold shrink-0">MOQ {product.moq}</span>
+      <div className="flex flex-1 flex-col p-4">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide">
+          {product.specTag && <span className="truncate text-green-600">{product.specTag}</span>}
+          {product.specTag && <span className="text-dark-300" aria-hidden>·</span>}
+          <span className="shrink-0 text-dark-500">MOQ {product.moq.toLocaleString("en-IN")}</span>
         </div>
 
-        <Link to={`/product/${product.slug}`} className="flex-1">
-          <h3 className="font-display font-bold text-dark-900 leading-snug line-clamp-2 group-hover:text-primary-600 transition-colors text-sm">
+        <Link to={`/product/${product.slug}`} className="mt-1.5 block">
+          <h3 className="line-clamp-2 min-h-[2.5rem] text-[15px] font-bold leading-5 text-dark-900 transition-colors group-hover:text-green-600">
             {product.name}
           </h3>
         </Link>
 
-        {/* Sizes / colours summary. Each line renders ONLY when the product has
-            values, so a card never shows an empty "Sizes:" label. */}
-        {(sizesSummary || colorsSummary) && (
-          <dl className="mt-2 space-y-0.5 text-[11px] text-dark-600">
-            {sizesSummary && (
-              <div className="flex gap-1 min-w-0">
-                <dt className="font-semibold text-dark-500 shrink-0">Sizes:</dt>
-                <dd className="truncate" title={product.sizes.join(", ")}>{sizesSummary}</dd>
-              </div>
-            )}
-            {colorsSummary && (
-              <div className="flex gap-1 min-w-0">
-                <dt className="font-semibold text-dark-500 shrink-0">Colors:</dt>
-                <dd className="truncate" title={product.colors.join(", ")}>{colorsSummary}</dd>
-              </div>
-            )}
-          </dl>
-        )}
-
-        {/* Ratings render only from real review data — never a fabricated score. */}
-        {product.rating != null && (
-          <div className="flex items-center gap-1.5 mt-2 text-xs">
-            <div className="flex items-center gap-0.5">
-              {[...Array(5)].map((_, i) => (
-                <svg key={i} className={`h-3 w-3 ${i < Math.round(product.rating!) ? "text-amber-400 fill-current" : "text-dark-200 fill-current"}`} viewBox="0 0 20 20">
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.293z" />
-                </svg>
-              ))}
-              <span className="font-semibold text-dark-800 ml-1">{product.rating}</span>
+        {/* Sizes / colours summary — a line renders ONLY when the product has
+            values, so a card never shows an empty "Sizes:" label. Reserved
+            height keeps CTA rows aligned across the grid. */}
+        <dl className="mt-1.5 min-h-[2.25rem] space-y-0.5 text-xs text-dark-600">
+          {sizesSummary && (
+            <div className="flex min-w-0 gap-1">
+              <dt className="shrink-0 font-semibold text-dark-500">Sizes:</dt>
+              <dd className="truncate" title={product.sizes.join(", ")}>{sizesSummary}</dd>
             </div>
-            {product.reviews != null && <span className="text-dark-400">({product.reviews})</span>}
-          </div>
-        )}
+          )}
+          {colorsSummary && (
+            <div className="flex min-w-0 gap-1">
+              <dt className="shrink-0 font-semibold text-dark-500">Colors:</dt>
+              <dd className="truncate" title={product.colors.join(", ")}>{colorsSummary}</dd>
+            </div>
+          )}
+        </dl>
 
-        <div className="mt-3 pt-3 border-t border-dark-100 space-y-2">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <div className="text-[10px] uppercase tracking-wider text-dark-500">
-                {quoteOnly ? "Min. Order (MOQ)" : "Price"}
-              </div>
-              <div className="font-display text-sm font-bold text-dark-900 leading-none">
+        {/* Price + CTA row, pinned to the bottom so it aligns across cards. */}
+        <div className="mt-auto border-t border-dark-100 pt-3">
+          <div className="flex items-end justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-dark-500">{quoteOnly ? "Min. order" : "Price"}</div>
+              <div className="font-display text-base font-bold leading-none text-dark-900">
                 {quoteOnly
-                  ? `${product.moq} ${product.unit}s`
-                  : `${product.sizes.length > 1 ? "From " : ""}₹${(priceMinor / 100).toLocaleString("en-IN")}`}
+                  ? `${product.moq.toLocaleString("en-IN")} ${product.unit}s`
+                  : <>{product.sizes.length > 1 && <span className="text-xs font-semibold text-dark-500">From </span>}₹{(priceMinor / 100).toLocaleString("en-IN")}</>}
               </div>
             </div>
             {!quoteOnly && inStock && (
-              // Quantity stepper. Always visible — never hover-only, so it
-              // works on touch devices too.
-              <div className="flex items-center rounded-lg border border-dark-200">
-                <button
-                  onClick={(e) => { e.preventDefault(); setQty((q) => Math.max(1, q - 1)); }}
-                  aria-label={`Decrease quantity of ${product.name}`}
-                  className="px-2 py-1.5 text-dark-500 hover:text-dark-900 disabled:opacity-40"
-                  disabled={qty <= 1}
-                >
-                  <Minus className="h-3 w-3" aria-hidden />
-                </button>
+              <div className="flex h-9 items-center rounded-lg border border-dark-200" aria-label="Quantity">
+                <button onClick={(e) => { e.preventDefault(); setQty((q) => Math.max(1, q - 1)); }} aria-label={`Decrease quantity of ${product.name}`} disabled={qty <= 1} className="h-full px-2 text-dark-500 hover:text-dark-900 disabled:opacity-40"><Minus className="h-3 w-3" aria-hidden /></button>
                 <span className="min-w-6 text-center text-xs font-bold tabular-nums text-dark-900" aria-live="polite">{qty}</span>
-                <button
-                  onClick={(e) => { e.preventDefault(); setQty((q) => q + 1); }}
-                  aria-label={`Increase quantity of ${product.name}`}
-                  className="px-2 py-1.5 text-dark-500 hover:text-dark-900"
-                >
-                  <Plus className="h-3 w-3" aria-hidden />
-                </button>
+                <button onClick={(e) => { e.preventDefault(); setQty((q) => q + 1); }} aria-label={`Increase quantity of ${product.name}`} className="h-full px-2 text-dark-500 hover:text-dark-900"><Plus className="h-3 w-3" aria-hidden /></button>
               </div>
             )}
           </div>
 
-          {quoteOnly ? (
-            <Link
-              to={`/product/${product.slug}`}
-              className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-dark-900 text-white text-xs font-semibold hover:bg-primary-500 transition-colors"
-            >
-              <Quote className="h-3.5 w-3.5" aria-hidden /> Request Quote
-            </Link>
-          ) : !inStock ? (
-            <button
-              disabled
-              className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-dark-100 text-dark-400 text-xs font-semibold cursor-not-allowed"
-            >
-              Out of stock
-            </button>
-          ) : (
-            <div className="flex flex-col @[12rem]:flex-row gap-1.5">
-              <button
-                onClick={(e) => handleAddToCart(e)}
-                disabled={adding}
-                className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary-500 text-white text-xs font-semibold hover:bg-primary-600 disabled:opacity-60 transition-colors"
-              >
-                {adding
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                  : <ShoppingCart className="h-3.5 w-3.5" aria-hidden />}
-                {adding ? "Adding…" : "Add to Cart"}
-              </button>
-              <button
-                onClick={(e) => handleAddToCart(e, true)}
-                disabled={adding}
-                aria-label={`Buy ${product.name} now`}
-                className="px-3 py-2 rounded-lg bg-dark-900 text-white text-xs font-semibold hover:bg-dark-800 disabled:opacity-60 transition-colors whitespace-nowrap"
-              >
-                Buy Now
-              </button>
-            </div>
-          )}
+          <div className="mt-3">
+            {quoteOnly ? (
+              <Link to={`/product/${product.slug}`} className="btn btn-primary btn-sm w-full">
+                <Quote className="h-3.5 w-3.5" aria-hidden /> Request Quote
+              </Link>
+            ) : !inStock ? (
+              <button disabled className="btn btn-sm w-full bg-dark-100 text-dark-400">Out of stock</button>
+            ) : (
+              <div className="flex gap-1.5">
+                <button onClick={(e) => handleAddToCart(e)} disabled={adding} className="btn btn-primary btn-sm min-w-0 flex-1">
+                  {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <ShoppingCart className="h-3.5 w-3.5" aria-hidden />}
+                  <span className="truncate">{adding ? "Adding…" : "Add to Cart"}</span>
+                </button>
+                <button onClick={(e) => handleAddToCart(e, true)} disabled={adding} aria-label={`Buy ${product.name} now`} className="btn btn-navy btn-sm hidden @[13rem]:inline-flex">
+                  Buy Now
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </motion.div>
+    </motion.article>
   );
 }
 
@@ -278,50 +196,26 @@ export function LargeProductCard({ product, index = 0 }: { product: Product; ind
   const mockupType = typeToMockup[product.category] || "mailer";
   const hasRealImage = /^(blob:|\/|https?:|data:)/.test(product.image) || /\.(png|jpg|jpeg|webp|svg)$/i.test(product.image);
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
+    <motion.article
+      initial={{ opacity: 0, y: 10 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      transition={{ duration: 0.5, delay: index * 0.08 }}
-      whileHover={{ y: -8 }}
-      className="group relative bg-white rounded-3xl overflow-hidden card-shadow-lg border border-dark-100"
+      transition={{ duration: 0.3, delay: Math.min(index * 0.04, 0.2) }}
+      className="group card card-hover overflow-hidden"
     >
       <Link to={`/product/${product.slug}`} className="block">
-        <div className="aspect-square bg-gradient-to-br from-dark-50 to-dark-100 relative overflow-hidden">
-          <motion.div
-            whileHover={{ scale: 1.1 }}
-            transition={{ duration: 0.6 }}
-            className="absolute inset-0 flex items-center justify-center p-6"
-          >
-            {hasRealImage ? (
-              <img src={product.image} alt={product.name} className="h-full w-full object-contain p-3" />
-            ) : (
-              <PackagingMockup type={mockupType} color={product.accent} className="w-full h-full" />
-            )}
-          </motion.div>
-          {product.bestseller && (
-            <div className="absolute top-4 left-4 inline-flex items-center gap-1 px-3 py-1 rounded-full bg-primary-500 text-white text-[10px] font-bold uppercase tracking-wider shadow-sm">
-              <Zap className="h-2.5 w-2.5" /> Bestseller
-            </div>
-          )}
-        </div>
-        <div className="p-6">
-          {product.specTag && (
-            <div className="text-[10px] uppercase tracking-wider text-primary-600 font-bold mb-1">{product.specTag}</div>
-          )}
-          <h3 className="font-display text-lg font-bold text-dark-900 group-hover:text-primary-600 transition-colors">
-            {product.name}
-          </h3>
-          <div className="flex items-end justify-between mt-3">
-            <div>
-              <div className="text-[10px] uppercase tracking-wider text-dark-500">Min. Order (MOQ)</div>
-              <div className="font-display text-sm font-bold text-dark-900">
-                {product.moq} {product.unit}s
-              </div>
-            </div>
+        <div className="relative aspect-[4/3] overflow-hidden bg-green-50">
+          <div className="absolute inset-0 flex items-center justify-center p-6 transition-transform duration-300 group-hover:scale-[1.04]">
+            {hasRealImage ? <img src={product.image} alt={product.name} loading="lazy" className="h-full w-full object-contain" /> : <PackagingMockup type={mockupType} color={product.accent} className="h-full w-full" />}
           </div>
+          {product.bestseller && <span className="badge absolute left-3 top-3 bg-primary-500 text-white shadow-sm"><Zap className="h-2.5 w-2.5" aria-hidden /> Bestseller</span>}
+        </div>
+        <div className="p-4">
+          {product.specTag && <div className="text-[11px] font-semibold uppercase tracking-wide text-green-600">{product.specTag}</div>}
+          <h3 className="h3 mt-1 line-clamp-2 text-dark-900 transition-colors group-hover:text-green-600">{product.name}</h3>
+          <div className="mt-3 text-xs text-dark-500">Min. order <span className="font-bold text-dark-900">{product.moq.toLocaleString("en-IN")} {product.unit}s</span></div>
         </div>
       </Link>
-    </motion.div>
+    </motion.article>
   );
 }
