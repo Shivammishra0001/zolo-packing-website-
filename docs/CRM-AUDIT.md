@@ -161,3 +161,66 @@ Customer create/edit form; "New Order" builder with the product picker and
 custom line items; the Record Payment modal; the order-detail payment ledger
 and balance; the payments dashboard; outstanding/dues views; reminder buttons;
 CSV export. The backend for every one of these now exists.
+
+---
+
+# What was built (backend phase)
+
+Migration `20260926171246_crm_admin_orders_payments` — **additive only**
+(`CREATE TYPE`, `ADD COLUMN`, `CREATE INDEX`, `ADD FOREIGN KEY`; no DROP, no
+data touched). Verified before and after: 4 users / 6 orders / 8 items /
+2 payments / 542 audit logs, all intact.
+
+## `server/src/services/crm.mjs`
+
+| Export | Purpose |
+|---|---|
+| `recomputeOrderPayment(tx, orderId)` | **The one place `paidMinor`/`paymentStatus` are written.** Derives them from the Payment rows + the Refund ledger. |
+| `derivePaymentState(order)` | Read-time `pendingMinor` + `OVERDUE` (never stored — it depends on the clock). |
+| `createCustomer` / `updateCustomer` | Admin-created customers as `User(role=buyer)`, with an optional default address in the same transaction. |
+| `createOrder` | Multi-item admin order (catalog **and** custom lines), frozen snapshots, optional advance recorded as a real Payment row. |
+| `addPayment` | Appends a payment; validates amount, method, overpayment and duplicate reference. |
+| `refundPayment` | Appends a `Refund`; the original Payment is never deleted or reduced. |
+| `listCustomers` / `listPayments` / `listOutstanding` / `paymentSummary` | Server-side paginated + DB-aggregated reads. |
+
+## `server/src/services/crm-notifications.mjs`
+
+Named templates (`ORDER_CREATED`, `PAYMENT_RECEIVED`, `PAYMENT_DUE`,
+`PAYMENT_OVERDUE`) rendered from real order data and sent through the existing
+`dispatch()` pipeline, so the admin channel matrix and customer opt-ins still
+apply and every attempt lands in `NotificationDelivery`.
+
+## Endpoints (all under `/api/v1/admin`, admin-only)
+
+```
+GET    /crm/customers                 list + derived totals (paginated)
+POST   /crm/customers                 create
+PATCH  /crm/customers/:id             update
+GET    /crm/customers/:id/notifications
+POST   /crm/orders                    create order (+ optional advance)
+POST   /crm/orders/:id/payments       record a payment
+POST   /crm/orders/:id/notify         send a templated message
+POST   /crm/payments/:id/refund       refund
+GET    /crm/payments                  transactions (paginated, searchable)
+GET    /crm/payments/summary          receivables dashboard
+GET    /crm/outstanding               ?bucket=overdue|today|week|month|all
+```
+
+## Two defects found and fixed along the way
+
+1. **`paidMinor` drift.** `services/orders.mjs:623` and `:1017` assigned
+   `paidMinor = grandTotalMinor` directly on COD delivery. Both now settle the
+   payment rows and call `recomputeOrderPayment()`, so the stored figure can
+   never disagree with the ledger.
+2. **Partial refunds were invisible to the totals.** The inherited logic read
+   refunds from `Payment.status === "REFUNDED"`, which only happens on a FULL
+   refund. A ₹5,000 refund against a ₹20,000 payment left the order reading
+   fully paid. Refunds are now summed from the `Refund` ledger
+   (status `processed`), and the order falls to `PARTIALLY_REFUNDED`.
+   Regression test: *"PARTIAL refund reduces paid and flips the order to
+   PARTIALLY_REFUNDED"*.
+
+## Tests — `server/test/crm.test.mjs`, 15 passing
+
+Covers the brief's TEST 1–6 and TEST 10 plus validation, refunds, the audit
+trail, pagination, notification honesty and admin-only access.
