@@ -94,6 +94,8 @@ model User {
   recyclingRequests      RecyclingRequest[]
   assignedCoupons        Coupon[]               @relation("AssignedCoupons")
   catalogImports         CatalogImport[]        @relation("CatalogImporter")
+  createdOrders          Order[]                @relation("OrderCreatedBy")
+  receivedPayments       Payment[]              @relation("PaymentReceivedBy")
 
   @@index([role])
 }
@@ -843,6 +845,18 @@ model Order {
   // Sum of the line-level commission snapshots.
   commissionMinor  Int                  @default(0)
 
+  // ---- Admin-raised orders (Customers → Create Order). All optional so every
+  // existing storefront order stays valid without a backfill.
+  // Payment due date — the ONLY input to the derived OVERDUE state.
+  dueDate              DateTime?
+  expectedDeliveryDate DateTime?
+  // Where the order came from: website | admin | whatsapp | phone | offline | quote
+  source               String?   @default("website")
+  // The admin who raised the order (null for customer self-checkout).
+  createdById          String?
+  createdBy            User?     @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([dueDate])
   @@index([userId])
   @@index([customerId])
   @@index([status])
@@ -871,6 +885,9 @@ model OrderItem {
   // restates historical payouts.
   commissionBps   Int             @default(0)
   commissionMinor Int             @default(0)
+  // Custom packaging line that has no catalog product (productId stays null).
+  isCustomItem    Boolean         @default(false)
+  description     String?
 
   @@index([orderId])
 }
@@ -911,6 +928,14 @@ model Payment {
   status        PaymentStatus @default(PENDING)
   reference     String? // gateway/transaction reference
   paidAt        DateTime?
+  // Where this instalment sits in the order's payment life cycle.
+  kind          PaymentKind   @default(PARTIAL)
+  notes         String?
+  // The admin who took the money (counter/bank entry), null for gateway flows.
+  receivedById  String?
+  receivedBy    User?         @relation("PaymentReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+  // Uploaded proof (cheque photo, UPI screenshot) — a stored-file URL.
+  proofUrl      String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -1035,6 +1060,15 @@ model PaymentRequest {
   @@index([userId, status])
   @@index([status])
   @@index([orderId])
+}
+
+// Where a payment sits in the order life cycle. Independent of PaymentStatus:
+// an ADVANCE can be PENDING, a FINAL can be FAILED.
+enum PaymentKind {
+  ADVANCE
+  PARTIAL
+  FINAL
+  ADJUSTMENT
 }
 
 enum PaymentStatus {

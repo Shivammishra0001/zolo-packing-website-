@@ -5,6 +5,8 @@ import { changeRequestSchema, rejectSchema, suspendSchema, orderStatusUpdateSche
 import * as admin from "../services/admin.mjs";
 import * as documents from "../services/documents.mjs";
 import * as orders from "../services/orders.mjs";
+import * as crm from "../services/crm.mjs";
+import * as crmNotify from "../services/crm-notifications.mjs";
 import * as aiGen from "../services/ai-generate.mjs";
 import * as dashboards from "../services/dashboards.mjs";
 import * as inventory from "../services/inventory.mjs";
@@ -96,8 +98,9 @@ adminRouter.get("/analytics", wrap(async (req, res) => {
 
 /**
  * Customers. Derived from User(role=buyer) + aggregated order totals — the
- * `Customer` table exists in the schema but is never written to (0 rows while
- * 564 buyers exist), so User is the only correct source.
+ * `Customer` table exists in the schema but is never written to (0 rows, and
+ * every order has customerId = null), so User is the only correct source.
+ * See docs/CRM-AUDIT.md.
  */
 adminRouter.get("/customers", wrap(async (req, res) => {
   ok(res, await dashboards.customerList({
@@ -111,6 +114,67 @@ adminRouter.get("/customers/:id", wrap(async (req, res) => {
   const detail = await dashboards.customerDetail(req.params.id);
   if (!detail) throw notFound("Customer not found");
   ok(res, detail);
+}));
+
+// ---------------------------------------------------------------------------
+// CRM — admin-created customers, admin-raised orders, the payment ledger.
+// Backed by services/crm.mjs; see docs/CRM-AUDIT.md for why these extend the
+// existing User/Order/Payment tables instead of adding parallel ones.
+// ---------------------------------------------------------------------------
+
+/** Server-side paginated customer list with derived order/payment totals. */
+adminRouter.get("/crm/customers", wrap(async (req, res) => {
+  ok(res, await crm.listCustomers(req.query));
+}));
+
+/** Create a customer (no self-registration needed). */
+adminRouter.post("/crm/customers", wrap(async (req, res) => {
+  ok(res, { customer: await crm.createCustomer(req.user, req.body ?? {}) }, 201);
+}));
+
+adminRouter.patch("/crm/customers/:id", wrap(async (req, res) => {
+  ok(res, { customer: await crm.updateCustomer(req.user, req.params.id, req.body ?? {}) });
+}));
+
+/** A customer's outbound communication history (real delivery rows only). */
+adminRouter.get("/crm/customers/:id/notifications", wrap(async (req, res) => {
+  ok(res, { notifications: await crmNotify.notificationHistory(req.params.id, { limit: req.query.limit }) });
+}));
+
+/** Raise an order for a customer, optionally with an advance in one go. */
+adminRouter.post("/crm/orders", wrap(async (req, res) => {
+  ok(res, { order: await crm.createOrder(req.user, req.body ?? {}) }, 201);
+}));
+
+/** Append a payment to an order. paidMinor/paymentStatus are derived, never sent. */
+adminRouter.post("/crm/orders/:id/payments", wrap(async (req, res) => {
+  ok(res, await crm.addPayment(req.user, req.params.id, req.body ?? {}), 201);
+}));
+
+/** Refund against a payment — appends a Refund, never edits history. */
+adminRouter.post("/crm/payments/:id/refund", wrap(async (req, res) => {
+  ok(res, await crm.refundPayment(req.user, req.params.id, req.body ?? {}));
+}));
+
+/** Payment transactions (server-side paginated + searchable). */
+adminRouter.get("/crm/payments", wrap(async (req, res) => {
+  ok(res, await crm.listPayments(req.query));
+}));
+
+/** Receivables dashboard figures. */
+adminRouter.get("/crm/payments/summary", wrap(async (req, res) => {
+  ok(res, await crm.paymentSummary());
+}));
+
+/** Orders with a balance: ?bucket=overdue|today|week|month|all */
+adminRouter.get("/crm/outstanding", wrap(async (req, res) => {
+  ok(res, await crm.listOutstanding(req.query));
+}));
+
+/** Send a templated reminder/receipt. Reports SENT/FAILED/SKIPPED truthfully. */
+adminRouter.post("/crm/orders/:id/notify", wrap(async (req, res) => {
+  const template = String(req.body?.template ?? "");
+  ok(res, { result: await crmNotify.sendOrderNotification(req.user, req.params.id, template) });
 }));
 
 /** Finance: invoices, payments, receivables. */

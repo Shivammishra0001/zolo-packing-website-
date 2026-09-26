@@ -24,6 +24,8 @@ import {
   CUSTOMER_CANCELLABLE,
 } from "../lib/commerce.mjs";
 import { recordEvent, notify, notifyRoles } from "./events.mjs";
+// Shared derived-money rule — the ONE place paidMinor/paymentStatus are set.
+import { recomputeOrderPayment } from "./crm.mjs";
 import { HttpError } from "../lib/http.mjs";
 import { assertMethodAllowed, codChargeFor } from "./settings.mjs";
 import { dispatch } from "./notification-service.mjs";
@@ -618,11 +620,12 @@ export async function adminUpdateStatus(adminUser, orderId, { status, note, cour
 
     const data = { status };
     // Delivery of a COD order captures payment.
-    if (status === "DELIVERED" && order.paymentMethod === "cod") {
-      data.paymentStatus = "PAID";
-      data.paidMinor = order.grandTotalMinor;
+    // Settle the COD payment rows. paidMinor/paymentStatus are then DERIVED
+    // from those rows by recomputeOrderPayment() below, so the stored figures
+    // can never disagree with the payment ledger.
+    const codSettled = status === "DELIVERED" && order.paymentMethod === "cod";
+    if (codSettled) {
       await tx.payment.updateMany({ where: { orderId: order.id, status: "PENDING" }, data: { status: "PAID", paidAt: new Date() } });
-      if (order.invoice) await tx.invoice.updateMany({ where: { orderId: order.id }, data: { status: "paid" } });
     }
     // Cancellation restocks.
     if (status === "CANCELLED") {
@@ -644,6 +647,9 @@ export async function adminUpdateStatus(adminUser, orderId, { status, note, cour
     }
 
     await tx.order.update({ where: { id: order.id }, data });
+    // Derive paidMinor/paymentStatus (and the invoice status) from the payment
+    // rows whenever COD settlement just changed them.
+    if (codSettled) await recomputeOrderPayment(tx, order.id);
     await tx.orderStatusHistory.create({ data: { orderId: order.id, status, note: note ?? null, actorId: adminUser.id } });
 
     // A SHIPPED transition may attach shipment/tracking info.
@@ -1008,18 +1014,17 @@ export async function adminAddShipmentEvent(adminUser, shipmentId, { status, loc
     const orderStatus = SHIPMENT_TO_ORDER[status];
     if (orderStatus && orderStatus !== order.status && order.status !== "CANCELLED") {
       const data = { status: orderStatus };
-      if (orderStatus === "DELIVERED") {
-        // Delivery time lives on the Shipment (deliveredAt); Order tracks only
-        // status + placedAt/updatedAt.
-        // A COD order settles on delivery.
-        if (order.paymentMethod === "cod") {
-          data.paymentStatus = "PAID";
-          data.paidMinor = order.grandTotalMinor;
-          await tx.payment.updateMany({ where: { orderId: order.id, status: "PENDING" }, data: { status: "PAID", paidAt: new Date() } });
-          await tx.invoice.updateMany({ where: { orderId: order.id }, data: { status: "paid" } });
-        }
+      // Delivery time lives on the Shipment (deliveredAt); Order tracks only
+      // status + placedAt/updatedAt.
+      let codSettledOnDelivery = false;
+      if (orderStatus === "DELIVERED" && order.paymentMethod === "cod") {
+        // A COD order settles on delivery. Same rule as adminUpdateStatus:
+        // settle the payment rows, then DERIVE the order's money from them.
+        await tx.payment.updateMany({ where: { orderId: order.id, status: "PENDING" }, data: { status: "PAID", paidAt: new Date() } });
+        codSettledOnDelivery = true;
       }
       await tx.order.update({ where: { id: order.id }, data });
+      if (codSettledOnDelivery) await recomputeOrderPayment(tx, order.id);
       await tx.orderStatusHistory.create({
         data: { orderId: order.id, status: orderStatus, note: `Shipment ${shipment.shipmentNumber}: ${status}`, actorId: adminUser.id },
       });
