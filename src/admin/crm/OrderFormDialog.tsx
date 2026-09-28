@@ -11,7 +11,8 @@ import {
   type OrderSource,
   type PaymentMethod,
 } from "@/lib/api/admin-crm";
-import { friendlyError, lineTotalMinor, rupeesToMinor } from "./money";
+import { friendlyError, lineTotalMinor, minorToRupeeInput, rupeesToMinor } from "./money";
+import { ProductPicker, type PickedProduct } from "./ProductPicker";
 
 // ============================================================
 // Create order (§9–13).
@@ -247,12 +248,34 @@ export function OrderFormDialog({
                   <div className="grid grid-cols-12 gap-2">
                     <div className="col-span-12 sm:col-span-5">
                       <label className={label} htmlFor={`l-name-${l.key}`}>Item {i + 1} *</label>
-                      <input
+                      <ProductPicker
                         id={`l-name-${l.key}`}
-                        className={field}
                         value={l.name}
-                        onChange={(e) => patch(l.key, "name", e.target.value)}
-                        placeholder="e.g. 5 Ply Corrugated Box 12x10x8"
+                        productId={l.productId}
+                        // Typing over a picked product detaches it: the words
+                        // are now the admin's, so the line must not keep
+                        // claiming to be that catalog item.
+                        onChange={(name) =>
+                          setLines((ls) =>
+                            ls.map((x) =>
+                              // Drop the SKU alongside the product id: a line
+                              // that is no longer that catalog product must
+                              // not keep its SKU, or the snapshot claims to be
+                              // stock it isn't.
+                              x.key === l.key ? { ...x, name, productId: null, sku: x.productId ? "" : x.sku } : x,
+                            ),
+                          )
+                        }
+                        onPick={(p: PickedProduct) =>
+                          setLines((ls) =>
+                            ls.map((x) =>
+                              x.key === l.key
+                                ? { ...x, productId: p.id, name: p.name, sku: p.sku, unitPrice: minorToRupeeInput(p.unitPriceMinor) }
+                                : x,
+                            ),
+                          )
+                        }
+                        onClear={() => setLines((ls) => ls.map((x) => (x.key === l.key ? { ...x, productId: null, sku: "" } : x)))}
                       />
                     </div>
                     <div className="col-span-4 sm:col-span-2">
@@ -280,7 +303,16 @@ export function OrderFormDialog({
 
                     <div className="col-span-6 sm:col-span-3">
                       <label className={label} htmlFor={`l-sku-${l.key}`}>SKU</label>
-                      <input id={`l-sku-${l.key}`} className={field} value={l.sku} onChange={(e) => patch(l.key, "sku", e.target.value)} />
+                      {/* A catalog line's SKU comes from the catalog — editing
+                          it here would produce a snapshot that disagrees with
+                          the product it points at. Free-text lines may set one. */}
+                      <input
+                        id={`l-sku-${l.key}`}
+                        className={`${field} ${l.productId ? "erp-surface-2 erp-text-muted" : ""}`}
+                        value={l.sku}
+                        readOnly={Boolean(l.productId)}
+                        onChange={(e) => patch(l.key, "sku", e.target.value)}
+                      />
                     </div>
                     <div className="col-span-3 sm:col-span-2">
                       <label className={label} htmlFor={`l-disc-${l.key}`}>Discount ₹</label>
