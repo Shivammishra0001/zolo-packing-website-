@@ -143,14 +143,19 @@ function TransactionsTab() {
   useEffect(() => { setPage(1); }, [search, method]);
 
   const columns: Column<CrmPaymentRow>[] = [
+    // Column priority on a phone: who paid, and how much. The date and the
+    // payment id are reference detail — they were pushing Amount, the whole
+    // point of the table, off the right edge at 390px.
     {
       key: "date",
       header: "Date",
+      hideBelow: "sm",
       render: (p) => <span className="whitespace-nowrap text-xs erp-text">{formatDate(p.paidAt ?? p.createdAt)}</span>,
     },
     {
       key: "payment",
       header: "Payment",
+      hideBelow: "md",
       render: (p) => <span className="font-mono text-xs erp-text">{p.paymentNumber}</span>,
     },
     {
@@ -160,6 +165,8 @@ function TransactionsTab() {
         <div className="min-w-0">
           <div className="truncate erp-text">{p.customerName ?? "—"}</div>
           <div className="truncate font-mono text-[11px] erp-text-muted">{p.orderNumber ?? "—"}</div>
+          {/* The date column is hidden below sm, so carry it here instead. */}
+          <div className="text-[11px] erp-text-muted sm:hidden">{formatDate(p.paidAt ?? p.createdAt)}</div>
         </div>
       ),
     },
@@ -189,6 +196,7 @@ function TransactionsTab() {
     {
       key: "status",
       header: "Status",
+      hideBelow: "sm",
       render: (p) => <Badge tone={paymentTone(p.status)}>{paymentLabel(p.status)}</Badge>,
     },
     {

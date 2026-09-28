@@ -75,9 +75,14 @@ export default function CrmCustomers() {
       render: (c) => (
         <div className="min-w-0">
           <div className="truncate font-semibold erp-text">{c.company || c.name}</div>
-          <div className="truncate text-xs erp-text-muted">
-            {c.company ? c.name : c.customerType === "individual" ? "Individual" : "—"}
-          </div>
+          {/* Only render a second line when it says something. A business
+              shows its contact person; an individual says so; anything else
+              gets nothing rather than a bare em dash. */}
+          {(c.company || c.customerType === "individual") && (
+            <div className="truncate text-xs erp-text-muted">
+              {c.company ? c.name : "Individual"}
+            </div>
+          )}
         </div>
       ),
     },
@@ -113,8 +118,11 @@ export default function CrmCustomers() {
     {
       key: "pending",
       header: <span className="block text-right">Pending</span>,
+      // Pending is always visible, so it carries the overdue signal too — the
+      // Status badge is hidden on phones and this must not become the only
+      // column that silently drops the one state needing action.
       render: (c) => (
-        <div className={`text-right font-semibold tabular-nums ${c.pendingMinor > 0 ? "erp-text" : "erp-text-muted"}`}>
+        <div className={`text-right font-semibold tabular-nums ${c.overdueMinor > 0 ? "text-red-600 dark:text-red-400" : c.pendingMinor > 0 ? "erp-text" : "erp-text-muted"}`}>
           {inrMinor(c.pendingMinor)}
           {c.overdueMinor > 0 && (
             <div className="text-[11px] font-medium text-red-600 dark:text-red-400">
@@ -133,11 +141,15 @@ export default function CrmCustomers() {
     {
       key: "status",
       header: "Status",
+      hideBelow: "sm",
       render: (c) => <Badge tone={financialTone(c.financialStatus)}>{c.financialStatus[0] + c.financialStatus.slice(1).toLowerCase()}</Badge>,
     },
     {
       key: "actions",
       header: "",
+      // Hidden on phones: four always-visible columns squeeze this to nothing,
+      // and the whole row already navigates to the customer.
+      hideBelow: "md",
       render: (c) => (
         <div className="flex justify-end">
           <Button
