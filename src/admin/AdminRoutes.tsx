@@ -3,7 +3,7 @@ import AdminLayout from "./AdminLayout";
 import DashboardHome from "./pages/DashboardHome";
 
 // Sales
-import Customers from "./pages/Customers";
+import Customers from "./pages/crm/CrmCustomers";
 import CustomerDetail from "./pages/CustomerDetail";
 import Quotations from "./pages/Quotations";
 import QuotationDetail from "./pages/QuotationDetail";
@@ -32,6 +32,7 @@ import Shipping from "./pages/Shipping";
 
 // Business
 import Finance from "./pages/Finance";
+import Payments from "./pages/crm/CrmPayments";
 import Reports from "./pages/Reports";
 
 // Growth
@@ -98,6 +99,7 @@ export default function AdminRoutes() {
         <Route path="dispatch" element={<Navigate to="/admin/shipping" replace />} />
 
         {/* Business */}
+        <Route path="payments" element={<Payments />} />
         <Route path="finance" element={<Finance />} />
         <Route path="reports" element={<Reports />} />
         <Route path="rate-cards" element={<Navigate to="/admin/finance" replace />} />

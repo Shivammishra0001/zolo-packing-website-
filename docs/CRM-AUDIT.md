@@ -224,3 +224,59 @@ GET    /crm/outstanding               ?bucket=overdue|today|week|month|all
 
 Covers the brief's TEST 1–6 and TEST 10 plus validation, refunds, the audit
 trail, pagination, notification honesty and admin-only access.
+
+---
+
+# UI phase
+
+Built on the endpoints above. No new backend work; no new tables.
+
+## New files
+
+| File | What |
+|---|---|
+| `src/lib/api/admin-crm.ts` | Typed client for `/admin/crm/*`, with the shapes the server actually returns. |
+| `src/admin/crm/money.ts` | Rupee ⇄ paise parsing, status tone/label vocabulary, and `friendlyError()` — the one place an API code becomes admin-facing copy (§54). |
+| `src/admin/crm/CustomerFormDialog.tsx` | Add / edit customer, sectioned per §4. Only name, email and phone are required. |
+| `src/admin/crm/OrderFormDialog.tsx` | The order builder: multiple lines, catalog **or** custom items, live totals, optional advance (§10–13). |
+| `src/admin/crm/RecordPaymentDialog.tsx` | Record payment with the live total / paid / this / remaining panel (§46). |
+| `src/admin/crm/OrderPaymentPanel.tsx` | Order-level balance + full payment ledger + reminder sender (§23). |
+| `src/admin/pages/crm/CrmCustomers.tsx` | Customers list — server-side search, filters and pagination (§5, §6, §38, §39). |
+| `src/admin/pages/crm/CrmPayments.tsx` | Payments dashboard: Transactions and Outstanding tabs (§21, §25). |
+
+## Changed
+
+* `AdminRoutes.tsx` — `/admin/customers` now renders the CRM list; new `/admin/payments`.
+* `Sidebar.tsx` — Payments added between Orders and Finance.
+* `CustomerDetail.tsx` — quick-action bar: Create order · Send payment request · Edit customer (§45).
+* `OrderDetailReal.tsx` — the read-only payment box is replaced by `OrderPaymentPanel`.
+* `components/ui.tsx` — `Select` accepts `id` (so a visible `<label htmlFor>` binds); `Dialog` accepts `size`.
+
+## Rules the UI follows
+
+* **Never computes money it can display from the server.** The dialogs preview
+  arithmetic while typing purely to prevent mistakes; after every write the
+  server's `totals` are what get shown and stored.
+* **Never fakes a delivery.** `describeDispatch()` shows an *error* toast when
+  every channel came back SKIPPED, naming the reason and pointing at
+  Settings → Notifications. A green "Sent" appears only for a real SENT (§28).
+* **Never shows a raw backend error.** `friendlyError()` maps known codes to
+  plain sentences and falls back to a generic message for 5xx (§54).
+
+## Verified
+
+`tsc` clean · `vite build` clean · 39/39 frontend tests · 329/329 server tests.
+Driven in a real browser against live data: the Record Payment dialog
+(₹30,000 → ₹35,000, three ledger rows, status stayed PARTIAL) and the order
+builder (₹11,250 total, ₹5,000 advance, ₹6,250 pending).
+
+One layout bug found and fixed during that pass: the order dialog was clipped
+at `max-w-md`, hiding the unit price, line total and the totals panel.
+
+## Not built
+
+* Product picker in the order builder — lines are free-text today. The API
+  already accepts `productId`, so this is a UI addition, not a backend change.
+* CSV export of customers/orders/payments (§51).
+* `src/admin/pages/Customers.tsx` (the old client-side list) is now unrouted
+  but left in place for comparison; delete it once the new page has been used.

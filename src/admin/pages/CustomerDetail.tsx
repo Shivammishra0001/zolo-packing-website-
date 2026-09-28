@@ -2,7 +2,7 @@
 // GET /admin/customers/:id. Nothing on this page is derived from mock data:
 // if a field is empty it is genuinely not recorded, and says so.
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   ArrowLeft,
   IndianRupee,
@@ -33,7 +33,9 @@ import {
 import { SEGMENT_LABEL } from "../statuses";
 import { statusTone, paymentTone, prettyStatus } from "@/lib/order-status";
 import { PaymentRequestsPanel, SendPaymentRequestDialog } from "../components/PaymentRequests";
-import { Link2, Send } from "lucide-react";
+import { CustomerFormDialog } from "@/admin/crm/CustomerFormDialog";
+import { OrderFormDialog } from "@/admin/crm/OrderFormDialog";
+import { Link2, Pencil, Plus, Send } from "lucide-react";
 
 const SEGMENT_TONE: Record<CustomerSegmentKey, "primary" | "info" | "success"> = {
   small_seller: "info",
@@ -54,8 +56,11 @@ const dash = <span className="erp-text-faint">—</span>;
 
 export default function CustomerDetail() {
   const { id } = useParams();
+  const nav = useNavigate();
   const [tab, setTab] = useState("overview");
   const [sendOpen, setSendOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [orderOpen, setOrderOpen] = useState(false);
   const [requestsVersion, setRequestsVersion] = useState(0);
   const q = useAdminCustomer(id ?? null);
 
@@ -153,7 +158,42 @@ export default function CustomerDetail() {
         subtitle={[customer.company ? customer.name : null, customer.city, customer.email]
           .filter(Boolean)
           .join(" · ")}
-        actions={<Button variant="primary" icon={Send} onClick={() => setSendOpen(true)}>Send payment request</Button>}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" icon={Plus} onClick={() => setOrderOpen(true)}>Create order</Button>
+            <Button variant="secondary" icon={Send} onClick={() => setSendOpen(true)}>Send payment request</Button>
+            <Button variant="ghost" icon={Pencil} onClick={() => setEditOpen(true)}>Edit customer</Button>
+          </div>
+        }
+      />
+      <CustomerFormDialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        mode={{
+          kind: "edit",
+          customer: {
+            id: customer.id,
+            name: customer.name,
+            email: customer.email,
+            phone: customer.phone ?? null,
+            company: customer.company ?? null,
+            gstin: customer.gstin ?? null,
+            customerType: customer.businessType ?? null,
+          },
+        }}
+        onSaved={() => window.location.reload()}
+      />
+      <OrderFormDialog
+        open={orderOpen}
+        onClose={() => setOrderOpen(false)}
+        customer={{
+          id: customer.id,
+          name: customer.name,
+          company: customer.company ?? null,
+          email: customer.email,
+          phone: customer.phone ?? null,
+        }}
+        onCreated={(orderId) => nav(`/admin/orders/${orderId}`)}
       />
       <SendPaymentRequestDialog
         open={sendOpen}

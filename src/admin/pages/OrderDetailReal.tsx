@@ -9,6 +9,7 @@ import { useToast } from "@/components/ui/Toast";
 import { adminOrdersApi } from "@/lib/api/admin-orders";
 import type { Order } from "@/lib/api/commerce";
 import { statusTone, paymentTone, prettyStatus, ORDER_NEXT } from "@/lib/order-status";
+import { OrderPaymentPanel } from "@/admin/crm/OrderPaymentPanel";
 
 export default function OrderDetailReal() {
   const { id } = useParams();
@@ -132,14 +133,22 @@ export default function OrderDetailReal() {
             </div>
           </Panel>
 
-          <Panel title="Payment">
-            <div className="p-4"><KeyValue items={[
-              { label: "Method", value: order.paymentMethod.toUpperCase() },
-              { label: "Status", value: prettyStatus(order.paymentStatus) },
-              ...(order.payments[0] ? [{ label: "Reference", value: order.payments[0].paymentNumber }] : []),
-              { label: "Paid", value: inrMinor(order.paidMinor) },
-            ]} /></div>
-          </Panel>
+          {/* Full payment ledger + balance + Record payment. Replaces the old
+              read-only box, which showed paidMinor with no outstanding figure
+              and only the FIRST payment, so a part-paid order looked settled. */}
+          <OrderPaymentPanel
+            order={{
+              id: order.id,
+              orderNumber: order.orderNumber,
+              grandTotalMinor: order.grandTotalMinor,
+              paidMinor: order.paidMinor,
+              paymentStatus: order.paymentStatus,
+              paymentMethod: order.paymentMethod,
+              dueDate: (order as { dueDate?: string | null }).dueDate ?? null,
+              payments: order.payments ?? [],
+            }}
+            onChanged={load}
+          />
         </div>
       </div>
     </div>

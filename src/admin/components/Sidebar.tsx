@@ -50,6 +50,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/quotes", label: "Quotations (RFQ)", icon: FileText },
       { to: "/admin/chat", label: "Negotiations", icon: MessageSquare },
       { to: "/admin/orders", label: "Orders", icon: ShoppingCart },
+      { to: "/admin/payments", label: "Payments", icon: Wallet },
       {
         to: "/admin/returns", label: "Returns & Recycling", icon: Recycle, end: true,
         children: [
