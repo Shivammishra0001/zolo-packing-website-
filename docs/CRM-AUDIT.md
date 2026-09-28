@@ -273,10 +273,20 @@ builder (₹11,250 total, ₹5,000 advance, ₹6,250 pending).
 One layout bug found and fixed during that pass: the order dialog was clipped
 at `max-w-md`, hiding the unit price, line total and the totals panel.
 
+## Product picker
+
+`src/admin/crm/ProductPicker.tsx` — a combobox over the already-hydrated admin
+catalog store (no request per line). Filters on name or SKU; picking fills
+name, SKU and unit price and attaches the real `productId`, while leaving the
+price editable (B2B prices are negotiated). Only `active` products are offered.
+Free text stays a first-class choice for custom packaging jobs.
+
+Detaching — either by typing over the picked product or via the × button —
+clears the `productId` **and** the SKU. Clearing only the id left a custom line
+stamped with another product's SKU.
+
 ## Not built
 
-* Product picker in the order builder — lines are free-text today. The API
-  already accepts `productId`, so this is a UI addition, not a backend change.
 * CSV export of customers/orders/payments (§51).
 * `src/admin/pages/Customers.tsx` (the old client-side list) is now unrouted
   but left in place for comparison; delete it once the new page has been used.
