@@ -25,7 +25,7 @@ import logoImg from "../images/logo.jpg";
 import { ToastProvider } from "./components/ui/Toast";
 import { AuthProvider, useAuthSession } from "./components/auth/AuthContext";
 import * as authService from "./lib/auth/service";
-import { homeRouteForRole } from "./lib/auth/types";
+import { homeRouteForRole, type UserRole } from "./lib/auth/types";
 import { useCart as useServerCart } from "./lib/cart-store";
 
 // ---------- Types ----------
@@ -491,7 +491,7 @@ export default function App() {
 
   // Build this context's lightweight user shape (name + avatar initials) from
   // the AuthUser the real backend returns.
-  const toNavUser = (u: { email: string; firstName?: string; lastName?: string; role?: "admin" | "buyer" }) => ({
+  const toNavUser = (u: { email: string; firstName?: string; lastName?: string; role?: UserRole }) => ({
     email: u.email,
     name: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email,
     avatar: (u.firstName?.[0] ?? u.email[0]).toUpperCase() + (u.lastName?.[0] ?? "").toUpperCase(),
@@ -587,6 +587,11 @@ function Shell() {
       </AdminGuard>
     );
   }
+  // The field-sales portal is mobile-first with its own bottom navigation and
+  // no storefront chrome; SalesRoutes carries its own role guard.
+  if (loc.pathname.startsWith("/sales")) {
+    return <SalesRoutes />;
+  }
   // The buyer self-service dashboard ships its own layout too. Guarded: an
   // unauthenticated visitor previously reached /account/* directly (orders,
   // addresses, invoices) and only saw empty data because the APIs 401'"'"'d.
@@ -675,6 +680,7 @@ import CartPage from "./pages/CartPage";
 import RfqPage from "./pages/RfqPage";
 import Contact from "./pages/Contact";
 import AdminRoutes from "./admin/AdminRoutes";
+import SalesRoutes from "./sales/SalesRoutes";
 import BuyerRoutes from "./buyer/BuyerRoutes";
 import SellerRoutes from "./seller/SellerRoutes";
 import { AdminGuard, BuyerGuard } from "./components/auth/RoleGuards";

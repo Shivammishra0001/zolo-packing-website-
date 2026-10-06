@@ -3,7 +3,9 @@
 // implementations, not these shapes.
 
 /** The only two roles in the system. */
-export type UserRole = "admin" | "buyer";
+// Field sales reps sign in through the same endpoint as everyone else; the
+// role is what routes them to their own portal.
+export type UserRole = "admin" | "buyer" | "salesperson";
 
 /** Authenticated user as the backend will return it (never includes secrets) */
 export interface AuthUser {
@@ -58,7 +60,10 @@ export interface ProfileUpdate {
 
 /** Home route for a role after login. */
 export function homeRouteForRole(role: UserRole | undefined): string {
-  return role === "admin" ? "/admin/dashboard" : "/account/dashboard";
+  if (role === "admin") return "/admin/dashboard";
+  // A rep has no storefront account page — send them to the capture portal.
+  if (role === "salesperson") return "/sales";
+  return "/account/dashboard";
 }
 
 export interface LoginCredentials {

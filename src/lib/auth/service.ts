@@ -142,8 +142,8 @@ export class AuthUnavailableError extends Error {
 }
 
 // Map the backend user shape onto the frontend AuthUser. The backend role set
-// is richer (seller_owner, admin, …); the storefront only distinguishes
-// "admin" from everyone-else ("buyer").
+// is richer (seller_owner, admin, …); the storefront distinguishes "admin",
+// "salesperson" and everyone-else ("buyer").
 //
 // ALL admin variants count as admin here. The backend's requireAdmin accepts
 // the four roles below, so collapsing verification/finance/operations admins to
@@ -152,7 +152,14 @@ export class AuthUnavailableError extends Error {
 const ADMIN_ROLES = new Set(["admin", "verification_admin", "finance_admin", "operations_admin"]);
 
 function toAuthUser(u: BackendUser): AuthUser {
-  const role = ADMIN_ROLES.has(u.role ?? "") ? "admin" : "buyer";
+  // salesperson is kept DISTINCT: collapsing it to "buyer" sent field reps to
+  // the storefront account page and locked them out of /sales at the router,
+  // even though their token is accepted by every /sales API.
+  const role: AuthUser["role"] = ADMIN_ROLES.has(u.role ?? "")
+    ? "admin"
+    : u.role === "salesperson"
+      ? "salesperson"
+      : "buyer";
   return {
     id: u.id,
     email: u.email,
