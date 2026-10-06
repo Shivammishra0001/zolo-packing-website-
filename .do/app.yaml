@@ -116,6 +116,18 @@ services:
         scope: RUN_TIME
         type: SECRET
 
+      # ---- Admin login
+      # The seed never overwrites an existing admin's password, so a password
+      # changed in the app survives redeploys. To RECOVER a forgotten one, set
+      # ADMIN_EMAIL + ADMIN_PASSWORD, add ADMIN_PASSWORD_RESET=1, deploy once,
+      # sign in, then DELETE ADMIN_PASSWORD_RESET — leaving it set resets the
+      # password on every boot.
+      - key: ADMIN_EMAIL
+        scope: RUN_TIME
+      - key: ADMIN_PASSWORD
+        scope: RUN_TIME
+        type: SECRET
+
       # Same-origin deployment: the SPA and API share one hostname, so the
       # frontend calls "/api/v1" and CORS never applies — leave CORS_ORIGINS
       # unset. Set it ONLY if you attach a separate frontend domain, or serve

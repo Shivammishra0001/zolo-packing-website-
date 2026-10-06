@@ -46,6 +46,22 @@ export async function ensureAdmin() {
 
   let status;
   if (existing) {
+    // DELIBERATE RECOVERY PATH. Normally an existing admin's password is never
+    // touched, which is correct: a redeploy must not silently reset the
+    // password someone changed in the app. But that also means a forgotten
+    // production password is unrecoverable, because no amount of redeploying
+    // can set a new one.
+    //
+    // ADMIN_PASSWORD_RESET=1 opts INTO a one-time reset to ADMIN_PASSWORD.
+    // It is explicit, logged, and must be removed afterwards — leaving it set
+    // would reset the password on every boot, undoing any later change.
+    if (useEnv && process.env.ADMIN_PASSWORD_RESET === "1") {
+      await prisma.user.update({
+        where: { id: existing.id },
+        data: { passwordHash: await hashPassword(envPassword), role: "admin", isActive: true },
+      });
+      return `admin password RESET from ADMIN_PASSWORD → ${email} [remove ADMIN_PASSWORD_RESET now, or it resets on every boot]`;
+    }
     // Keep the account and its password. Only guarantee it can still sign in
     // as an active admin (never a password change).
     if (existing.role !== "admin" || !existing.isActive) {
