@@ -187,7 +187,16 @@
   &:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--color-green-500); }
   &:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
 }
-@utility btn-sm { height: 2.375rem; padding-inline: 0.875rem; font-size: 0.875rem; }
+/* 38px is below the 44px minimum tap target (WCAG 2.2 AA 2.5.8), and btn-sm is
+   used for real CTAs ("Request a quote", "View all products"), not just dense
+   admin rows. Coarse pointers get 44px; mouse users keep the compact 38px, so
+   desktop density is unchanged. */
+@utility btn-sm {
+  height: 2.75rem;
+  padding-inline: 0.875rem;
+  font-size: 0.875rem;
+  @media (pointer: fine) { height: 2.375rem; }
+}
 @utility btn-lg { height: 3rem; padding-inline: 1.5rem; font-size: 1rem; }
 @utility btn-primary { background: var(--color-primary-500); color: #fff; box-shadow: var(--shadow-cta); &:hover { background: var(--color-primary-600); } }
 @utility btn-secondary { background: #fff; color: var(--color-green-600); border: 1.5px solid var(--color-green-500); &:hover { background: var(--color-green-100); } }

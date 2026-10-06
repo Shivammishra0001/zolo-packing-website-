@@ -81,7 +81,7 @@ export const useAuth = () => useContext(AuthCtx);
 function TopBar() {
   return (
     <div className="bg-navy-950 text-xs text-white">
-      <div className="shell flex min-h-8 flex-wrap py-1.5 items-center justify-center gap-x-4 gap-y-1 sm:flex-nowrap sm:justify-between">
+      <div className="shell flex min-h-11 sm:min-h-8 flex-wrap py-0 sm:py-1.5 items-center justify-center gap-x-4 gap-y-1 sm:flex-nowrap sm:justify-between">
         {/* Announcement bar: the live "Announcement Bar" campaign (Admin →
             Marketing → Campaigns). With no live campaign the standing shipping
             note shows instead — hidden on small phones so the links never clip. */}
@@ -94,13 +94,16 @@ function TopBar() {
             }
           />
         </div>
-        <div className="flex shrink-0 items-center gap-4">
-          <Link to="/order-tracking" className="hover:text-primary-400 transition-colors">Track Order</Link>
+        {/* -my-1.5 py-3 gives each control a 44px touch height without making
+            the bar itself taller: the hit area overflows the row, the layout
+            does not. Text stays 12px. */}
+        <div className="flex shrink-0 items-center gap-1 sm:gap-4">
+          <Link to="/order-tracking" className="flex min-h-11 items-center px-2 sm:min-h-0 hover:text-primary-400 transition-colors">Track Order</Link>
           <span className="hidden md:inline text-dark-600">|</span>
-          <Link to="/rfq" className="hidden md:inline hover:text-primary-400 transition-colors">Get Quote</Link>
+          <Link to="/rfq" className="hidden md:flex min-h-11 items-center px-2 sm:min-h-0 hover:text-primary-400 transition-colors">Get Quote</Link>
           <span className="hidden md:inline text-dark-600">|</span>
-          <button className="flex items-center gap-1 hover:text-primary-400 transition-colors">
-            <Globe2 className="h-3.5 w-3.5" /> EN
+          <button type="button" aria-label="Language: English" className="flex min-h-11 items-center gap-1 px-2 sm:min-h-0 hover:text-primary-400 transition-colors">
+            <Globe2 className="h-3.5 w-3.5" aria-hidden /> EN
           </button>
         </div>
       </div>
@@ -155,7 +158,11 @@ function Navbar() {
     { to: "/contact", label: "Contact" },
   ];
 
-  const iconBtn = "relative flex h-10 w-10 items-center justify-center rounded-lg text-dark-600 transition-colors hover:bg-dark-50 hover:text-dark-900";
+  // 44x44 on touch screens is the minimum reliable tap target (WCAG 2.2 AA
+  // 2.5.8 / Apple HIG); these were 40x40, so the menu, search and cart icons
+  // were all slightly too small to hit confidently. Kept at 40 from `sm` up,
+  // where a mouse makes the extra padding unnecessary.
+  const iconBtn = "relative flex h-11 w-11 sm:h-10 sm:w-10 items-center justify-center rounded-lg text-dark-600 transition-colors hover:bg-dark-50 hover:text-dark-900";
   const badge = "absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-bold tabular-nums text-white";
 
   return (
@@ -171,7 +178,7 @@ function Navbar() {
           </form>
         ) : (
           <>
-            <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="Zolo Packing home">
+            <Link to="/" className="flex min-h-11 shrink-0 items-center gap-2 sm:min-h-0" aria-label="Zolo Packing home">
               <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-white sm:h-10 sm:w-10">
                 <img src={logoImg} alt="" className="h-full w-full object-cover" />
               </span>
@@ -312,17 +319,17 @@ function Footer() {
       <div className="border-b border-white/10">
         <div className="shell flex flex-col gap-4 py-5 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-            <a href="tel:+919582712626" className="flex items-center gap-3">
+            <a href="tel:+919582712626" className="flex min-h-11 items-center gap-3">
               <Phone className="h-5 w-5 text-primary-400" aria-hidden />
               <span><span className="block text-[11px] uppercase tracking-wider text-dark-400">Call us</span><span className="block text-sm font-bold">+91 9582712626</span></span>
             </a>
-            <a href="mailto:contact@zolopacking.com" className="flex items-center gap-3">
+            <a href="mailto:contact@zolopacking.com" className="flex min-h-11 items-center gap-3">
               <Mail className="h-5 w-5 text-primary-400" aria-hidden />
               <span><span className="block text-[11px] uppercase tracking-wider text-dark-400">Email</span><span className="block text-sm font-bold">contact@zolopacking.com</span></span>
             </a>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link to="/rfq" className="btn btn-primary btn-sm"><Quote className="h-4 w-4" aria-hidden /> Request Free Quote</Link>
+            <Link to="/rfq" className="btn btn-primary sm:btn-sm"><Quote className="h-4 w-4" aria-hidden /> Request Free Quote</Link>
             <Link to="/eco-rewards" className="btn btn-sm border border-white/15 bg-white/10 text-white hover:bg-white/15"><Leaf className="h-4 w-4" aria-hidden /> Eco Rewards</Link>
           </div>
         </div>
@@ -338,7 +345,7 @@ function Footer() {
             <p className="max-w-xs text-sm leading-relaxed text-dark-400">India's leading packaging manufacturer. Premium custom boxes, bags, pouches and sustainable packaging for brands of every size.</p>
             <div className="mt-4 flex gap-2">
               {[Send, MessageCircle, Mail, Phone].map((Icon, i) => (
-                <a key={i} href="#" aria-label="Social link" className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 transition-colors hover:border-green-500 hover:bg-green-500"><Icon className="h-4 w-4" aria-hidden /></a>
+                <a key={i} href="#" aria-label="Social link" className="flex h-11 w-11 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 transition-colors hover:border-green-500 hover:bg-green-500"><Icon className="h-4 w-4" aria-hidden /></a>
               ))}
             </div>
           </div>
@@ -354,7 +361,7 @@ function Footer() {
 
         <div className="mt-8 flex flex-col gap-3 border-t border-white/10 pt-5 text-xs text-dark-500 md:flex-row md:items-center md:justify-between">
           <div>© 2026 Zolo Packing Inc. All rights reserved.</div>
-          <div className="flex flex-wrap gap-4"><a href="#" className="hover:text-white">Privacy</a><a href="#" className="hover:text-white">Terms</a><a href="#" className="hover:text-white">Cookies</a></div>
+          <div className="flex flex-wrap gap-x-2 gap-y-0 sm:gap-4"><a href="#" className="flex min-h-11 items-center px-1 sm:min-h-0 hover:text-white">Privacy</a><a href="#" className="flex min-h-11 items-center px-1 sm:min-h-0 hover:text-white">Terms</a><a href="#" className="flex min-h-11 items-center px-1 sm:min-h-0 hover:text-white">Cookies</a></div>
           <div className="flex gap-3 text-[10px] uppercase tracking-wider"><span>Visa</span><span>Mastercard</span><span>Amex</span><span>UPI</span></div>
         </div>
       </div>

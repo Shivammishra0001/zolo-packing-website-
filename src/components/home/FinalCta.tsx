@@ -33,10 +33,10 @@ export function FinalCta() {
 
             {/* Real, existing contact routes — no fabricated channels. */}
             <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-white/75">
-              <a href="tel:+919582712626" className="flex items-center gap-2 transition-colors hover:text-white">
+              <a href="tel:+919582712626" className="flex min-h-11 items-center gap-2 transition-colors hover:text-white sm:min-h-0">
                 <Phone className="h-4 w-4 text-green-300" aria-hidden /> +91 9582712626
               </a>
-              <a href="mailto:contact@zolopacking.com" className="flex items-center gap-2 transition-colors hover:text-white">
+              <a href="mailto:contact@zolopacking.com" className="flex min-h-11 items-center gap-2 transition-colors hover:text-white sm:min-h-0">
                 <Mail className="h-4 w-4 text-green-300" aria-hidden /> contact@zolopacking.com
               </a>
             </div>
