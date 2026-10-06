@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AtSign } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { API_BASE } from "@/lib/api-config";
 import { useAuthSession } from "./AuthContext";
 import { PasswordInput } from "./PasswordInput";
 import { SocialDivider } from "./SocialDivider";
@@ -35,9 +36,15 @@ export function LoginForm() {
       toast.success("Signed in", "Welcome back to Zolo Packaging.");
     } catch (err) {
       if (err instanceof AuthUnavailableError) {
+        // In development this almost always means the API process is not
+        // running — `npm run dev` starts only Vite. Saying so turns a dead end
+        // into a one-line fix; production users get the neutral wording, since
+        // the cause there is not theirs to act on.
         toast.error(
           "Can't reach the server",
-          "The sign-in service is unavailable right now. Please try again shortly.",
+          import.meta.env.DEV
+            ? `No API at ${API_BASE}. Start it with "npm run dev:all" (or "npm run server" in a second terminal).`
+            : "The sign-in service is unavailable right now. Please try again shortly.",
         );
       } else {
         // Invalid credentials (generic — never reveals whether the email exists).
