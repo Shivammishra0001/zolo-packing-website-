@@ -208,7 +208,7 @@ export async function setUpiQr(adminId, { name, mime, dataBase64 }) {
   await ensurePaymentMethods();
   const row = await prisma.paymentMethodSetting.findUnique({ where: { key: "upi" } });
   const { storeImage } = await import("./catalog.mjs");
-  const url = storeImage({ name: name || "upi-qr", mime, dataBase64 });
+  const url = await storeImage({ name: name || "upi-qr", mime, dataBase64 });
   const prev = row?.config?.qrUrl ?? null;
   const updated = await prisma.paymentMethodSetting.update({
     where: { key: "upi" },
@@ -239,7 +239,7 @@ async function removePublicFile(url) {
   try {
     const { remove } = await import("../lib/storage.mjs");
     const key = String(url).split("/").pop();
-    if (key) remove(key);
+    if (key) await remove(key);
   } catch { /* best-effort */ }
 }
 

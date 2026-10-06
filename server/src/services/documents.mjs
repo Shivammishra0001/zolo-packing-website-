@@ -46,7 +46,7 @@ export async function upload(profile, body, actorId) {
   if (buffer.length > DOC_MAX_BYTES) throw badRequest("File is larger than 10 MB", "FILE_TOO_LARGE");
 
   // KYC documents go to the PRIVATE tree — never statically served.
-  const storageKey = putPrivate({ name: input.fileName, mime: input.mime, buffer });
+  const storageKey = await putPrivate({ name: input.fileName, mime: input.mime, buffer });
   const doc = await prisma.supplierDocument.create({
     data: {
       supplierId: profile.id,
@@ -72,7 +72,7 @@ async function ownedDoc(profile, id) {
 export async function removeOwn(profile, id, actorId) {
   const doc = await ownedDoc(profile, id);
   await prisma.supplierDocument.delete({ where: { id } });
-  remove(doc.storageKey);
+  await remove(doc.storageKey);
   await recordEvent({ eventType: "seller.document.removed", actorId, organizationId: profile.organizationId, entityType: "SupplierDocument", entityId: id, metadata: { type: doc.type } });
 }
 
@@ -85,7 +85,7 @@ export async function removeOwn(profile, id, actorId) {
  */
 export async function readOwnFile(profile, id) {
   const doc = await ownedDoc(profile, id);
-  const buffer = readPrivate(doc.storageKey);
+  const buffer = await readPrivate(doc.storageKey);
   if (!buffer) throw notFound("Document file is missing");
   return { buffer, fileName: doc.fileName, mimeType: doc.mimeType };
 }
@@ -119,7 +119,7 @@ export async function verify(documentId, { status, reason }, admin) {
 export async function readAdminFile(documentId) {
   const doc = await prisma.supplierDocument.findUnique({ where: { id: documentId } });
   if (!doc) throw notFound("Document not found");
-  const buffer = readPrivate(doc.storageKey);
+  const buffer = await readPrivate(doc.storageKey);
   if (!buffer) throw notFound("Document file is missing");
   return { buffer, fileName: doc.fileName, mimeType: doc.mimeType };
 }

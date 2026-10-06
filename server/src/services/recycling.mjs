@@ -368,7 +368,7 @@ export async function attachFile(userId, id, body) {
   if (buffer.length === 0) throw badRequest("File is empty", "EMPTY_FILE");
   if (buffer.length > MAX_FILE_BYTES) throw badRequest("Photo is larger than 10 MB", "FILE_TOO_LARGE");
   if (!imageMagic(input.mime, buffer)) throw badRequest("File content does not match its declared type", "BAD_CONTENT");
-  const storageKey = putPrivate({ name: input.fileName, mime: input.mime, buffer });
+  const storageKey = await putPrivate({ name: input.fileName, mime: input.mime, buffer });
   const f = await prisma.recyclingFile.create({ data: { recyclingRequestId: id, fileName: input.fileName, storageKey, mimeType: input.mime, size: buffer.length, uploadedById: userId } });
   return { id: f.id, fileName: f.fileName, mimeType: f.mimeType, size: f.size, createdAt: f.createdAt };
 }
@@ -379,7 +379,7 @@ export async function readFile(reader, requestId, fileId) {
   if (!file) throw notFound("File not found");
   if (reader.kind === "buyer" && file.recyclingRequest.userId !== reader.userId) throw notFound("File not found");
   if (reader.kind !== "buyer" && reader.kind !== "admin") throw forbidden();
-  const buffer = readPrivate(file.storageKey);
+  const buffer = await readPrivate(file.storageKey);
   if (!buffer) throw notFound("File is missing from storage");
   return { buffer, fileName: file.fileName, mimeType: file.mimeType };
 }

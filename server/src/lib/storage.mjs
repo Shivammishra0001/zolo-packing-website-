@@ -7,6 +7,7 @@ import { join, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { env } from "./env.mjs";
+import * as objectStore from "./object-storage.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Overridable so the test suite writes to its own tree (see test/setup-db.mjs)
@@ -68,10 +69,13 @@ function makeKey(name, ext) {
  * Persist a PUBLIC file (product imagery). Returns an opaque storageKey.
  * Never pass a KYC document here — use putPrivate().
  */
-export function put({ name, mime, buffer }) {
+export async function put({ name, mime, buffer }) {
   const ext = EXT_BY_MIME[mime];
   if (!ext) throw new Error(`Unsupported file type ${mime}`);
   const key = makeKey(name, ext);
+  // Object storage when configured: App Platform disks are ephemeral, so a
+  // file written locally in production is gone on the next deploy.
+  if (objectStore.isEnabled) return objectStore.putObject({ key: `public/${key}`, mime, buffer, visibility: "public" });
   writeFileSync(join(PUBLIC_DIR, key), buffer);
   return key;
 }
@@ -81,16 +85,28 @@ export function put({ name, mime, buffer }) {
  * over HTTP: there is no static mount for this directory, so the only way to
  * read the bytes back is through an authorized route calling readPrivate().
  */
-export function putPrivate({ name, mime, buffer }) {
+export async function putPrivate({ name, mime, buffer }) {
   const ext = PRIVATE_EXT_BY_MIME[mime];
   if (!ext) throw new Error(`Unsupported file type ${mime}`);
   const key = makeKey(name, ext);
+  // ACL private: these are KYC documents and requirement sheets. They are read
+  // back only through readPrivate() from an authorized route, never linked.
+  if (objectStore.isEnabled) return objectStore.putObject({ key: `private/${key}`, mime, buffer, visibility: "private" });
   writeFileSync(join(PRIVATE_DIR, key), buffer);
   return key;
 }
 
-/** Public URL for a public storageKey. */
-export const getUrl = (storageKey) => `${env.uploadsBaseUrl}/${storageKey}`;
+/**
+ * Public URL for a public storageKey.
+ *
+ * A Spaces key is already namespaced ("public/<file>") and is served from the
+ * CDN, not from this app — so it must NOT be prefixed with uploadsBaseUrl.
+ * Legacy local keys keep the /uploads path they were stored with.
+ */
+export const getUrl = (storageKey) =>
+  String(storageKey ?? "").startsWith("public/")
+    ? objectStore.objectUrl(storageKey)
+    : `${env.uploadsBaseUrl}/${storageKey}`;
 
 /**
  * Resolve a private key to an absolute path, refusing anything that escapes the
@@ -107,13 +123,28 @@ export function privatePath(storageKey) {
 }
 
 /** Read a private file's bytes. Callers MUST authorize before calling this. */
-export function readPrivate(storageKey) {
-  const p = privatePath(storageKey);
+export async function readPrivate(storageKey) {
+  const key = String(storageKey ?? "");
+  if (key.startsWith("private/")) {
+    try {
+      return await objectStore.getObject(key);
+    } catch {
+      return null; // missing object reads as "not found", like the disk path
+    }
+  }
+  const p = privatePath(key);
   if (!existsSync(p)) return null;
   return readFileSync(p);
 }
 
-export function remove(storageKey) {
+export async function remove(storageKey) {
+  const key = String(storageKey ?? "");
+  if (key.startsWith("public/") || key.startsWith("private/")) {
+    // Never let a failed cleanup break the caller: the row is already gone,
+    // and an orphaned object costs storage, not correctness.
+    try { await objectStore.deleteObject(key); } catch { /* orphan */ }
+    return;
+  }
   // A key may live in either subtree; remove whichever exists.
   for (const dir of [PUBLIC_DIR, PRIVATE_DIR]) {
     const p = join(dir, storageKey);

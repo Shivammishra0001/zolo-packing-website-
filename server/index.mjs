@@ -3,6 +3,7 @@
 import { createApp } from "./src/app.mjs";
 import { env } from "./src/lib/env.mjs";
 import { prisma } from "./src/lib/prisma.mjs";
+import { describe as storageBackend } from "./src/lib/object-storage.mjs";
 import { initChatGateway } from "./src/realtime/chat-gateway.mjs";
 import { ensureAdmin } from "./src/lib/ensure-admin.mjs";
 
@@ -42,7 +43,10 @@ server.on("listening", () => {
   console.log(`  API: http://localhost:${env.port}/api/v1`);
   console.log(`  Health: http://localhost:${env.port}/api/v1/public/health`);
   console.log(`  Realtime: socket.io on /socket.io`);
-  console.log("  Database: postgresql/zolo_packing (connected)\n");
+  console.log("  Database: postgresql/zolo_packing (connected)");
+  // Say which storage backend is live: "local disk" in production means every
+  // uploaded file is lost on the next deploy, which is worth seeing at boot.
+  console.log(`  Uploads:  ${storageBackend()}\n`);
 });
 
 // A port clash must fail loudly. Silently drifting to another port is what

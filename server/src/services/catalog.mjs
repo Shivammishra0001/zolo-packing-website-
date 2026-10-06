@@ -428,7 +428,7 @@ export async function importProducts(rows, mode = "update", { createMissingCateg
 }
 
 /** Decode + validate an uploaded image, returning a public URL. */
-export function storeImage({ name = "image", mime, dataBase64 }) {
+export async function storeImage({ name = "image", mime, dataBase64 }) {
   if (!mime || !supportedMime(mime) || !String(mime).startsWith("image/")) {
     throw badRequest(`Unsupported image type ${mime ?? "(none)"} — use JPG, PNG or WebP`, "BAD_IMAGE_TYPE");
   }
@@ -443,7 +443,7 @@ export function storeImage({ name = "image", mime, dataBase64 }) {
   if (!hasImageMagic(buffer, mime)) {
     throw badRequest("File is not a valid image (content does not match its type)", "CORRUPT_IMAGE");
   }
-  return getUrl(put({ name, mime, buffer }));
+  return getUrl(await put({ name, mime, buffer }));
 }
 
 /**

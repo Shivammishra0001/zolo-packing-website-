@@ -95,7 +95,7 @@ export async function attach(userId, rfqId, body) {
   // The declared type must match the actual bytes — a renamed .exe stays out.
   if (!magicMatches(input.mime, buffer)) throw badRequest("File content does not match its declared type", "BAD_CONTENT");
 
-  const storageKey = putPrivate({ name: input.fileName, mime: input.mime, buffer });
+  const storageKey = await putPrivate({ name: input.fileName, mime: input.mime, buffer });
   const file = await prisma.rfqFile.create({
     data: { rfqId, fileName: input.fileName, storageKey, mimeType: input.mime, size: buffer.length, uploadedById: userId },
   });
@@ -125,7 +125,7 @@ export async function removeMine(userId, rfqId, fileId) {
   const file = await prisma.rfqFile.findFirst({ where: { id: fileId, rfqId } });
   if (!file) throw notFound("File not found");
   await prisma.rfqFile.delete({ where: { id: file.id } });
-  remove(file.storageKey);
+  await remove(file.storageKey);
   return { deleted: true };
 }
 
@@ -155,7 +155,7 @@ export async function readFile(reader, rfqId, fileId) {
     throw notFound("File not found");
   }
 
-  const buffer = readPrivate(file.storageKey);
+  const buffer = await readPrivate(file.storageKey);
   if (!buffer) throw notFound("File is missing from storage");
   return { buffer, fileName: file.fileName, mimeType: file.mimeType };
 }

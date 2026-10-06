@@ -125,10 +125,10 @@ export async function analyzeImages({ filenames, force = false, actorId = null }
 
 // Upload a copy of the source image to the storage layer (original untouched)
 // and return the permanent served URL.
-function uploadCopy(filename) {
+async function uploadCopy(filename) {
   const buf = readImage(filename);
   const ext = (IMG_EXT_RE.exec(filename)?.[1] ?? "jpg").toLowerCase();
-  const key = put({ name: filename, mime: MIME_BY_EXT[ext] ?? "image/jpeg", buffer: buf });
+  const key = await put({ name: filename, mime: MIME_BY_EXT[ext] ?? "image/jpeg", buffer: buf });
   return getUrl(key);
 }
 
@@ -165,7 +165,7 @@ export async function approveAnalysis(analysisId, { overrides = {}, dupeMode = "
     sku = await generateSku(category, [...existingSkus, ...analysisSkus, sku]);
   }
 
-  const imageUrl = analysis.imageUrl ?? uploadCopy(analysis.sourceName);
+  const imageUrl = analysis.imageUrl ?? await uploadCopy(analysis.sourceName);
   const description = (overrides.description ?? analysis.description ?? undefined) || undefined;
   const priceMinor = Number.isFinite(overrides.basePriceMinor) ? overrides.basePriceMinor : 0; // 0 = quotation-based; never invent price
 

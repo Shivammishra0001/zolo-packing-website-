@@ -100,6 +100,22 @@ services:
         scope: RUN_TIME
         type: SECRET
 
+      # ---- Object storage. Without these, uploads are lost on every deploy.
+      - key: SPACES_ENDPOINT
+        scope: RUN_TIME
+      - key: SPACES_REGION
+        scope: RUN_TIME
+      - key: SPACES_BUCKET
+        scope: RUN_TIME
+      - key: SPACES_CDN_ENDPOINT
+        scope: RUN_TIME
+      - key: SPACES_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: SPACES_SECRET
+        scope: RUN_TIME
+        type: SECRET
+
       # Same-origin deployment: the SPA and API share one hostname, so the
       # frontend calls "/api/v1" and CORS never applies — leave CORS_ORIGINS
       # unset. Set it ONLY if you attach a separate frontend domain, or serve
@@ -112,22 +128,11 @@ services:
       # ${APP_URL} is resolved by App Platform to this app's public URL, so
       # product-image URLs are absolute and correct without hardcoding a domain.
       #
-      # WARNING — UPLOADED FILES DO NOT SURVIVE A DEPLOY.
-      # storage.mjs writes to ./uploads on the container's own filesystem, and
-      # App Platform containers are EPHEMERAL: every deploy, restart or scale
-      # event starts from the built image, so anything uploaded through the
-      # admin UI is gone. The database keeps the row, the file does not, and the
-      # product then renders a broken image (404 on /uploads/...).
-      #
-      # Fix before relying on admin image uploads — either:
-      #   1. DigitalOcean Spaces (S3-compatible object storage). Give
-      #      storage.mjs a Spaces backend and set SPACES_* env vars; URLs then
-      #      point at the CDN and survive deploys. This is the right answer for
-      #      a multi-instance app, since local disk is not shared anyway.
-      #   2. An App Platform volume mounted at the uploads path, if staying on
-      #      one instance.
-      # Until then, product images must be committed to the repo (served from
-      # the build) rather than uploaded at runtime.
+      # UPLOADED FILES: set the SPACES_* secrets below or they do not survive
+      # a deploy. storage.mjs falls back to the container's local disk, and App
+      # Platform containers are ephemeral — the database keeps the row, the
+      # file is gone, and the storefront shows a broken image. The boot log
+      # prints which backend is live ("Uploads: ...").
       - key: UPLOADS_BASE_URL
         scope: RUN_TIME
         value: ${APP_URL}/uploads

@@ -400,7 +400,7 @@ export async function attachFile(userId, id, body) {
   if (buffer.length > MAX_FILE_BYTES) throw badRequest("File is larger than 10 MB", "FILE_TOO_LARGE");
   if (!magicMatches(input.mime, buffer)) throw badRequest("File content does not match its declared type", "BAD_CONTENT");
 
-  const storageKey = putPrivate({ name: input.fileName, mime: input.mime, buffer });
+  const storageKey = await putPrivate({ name: input.fileName, mime: input.mime, buffer });
   const file = await prisma.returnFile.create({
     data: { returnRequestId: id, fileName: input.fileName, storageKey, mimeType: input.mime, size: buffer.length, uploadedById: userId },
   });
@@ -413,7 +413,7 @@ export async function readFile(reader, requestId, fileId) {
   if (!file) throw notFound("File not found");
   if (reader.kind === "buyer" && file.returnRequest.userId !== reader.userId) throw notFound("File not found");
   if (reader.kind !== "buyer" && reader.kind !== "admin") throw forbidden();
-  const buffer = readPrivate(file.storageKey);
+  const buffer = await readPrivate(file.storageKey);
   if (!buffer) throw notFound("File is missing from storage");
   return { buffer, fileName: file.fileName, mimeType: file.mimeType };
 }

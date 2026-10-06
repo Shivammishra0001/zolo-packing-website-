@@ -274,7 +274,7 @@ export async function submitByToken(token, input) {
       const { hasImageMagic } = await import("./catalog.mjs");
       if (!hasImageMagic(buffer, p.proof.mime)) throw badRequest("Proof file is not a valid image", "CORRUPT_PROOF");
     }
-    file = { key: putPrivate({ name: p.proof.name, mime: p.proof.mime, buffer }), name: p.proof.name, mime: p.proof.mime };
+    file = { key: await putPrivate({ name: p.proof.name, mime: p.proof.mime, buffer }), name: p.proof.name, mime: p.proof.mime };
   }
 
   const updated = await prisma.paymentRequest.update({
@@ -432,7 +432,7 @@ export async function resendPaymentRequest(adminUser, id) {
 export async function readProof(id) {
   const pr = await prisma.paymentRequest.findUnique({ where: { id }, select: { proofFileKey: true, proofFileName: true, proofMime: true } });
   if (!pr || !pr.proofFileKey) throw notFound("No proof file on this request");
-  const buffer = readPrivate(pr.proofFileKey);
+  const buffer = await readPrivate(pr.proofFileKey);
   if (!buffer) throw notFound("Proof file is missing from storage");
   return { buffer, fileName: pr.proofFileName ?? "proof", mimeType: pr.proofMime ?? "application/octet-stream" };
 }

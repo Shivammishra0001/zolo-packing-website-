@@ -23,6 +23,7 @@
     "admin:dedupe": "node --env-file=.env scripts/admin-dedupe.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1146.0",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",

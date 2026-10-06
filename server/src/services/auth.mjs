@@ -367,7 +367,7 @@ export async function updatePhoto(userId, { name, mime, dataBase64 }) {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, avatarUrl: true } });
   if (!user) throw unauthorized();
   const { storeImage } = await import("./catalog.mjs");
-  const url = storeImage({ name: name || "avatar", mime, dataBase64 });
+  const url = await storeImage({ name: name || "avatar", mime, dataBase64 });
   const updated = await prisma.user.update({ where: { id: userId }, data: { avatarUrl: url } });
   await removeStoredPhoto(user.avatarUrl);
   await recordEvent({ eventType: "user.photo.updated", actorId: userId, entityType: "User", entityId: userId, metadata: {} });
@@ -391,7 +391,7 @@ async function removeStoredPhoto(url) {
   try {
     const { remove } = await import("../lib/storage.mjs");
     const key = String(url).split("/").pop();
-    if (key) remove(key);
+    if (key) await remove(key);
   } catch {
     /* ignore */
   }

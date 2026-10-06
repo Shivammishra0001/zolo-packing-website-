@@ -102,7 +102,7 @@ const isStoredUrl = (s) => typeof s === "string" && /^(https?:\/\/|\/)/.test(s) 
  * tokens with freshly stored files. Returns { images, writtenKeys } so the
  * caller can delete the files if the transaction later fails.
  */
-function materializeImages(images, uploads) {
+async function materializeImages(images, uploads) {
   const decoded = (uploads ?? []).map(decodeUpload);
   const writtenKeys = [];
   const written = new Map();
@@ -115,7 +115,7 @@ function materializeImages(images, uploads) {
       const file = decoded[idx];
       if (!file) throw badRequest(`Image reference ${entry} has no matching upload`, "IMAGE_REF_INVALID");
       if (!written.has(idx)) {
-        const key = put(file);
+        const key = await put(file);
         writtenKeys.push(key);
         written.set(idx, getUrl(key));
       }
@@ -228,7 +228,7 @@ export async function createProduct(input, { actorId = null } = {}) {
   await assertSkuFree(p.sku);
   const { category, subcategory } = await resolveTaxonomy(p, { required: true });
 
-  const { images, writtenKeys } = materializeImages(p.images, p.imageUploads);
+  const { images, writtenKeys } = await materializeImages(p.images, p.imageUploads);
   try {
     const product = await prisma.$transaction(async (tx) => {
       const id = await nextProductId(tx);
@@ -284,7 +284,7 @@ export async function updateProduct(id, input, { actorId = null } = {}) {
     : { category: null, subcategory: null };
 
   const wantsImages = p.images !== undefined || (p.imageUploads && p.imageUploads.length > 0);
-  const { images, writtenKeys } = wantsImages ? materializeImages(p.images ?? [...existing.images], p.imageUploads) : { images: null, writtenKeys: [] };
+  const { images, writtenKeys } = wantsImages ? await materializeImages(p.images ?? [...existing.images], p.imageUploads) : { images: null, writtenKeys: [] };
 
   try {
     const product = await prisma.$transaction(async (tx) => {

@@ -217,7 +217,7 @@ productsRouter.post("/products/import", ...adminOnly, wrap(async (req, res) => {
 /** Attach an image to one product (admin "Upload Image" action). */
 productsRouter.post("/products/:id/image", ...adminOnly, wrap(async (req, res) => {
   const { name, mime, dataBase64, replace } = req.body ?? {};
-  const url = storeImage({ name, mime, dataBase64 });
+  const url = await storeImage({ name, mime, dataBase64 });
   const product = await setProductImage(req.params.id, url, { replace: replace === true });
   ok(res, { product, url }, 201);
 }));
@@ -243,7 +243,7 @@ productsRouter.post("/products/images/bulk", ...adminOnly, wrap(async (req, res)
         result.errors.push({ sku, level: "warning", error: "No product with this SKU" });
         continue;
       }
-      const url = storeImage({ name: item.name ?? sku, mime: item.mime, dataBase64: item.dataBase64 });
+      const url = await storeImage({ name: item.name ?? sku, mime: item.mime, dataBase64: item.dataBase64 });
       await setProductImage(product.id, url, { replace: item.replace === true });
       result.matched++;
     } catch (e) {
@@ -258,7 +258,7 @@ productsRouter.post("/products/images/bulk", ...adminOnly, wrap(async (req, res)
 // Generic image upload — unchanged public contract (used by the editor + import).
 productsRouter.post("/uploads", ...adminOnly, wrap(async (req, res) => {
   const { name = "image", mime, dataBase64 } = req.body ?? {};
-  const url = storeImage({ name, mime, dataBase64 });
+  const url = await storeImage({ name, mime, dataBase64 });
   ok(res, { url }, 201);
 }));
 
