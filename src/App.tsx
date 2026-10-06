@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, createContext, useContext } from "react";
+import { createPortal } from "react-dom";
 import { BrowserRouter, Routes, Route, Link, NavLink, useLocation, useSearchParams, useNavigate, useParams, Navigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -250,7 +251,14 @@ function Navbar() {
         )}
       </div>
 
-      {/* Mobile navigation: a real slide-in drawer (menu, search, links, CTAs, account). */}
+      {/* Mobile navigation: a real slide-in drawer (menu, search, links, CTAs, account).
+          PORTALLED TO document.body ON PURPOSE. The <header> above is
+          position:sticky, and a sticky ancestor becomes the containing block for
+          position:fixed descendants — so rendering the drawer inside it made
+          `inset-y-0` resolve against the 65px header instead of the viewport,
+          and the panel opened 64px tall (a thin strip over the page) rather
+          than full height. */}
+      {createPortal(
       <AnimatePresence>
         {open && (
           <>
@@ -294,7 +302,9 @@ function Navbar() {
             </motion.aside>
           </>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body,
+      )}
     </header>
   );
 }
