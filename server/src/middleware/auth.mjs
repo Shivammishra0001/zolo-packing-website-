@@ -13,6 +13,12 @@ const SELLER_ROLES = ["seller_owner", "seller_admin", "seller_staff"];
 export const isAdminRole = (role) => ADMIN_ROLES.includes(role);
 export const isSellerRole = (role) => SELLER_ROLES.includes(role);
 
+// A salesperson is NOT an admin and NOT a seller: they capture orders on
+// behalf of customers and must never reach product masters, system settings,
+// payment verification or another rep's records. Admins pass too, so a
+// supervisor can use the same screens.
+export const isSalespersonRole = (role) => role === "salesperson";
+
 // Populates req.user from the Bearer token. Throws 401 when absent/invalid.
 export const authenticate = wrap(async (req, _res, next) => {
   const header = req.headers.authorization || "";
@@ -73,6 +79,14 @@ export function requireRole(...roles) {
     next();
   };
 }
+
+export const requireSalesperson = (req, _res, next) => {
+  if (!req.user) return next(unauthorized());
+  if (!isSalespersonRole(req.user.role) && !isAdminRole(req.user.role)) {
+    return next(forbidden("Salesperson access required"));
+  }
+  next();
+};
 
 export const requireAdmin = (req, _res, next) => {
   if (!req.user) return next(unauthorized());

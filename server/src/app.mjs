@@ -7,7 +7,7 @@ import { prisma } from "./lib/prisma.mjs";
 import { env, isAllowedOrigin } from "./lib/env.mjs";
 import { ok, wrap, errorHandler } from "./lib/http.mjs";
 import { UPLOADS_PATH } from "./lib/storage.mjs";
-import { authenticate, requireAdmin, requireSeller, requireBuyer, loadSupplierOrg } from "./middleware/auth.mjs";
+import { authenticate, requireAdmin, requireSeller, requireBuyer, requireSalesperson, loadSupplierOrg } from "./middleware/auth.mjs";
 import { authRouter } from "./routes/auth.mjs";
 import { productsRouter } from "./routes/products.mjs";
 import { categoriesRouter } from "./routes/categories.mjs";
@@ -16,6 +16,7 @@ import { adminRouter } from "./routes/admin.mjs";
 import { notificationsRouter } from "./routes/notifications.mjs";
 import { cartRouter } from "./routes/cart.mjs";
 import { rfqRouter, quotationRouter, adminRfqRouter, sellerRfqRouter } from "./routes/rfq.mjs";
+import { salesRouter, adminSalesRouter } from "./routes/sales.mjs";
 import { returnsRouter, adminReturnsRouter } from "./routes/returns.mjs";
 import { addressRouter } from "./routes/addresses.mjs";
 import { orderRouter } from "./routes/orders.mjs";
@@ -182,6 +183,9 @@ export function createApp() {
   app.use(`${API}/rfqs`, rfqRouter);
   app.use(`${API}/quotations`, quotationRouter);
   app.use(`${API}/admin/rfqs`, adminRfqRouter);
+  // Field sales: the rep portal, and admin management of reps.
+  app.use(`${API}/sales`, authenticate, requireSalesperson, salesRouter);
+  app.use(`${API}/admin/sales`, authenticate, requireAdmin, adminSalesRouter);
   // Returns & recycling: customer-created, admin-processed.
   app.use(`${API}/returns`, authenticate, requireBuyer, returnsRouter);
   app.use(`${API}/admin/returns`, authenticate, requireAdmin, adminReturnsRouter);

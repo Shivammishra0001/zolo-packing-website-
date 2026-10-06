@@ -26,6 +26,9 @@ datasource db {
 
 enum UserRole {
   buyer
+  // Field sales rep. Captures orders on behalf of customers through the
+  // mobile portal; never a customer themselves.
+  salesperson
   seller_owner
   seller_admin
   seller_staff
@@ -96,6 +99,11 @@ model User {
   catalogImports         CatalogImport[]        @relation("CatalogImporter")
   createdOrders          Order[]                @relation("OrderCreatedBy")
   receivedPayments       Payment[]              @relation("PaymentReceivedBy")
+  salespersonProfile     SalespersonProfile?
+  capturedOrders         Order[]                @relation("OrderSalesperson")
+  capturedCustomers      User[]                 @relation("CustomerCapturedBy")
+  capturedBy             User?                  @relation("CustomerCapturedBy", fields: [capturedById], references: [id])
+  capturedById           String?
 
   @@index([role])
 }
@@ -851,10 +859,15 @@ model Order {
   dueDate              DateTime?
   expectedDeliveryDate DateTime?
   // Where the order came from: website | admin | whatsapp | phone | offline | quote
-  source               String?   @default("website")
+  source               String?            @default("website")
   // The admin who raised the order (null for customer self-checkout).
   createdById          String?
-  createdBy            User?     @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy            User?              @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  // Who CAPTURED this order. Null for self-serve storefront orders. Kept
+  // separate from userId, which is the customer the order belongs to.
+  salespersonId        String?
+  salesperson          User?              @relation("OrderSalesperson", fields: [salespersonId], references: [id])
+  samples              SalesOrderSample[]
 
   @@index([dueDate])
   @@index([userId])
@@ -2279,4 +2292,51 @@ model CatalogImportError {
   createdAt DateTime      @default(now())
 
   @@index([importId])
+}
+
+// ============================================================
+// Field sales: a capture CHANNEL over the existing Customer/Order/Payment
+// system, deliberately NOT a parallel order store. A salesperson-created
+// order is an ordinary Order row carrying salespersonId, so every existing
+// admin screen, payment ledger and audit trail keeps working unchanged.
+// ============================================================
+
+enum SalespersonStatus {
+  ACTIVE
+  SUSPENDED
+  LEFT
+}
+
+model SalespersonProfile {
+  id         String            @id @default(cuid())
+  userId     String            @unique
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeId String            @unique
+  territory  String?
+  branch     String?
+  managerId  String?
+  joinedAt   DateTime?
+  status     SalespersonStatus @default(ACTIVE)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([status])
+}
+
+// A customer sample (photo of a box, a reference PDF) attached to an order.
+// Stored through storage.mjs, so these live in Spaces in production and
+// survive deploys.
+model SalesOrderSample {
+  id           String   @id @default(cuid())
+  orderId      String
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  storageKey   String
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  caption      String?
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  @@index([orderId])
 }
