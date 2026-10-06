@@ -1,15 +1,14 @@
 import {
   FileText,
   LayoutDashboard,
-  MessageSquare,
   Megaphone,
   Package,
   ReceiptText,
   Recycle,
   ScrollText,
   Settings,
-  ShoppingCart,
   Store,
+  ShoppingCart,
   Truck,
   Users,
   Wallet,
@@ -43,48 +42,28 @@ const NAV_GROUPS: NavGroup[] = [
     heading: "Menu",
     items: [
       { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
-      { to: "/admin/customers", label: "Customers", icon: Users },
-      { to: "/admin/sellers", label: "Sellers", icon: Store },
-      // Badge dropped: it counted a mock array that was permanently empty.
-      // The Quotations page itself shows live pending counts.
-      { to: "/admin/quotes", label: "Quotations (RFQ)", icon: FileText },
-      { to: "/admin/chat", label: "Negotiations", icon: MessageSquare },
+      // People first: an admin thinks "who?" before "which table?". Customers,
+      // sales staff and sellers are all Users, separated by a tab inside the
+      // page rather than by three sidebar entries.
+      { to: "/admin/users", label: "Users", icon: Users },
       { to: "/admin/orders", label: "Orders", icon: ShoppingCart },
+      // "Quotations (RFQ)" was jargon; negotiations live inside the same page
+      // as a tab, since a negotiation is only ever about a quote.
+      { to: "/admin/quotes", label: "Quotes", icon: FileText },
       { to: "/admin/payments", label: "Payments", icon: Wallet },
-      {
-        to: "/admin/returns", label: "Returns & Recycling", icon: Recycle, end: true,
-        children: [
-          { to: "/admin/returns", label: "Overview", end: true },
-          { to: "/admin/returns/product", label: "Product Returns" },
-          { to: "/admin/returns/recycling", label: "Recycling Requests" },
-          { to: "/admin/returns/rules", label: "Recycling Rules" },
-          { to: "/admin/returns/eco-credits", label: "Eco Credits" },
-          { to: "/admin/returns/eco-settings", label: "Eco Reward Settings" },
-        ],
-      },
-      {
-        to: "/admin/catalog", label: "Product Catalog", icon: Package, end: true,
-        children: [
-          { to: "/admin/catalog", label: "Products", end: true },
-          { to: "/admin/catalog/categories", label: "Categories" },
-        ],
-      },
+      { to: "/admin/catalog", label: "Products", icon: Package },
       { to: "/admin/shipping", label: "Shipping", icon: Truck },
-      { to: "/admin/finance", label: "Finance", icon: Wallet },
+      { to: "/admin/returns", label: "Returns & Recycling", icon: Recycle },
       { to: "/admin/reports", label: "Reports", icon: ReceiptText },
-      {
-        to: "/admin/marketing", label: "Marketing", icon: Megaphone, end: true,
-        children: [
-          { to: "/admin/marketing/coupons", label: "Coupons" },
-          { to: "/admin/marketing/campaigns", label: "Campaigns" },
-        ],
-      },
+      { to: "/admin/marketing", label: "Marketing", icon: Megaphone },
     ],
   },
   {
     heading: "System",
     items: [
-      { to: "/admin/audit", label: "Audit Logs", icon: ScrollText },
+      // "Audit Logs" reads as a developer term; the underlying audit system is
+      // unchanged.
+      { to: "/admin/audit", label: "Activity Log", icon: ScrollText },
       { to: "/admin/settings", label: "Settings", icon: Settings },
     ],
   },

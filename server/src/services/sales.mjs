@@ -394,3 +394,93 @@ function shapeProfile(p) {
     joinedAt: p.joinedAt,
   };
 }
+
+// ---- Unified user directory -----------------------------------------------
+
+/**
+ * One list across customers, sales staff and sellers.
+ *
+ * The admin UI asks "who?" before "which module?", so this merges the three
+ * populations into one shape instead of making the client call three
+ * endpoints and reconcile them. The underlying tables are unchanged — this is
+ * a read-only view over the single User table plus its profiles.
+ */
+export async function adminListUsers({ type, q, take = 100 } = {}) {
+  const search = String(q ?? "").trim();
+  const digits = search.replace(/\D/g, "");
+
+  // Role -> the "type" the admin screen shows. A salesperson and a seller are
+  // both Users; only the profile attached to them differs.
+  const ROLE_TYPE = {
+    buyer: "customer",
+    salesperson: "sales",
+    seller_owner: "seller",
+    seller_admin: "seller",
+    seller_staff: "seller",
+    admin: "admin",
+    verification_admin: "admin",
+    finance_admin: "admin",
+    operations_admin: "admin",
+  };
+  const ROLES_FOR = {
+    customer: ["buyer"],
+    sales: ["salesperson"],
+    seller: ["seller_owner", "seller_admin", "seller_staff"],
+    admin: ["admin", "verification_admin", "finance_admin", "operations_admin"],
+  };
+
+  const where = {
+    ...(type && ROLES_FOR[type] ? { role: { in: ROLES_FOR[type] } } : {}),
+    ...(search
+      ? {
+          OR: [
+            { firstName: { contains: search, mode: "insensitive" } },
+            { lastName: { contains: search, mode: "insensitive" } },
+            { email: { contains: search, mode: "insensitive" } },
+            { company: { contains: search, mode: "insensitive" } },
+            ...(digits.length >= 3 ? [{ phone: { contains: digits } }] : []),
+          ],
+        }
+      : {}),
+  };
+
+  const [users, counts] = await Promise.all([
+    prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: Math.min(Number(take) || 100, 300),
+      select: {
+        id: true, email: true, firstName: true, lastName: true, phone: true,
+        company: true, role: true, isActive: true, createdAt: true,
+        salespersonProfile: { select: { employeeId: true, territory: true, status: true } },
+      },
+    }),
+    prisma.user.groupBy({ by: ["role"], _count: { role: true } }),
+  ]);
+
+  const byRole = Object.fromEntries(counts.map((c) => [c.role, c._count.role]));
+  const sum = (roles) => roles.reduce((n, r) => n + (byRole[r] ?? 0), 0);
+
+  return {
+    users: users.map((u) => ({
+      id: u.id,
+      name: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email,
+      company: u.company,
+      email: u.email,
+      phone: u.phone,
+      type: ROLE_TYPE[u.role] ?? "other",
+      role: u.role,
+      isActive: u.isActive,
+      createdAt: u.createdAt,
+      employeeId: u.salespersonProfile?.employeeId ?? null,
+      territory: u.salespersonProfile?.territory ?? null,
+    })),
+    counts: {
+      all: counts.reduce((n, c) => n + c._count.role, 0),
+      customer: sum(ROLES_FOR.customer),
+      sales: sum(ROLES_FOR.sales),
+      seller: sum(ROLES_FOR.seller),
+      admin: sum(ROLES_FOR.admin),
+    },
+  };
+}

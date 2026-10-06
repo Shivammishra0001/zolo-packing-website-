@@ -4,6 +4,7 @@ import DashboardHome from "./pages/DashboardHome";
 
 // Sales
 import Customers from "./pages/crm/CrmCustomers";
+import Users from "./pages/Users";
 import CustomerDetail from "./pages/CustomerDetail";
 import Quotations from "./pages/Quotations";
 import QuotationDetail from "./pages/QuotationDetail";
@@ -59,6 +60,9 @@ export default function AdminRoutes() {
         <Route index element={<DashboardHome />} />
 
         {/* Sales */}
+        {/* One directory for customers, sales staff and sellers. The old
+            per-type pages stay routed for deep links. */}
+        <Route path="users" element={<Users />} />
         <Route path="customers" element={<Customers />} />
         <Route path="customers/:id" element={<CustomerDetail />} />
         <Route path="quotes" element={<Quotations />} />

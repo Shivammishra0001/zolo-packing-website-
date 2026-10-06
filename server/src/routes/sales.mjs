@@ -79,6 +79,12 @@ adminSalesRouter.patch("/salespeople/:id/status", wrap(async (req, res) => {
   return updated ? ok(res, updated) : notFound(res);
 }));
 
+// One directory across customers, sales staff and sellers — the admin screen
+// asks "who?" before "which module?".
+adminSalesRouter.get("/users", wrap(async (req, res) => {
+  ok(res, await sales.adminListUsers({ type: req.query.type, q: req.query.q, take: req.query.take }));
+}));
+
 adminSalesRouter.get("/performance", wrap(async (req, res) => {
   ok(res, { rows: await sales.adminSalesPerformance({ from: req.query.from, to: req.query.to }) });
 }));
