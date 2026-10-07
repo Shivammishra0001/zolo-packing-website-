@@ -13,7 +13,7 @@
     "test": "node --env-file=.env --import ./test/setup-db.mjs --test --test-concurrency=1 \"test/*.test.mjs\"",
     "purge:test-data": "node --env-file=.env scripts/purge-test-data.mjs",
     "db:migrate": "prisma migrate dev",
-    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:deploy": "node scripts/migrate-with-recovery.mjs",
     "db:status": "prisma migrate status",
     "db:generate": "prisma generate",
     "db:seed": "node --env-file=.env scripts/seed-admin.mjs",

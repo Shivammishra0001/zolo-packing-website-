@@ -45,7 +45,13 @@ services:
     # Requires DATABASE_URL at BUILD time, which is why it is scoped
     # RUN_AND_BUILD_TIME below. If the migration fails the build fails, so a
     # container is never promoted against a half-migrated schema.
-    build_command: npm run build && npm run migrate:deploy
+    # Build ONLY. Migrations deliberately do NOT run here.
+    #
+    # `prisma migrate deploy` has no recovery for a blocked (P3009) migration,
+    # so running it at build time meant a blocked database failed the BUILD —
+    # and server.mjs, which knows how to resolve that state, never got to run.
+    # Migrations now happen at startup where that recovery exists.
+    build_command: npm run build
 
     # One process serves both halves: the Express API at /api/v1 and the built
     # SPA in front of it (see server.mjs).
