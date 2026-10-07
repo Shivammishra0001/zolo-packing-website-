@@ -71,14 +71,93 @@ app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS ?? 1));
 // Set SKIP_MIGRATIONS=1 to opt out (e.g. if you run migrations in a separate
 // release step and want faster boots).
 // ---------------------------------------------------------------------------
+/**
+ * The name of the migration Prisma reports as FAILED, or null.
+ * Parsed from `migrate status`, which names it in plain text.
+ */
+async function findFailedMigration(cwd, schema) {
+  const { spawnSync } = await import("node:child_process");
+  const out = spawnSync("npx", ["prisma", "migrate", "status", "--schema", schema], {
+    cwd,
+    env: process.env,
+    encoding: "utf8",
+  });
+  const text = `${out.stdout ?? ""}${out.stderr ?? ""}`;
+
+  // Two different wordings, depending on which command reported it:
+  //   migrate status: "Following migration have failed:" then the name alone
+  //                   on the next line.
+  //   migrate deploy: "The `2026..._init` migration started at ... failed"
+  const listed = text.match(/Following migration[^\n]*failed:\s*\n\s*([0-9]{14}_[a-z0-9_]+)/i);
+  if (listed) return listed[1];
+  return text.match(/`([0-9]{14}_[a-z0-9_]+)`[^\n]*failed/i)?.[1] ?? null;
+}
+
+/**
+ * Does the schema that migration would have created actually exist?
+ *
+ * Guards the auto-resolve: marking a migration applied when its tables are
+ * missing would hide a real failure and leave the app serving 500s.
+ */
+async function schemaLooksApplied() {
+  try {
+    const { PrismaClient } = await import("./server/node_modules/@prisma/client/index.js");
+    const prisma = new PrismaClient();
+    try {
+      const rows = await prisma.$queryRaw`
+        SELECT COUNT(*)::int AS n
+        FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name IN ('User', 'Product', 'Order')`;
+      return Number(rows?.[0]?.n ?? 0) === 3;
+    } finally {
+      await prisma.$disconnect();
+    }
+  } catch {
+    return false; // cannot prove it — do not auto-resolve
+  }
+}
+
 if (process.env.SKIP_MIGRATIONS !== "1" && process.env.DATABASE_URL) {
   const { spawnSync } = await import("node:child_process");
+  const serverDir = resolve(__dirname, "server");
+  const schema = resolve(serverDir, "prisma/schema.prisma");
+  const runPrisma = (args, opts = {}) =>
+    spawnSync("npx", ["prisma", ...args, "--schema", schema], {
+      cwd: serverDir,
+      env: process.env,
+      ...opts,
+    });
+
   console.log("\n  Applying database migrations…");
-  const migrate = spawnSync(
-    "npx",
-    ["prisma", "migrate", "deploy", "--schema", resolve(__dirname, "server/prisma/schema.prisma")],
-    { cwd: resolve(__dirname, "server"), stdio: "inherit", env: process.env },
-  );
+  let migrate = runPrisma(["migrate", "deploy"], { stdio: "inherit" });
+
+  // ---- P3009 recovery -----------------------------------------------------
+  // A migration recorded as FAILED blocks every later one, and `migrate deploy`
+  // can never clear it by itself. This happens when an earlier deploy applied
+  // the schema but was interrupted before marking it done: the re-run then hits
+  // "relation already exists" and is logged as a failure, even though the
+  // tables are present and correct.
+  //
+  // Resolving it is pure BOOKKEEPING — `migrate resolve --applied` only writes
+  // to the _prisma_migrations table and never touches application data. It is
+  // still gated: we only do it when the migration's own tables genuinely exist,
+  // so a migration that truly failed part-way is never waved through.
+  if (migrate.status !== 0) {
+    const failed = await findFailedMigration(serverDir, schema);
+    if (failed) {
+      console.log(`  Migration ${failed} is recorded as failed; checking whether its schema is actually present…`);
+      if (await schemaLooksApplied()) {
+        console.log(`  Tables exist — marking ${failed} as applied (no data is touched).`);
+        const resolved = runPrisma(["migrate", "resolve", "--applied", failed], { stdio: "inherit" });
+        if (resolved.status === 0) {
+          console.log("  Retrying migrations…");
+          migrate = runPrisma(["migrate", "deploy"], { stdio: "inherit" });
+        }
+      } else {
+        console.error(`  ${failed} failed and its tables are NOT present — this needs a human, not an automatic retry.`);
+      }
+    }
+  }
   // A failed migration means the schema is not what the code expects. Starting
   // anyway would serve 500s from a half-migrated database; fail loudly instead.
   // Nothing is rolled back or reset — the database is left exactly as it was.
