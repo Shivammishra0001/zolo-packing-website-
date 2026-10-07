@@ -26,3 +26,10 @@ server/uploads/*
 # against a database that is reachable and empty.
 !server/prisma/migrations/**/*.sql
 server/uploads-test/
+
+# Personal productivity workspace (/productivity:start). Local notes and a
+# local dashboard — not part of the application, and TASKS.md/memory may hold
+# private names and context that should not reach a shared repo.
+/TASKS.md
+/dashboard.html
+/memory/

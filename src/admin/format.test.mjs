@@ -54,8 +54,11 @@ test("no file passes a *Minor amount to inr() instead of inrMinor()", () => {
     const src = readFileSync(file, "utf8");
     for (const m of src.matchAll(offending)) {
       if (m[1].includes("/ 100") || m[1].includes("/100")) continue;
-      // Files that define their own paise-aware local `inr` are fine.
-      if (/const inr = \([^)]*\) =>[^\n]*\/ 100/.test(src)) continue;
+      // Files that define their own paise-aware local `inr` are fine. The
+      // body may be multi-line (src/sales/ui.tsx computes paise % 100 to
+      // decide precision), so look for the conversion anywhere in the
+      // declaration rather than only on its first line.
+      if (/(?:const|export const) inr = \([^)]*\) =>[\s\S]{0,400}?\/ ?100/.test(src)) continue;
       bad.push(`${file}: ${m[0]}`);
     }
   }

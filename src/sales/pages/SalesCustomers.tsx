@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Search, Users, Loader2 } from "lucide-react";
 import { salesApi, type CustomerHit, type CustomerSnapshot } from "@/lib/api/sales";
 import { describeApiError } from "@/lib/api/client";
-import { Field, TextInput, Card, Empty, inr, GhostButton } from "../ui";
+import { Field, TextInput, Card, Empty, inrMinor, GhostButton } from "../ui";
 
 // Customer 360 for the field: find someone, then see the history that answers
 // their technical questions without asking them again.
@@ -38,9 +38,9 @@ export default function SalesCustomers() {
           <p className="text-sm text-dark-500">{open.customer.phone ?? open.customer.email}</p>
           <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-dark-100 pt-3 text-center">
             <div><dt className="text-[11px] text-dark-500">Orders</dt><dd className="font-bold text-dark-900">{open.orderCount}</dd></div>
-            <div><dt className="text-[11px] text-dark-500">Business</dt><dd className="font-bold text-dark-900">{inr(open.totalBusinessMinor)}</dd></div>
+            <div><dt className="text-[11px] text-dark-500">Business</dt><dd className="font-bold text-dark-900">{inrMinor(open.totalBusinessMinor)}</dd></div>
             <div><dt className="text-[11px] text-dark-500">Outstanding</dt>
-              <dd className={`font-bold ${open.outstandingMinor > 0 ? "text-red-600" : "text-dark-900"}`}>{inr(open.outstandingMinor)}</dd></div>
+              <dd className={`font-bold ${open.outstandingMinor > 0 ? "text-red-600" : "text-dark-900"}`}>{inrMinor(open.outstandingMinor)}</dd></div>
           </dl>
         </Card>
 
@@ -52,7 +52,7 @@ export default function SalesCustomers() {
                 <Card key={n}>
                   <p className="truncate text-sm font-bold text-dark-900">{i.productName}</p>
                   <p className="text-xs text-dark-500">
-                    {i.quantity.toLocaleString("en-IN")} × {inr(i.unitPriceMinor)} · {i.orderNumber}
+                    {i.quantity.toLocaleString("en-IN")} × {inrMinor(i.unitPriceMinor)} · {i.orderNumber}
                   </p>
                 </Card>
               ))}

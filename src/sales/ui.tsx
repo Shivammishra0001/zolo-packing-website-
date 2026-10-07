@@ -14,7 +14,7 @@ import type { ReactNode } from "react";
  * a unit price reads "₹12.50" — rounding the latter to ₹13 misrepresents the
  * price the rep just quoted to the customer.
  */
-export const inr = (minor: number) => {
+export const inrMinor = (minor: number) => {
   const paise = Math.round(minor ?? 0);
   const rupees = paise / 100;
   return `₹${rupees.toLocaleString("en-IN", {

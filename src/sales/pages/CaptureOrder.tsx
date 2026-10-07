@@ -9,7 +9,7 @@ import {
   useDraft, selectCustomer, addLine, removeLine, setNotes, setPayment,
   addSample, removeSample, clearDraft, subtotalMinor, type DraftLine,
 } from "../capture-store";
-import { Field, TextInput, NumberInput, TextArea, Select, ChoiceTile, PrimaryButton, GhostButton, Steps, Card, inr } from "../ui";
+import { Field, TextInput, NumberInput, TextArea, Select, ChoiceTile, PrimaryButton, GhostButton, Steps, Card, inrMinor } from "../ui";
 
 // Guided order capture. One decision per screen, so a routine order takes
 // 1-3 minutes: Who? -> What? -> Sample? -> Payment? -> Review -> Done.
@@ -155,9 +155,9 @@ function SelectedCustomer() {
       {s && s.orderCount > 0 && (
         <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-dark-100 pt-3 text-center">
           <div><dt className="text-[11px] text-dark-500">Orders</dt><dd className="font-bold text-dark-900">{s.orderCount}</dd></div>
-          <div><dt className="text-[11px] text-dark-500">Business</dt><dd className="font-bold text-dark-900">{inr(s.totalBusinessMinor)}</dd></div>
+          <div><dt className="text-[11px] text-dark-500">Business</dt><dd className="font-bold text-dark-900">{inrMinor(s.totalBusinessMinor)}</dd></div>
           <div><dt className="text-[11px] text-dark-500">Outstanding</dt>
-            <dd className={`font-bold ${s.outstandingMinor > 0 ? "text-red-600" : "text-dark-900"}`}>{inr(s.outstandingMinor)}</dd></div>
+            <dd className={`font-bold ${s.outstandingMinor > 0 ? "text-red-600" : "text-dark-900"}`}>{inrMinor(s.outstandingMinor)}</dd></div>
         </dl>
       )}
     </Card>
@@ -225,11 +225,11 @@ function ItemsStep() {
             <div className="min-w-0">
               <p className="truncate font-bold text-dark-900">{l.displayName}</p>
               <p className="text-sm text-dark-500">
-                {l.quantity.toLocaleString("en-IN")} {l.unit} × {inr(l.unitPriceMinor)}
+                {l.quantity.toLocaleString("en-IN")} {l.unit} × {inrMinor(l.unitPriceMinor)}
               </p>
             </div>
             <div className="text-right">
-              <p className="font-bold text-dark-900">{inr(l.quantity * l.unitPriceMinor)}</p>
+              <p className="font-bold text-dark-900">{inrMinor(l.quantity * l.unitPriceMinor)}</p>
               <button type="button" onClick={() => removeLine(i)} aria-label={`Remove ${l.displayName}`}
                 className="mt-1 inline-flex h-10 w-10 items-center justify-center rounded-lg text-dark-400 active:bg-dark-50">
                 <Trash2 className="h-4 w-4" />
@@ -242,7 +242,7 @@ function ItemsStep() {
       {draft.lines.length > 0 && (
         <div className="flex items-center justify-between rounded-xl bg-dark-50 px-4 py-3">
           <span className="text-sm font-bold text-dark-700">Subtotal</span>
-          <span className="text-lg font-bold text-dark-900">{inr(subtotalMinor(draft))}</span>
+          <span className="text-lg font-bold text-dark-900">{inrMinor(subtotalMinor(draft))}</span>
         </div>
       )}
 
@@ -309,7 +309,7 @@ function AddItem({ onDone }: { onDone: () => void }) {
                 onClick={() => { setLine({ displayName: p.productName, quantity: p.quantity, unit: "pcs", specs: p.specs }); setRupees(String(p.unitPriceMinor / 100)); }}
                 className="w-full rounded-lg border border-dark-200 p-3 text-left active:bg-dark-50">
                 <p className="truncate text-sm font-bold text-dark-900">{p.productName}</p>
-                <p className="text-xs text-dark-500">{p.quantity.toLocaleString("en-IN")} × {inr(p.unitPriceMinor)}</p>
+                <p className="text-xs text-dark-500">{p.quantity.toLocaleString("en-IN")} × {inrMinor(p.unitPriceMinor)}</p>
               </button>
             ))}
           </div>
@@ -360,7 +360,7 @@ function AddItem({ onDone }: { onDone: () => void }) {
             {Number(line.quantity).toLocaleString("en-IN")} × ₹{rupees}
           </span>
           <span className="text-lg font-bold text-green-800">
-            {inr(Math.round(Number(line.quantity) * Number(rupees) * 100))}
+            {inrMinor(Math.round(Number(line.quantity) * Number(rupees) * 100))}
           </span>
         </div>
       )}
@@ -447,7 +447,7 @@ function PaymentStep() {
       <Card>
         <div className="flex items-center justify-between">
           <span className="text-sm text-dark-600">Order total</span>
-          <span className="text-2xl font-bold text-dark-900">{inr(total)}</span>
+          <span className="text-2xl font-bold text-dark-900">{inrMinor(total)}</span>
         </div>
       </Card>
 
@@ -486,9 +486,9 @@ function PaymentStep() {
       )}
 
       <div className="rounded-xl bg-dark-50 px-4 py-3 text-sm">
-        <div className="flex justify-between py-0.5"><span className="text-dark-600">Paid</span><span className="font-bold text-dark-900">{inr(paidMinor)}</span></div>
+        <div className="flex justify-between py-0.5"><span className="text-dark-600">Paid</span><span className="font-bold text-dark-900">{inrMinor(paidMinor)}</span></div>
         <div className="flex justify-between py-0.5"><span className="text-dark-600">Balance</span>
-          <span className="font-bold text-dark-900">{inr(Math.max(0, total - paidMinor))}</span></div>
+          <span className="font-bold text-dark-900">{inrMinor(Math.max(0, total - paidMinor))}</span></div>
       </div>
 
       <Field label="Notes for the office">
@@ -548,15 +548,15 @@ function ReviewStep({ onPlaced }: { onPlaced: (orderNumber: string) => void }) {
             <li key={i} className="flex justify-between gap-3 text-sm">
               <span className="min-w-0 truncate text-dark-700">
                 {l.displayName}<br />
-                <span className="text-xs text-dark-500">{l.quantity.toLocaleString("en-IN")} {l.unit} × {inr(l.unitPriceMinor)}</span>
+                <span className="text-xs text-dark-500">{l.quantity.toLocaleString("en-IN")} {l.unit} × {inrMinor(l.unitPriceMinor)}</span>
               </span>
-              <span className="shrink-0 font-bold text-dark-900">{inr(l.quantity * l.unitPriceMinor)}</span>
+              <span className="shrink-0 font-bold text-dark-900">{inrMinor(l.quantity * l.unitPriceMinor)}</span>
             </li>
           ))}
         </ul>
         <div className="mt-3 flex justify-between border-t border-dark-100 pt-3">
           <span className="font-bold text-dark-700">Total</span>
-          <span className="text-lg font-bold text-dark-900">{inr(total)}</span>
+          <span className="text-lg font-bold text-dark-900">{inrMinor(total)}</span>
         </div>
         <p className="mt-1 text-[11px] text-dark-400">Tax and shipping are confirmed by the office.</p>
       </Card>
@@ -564,7 +564,7 @@ function ReviewStep({ onPlaced }: { onPlaced: (orderNumber: string) => void }) {
       <Card>
         <p className="text-xs font-bold uppercase tracking-wide text-dark-500">Payment</p>
         <p className="mt-1 text-sm text-dark-700">
-          {draft.payment.mode === "later" ? "Pay later" : `${draft.payment.method.replace("_", " ").toUpperCase()} · ${inr(draft.payment.mode === "full" ? total : draft.payment.amountMinor)}`}
+          {draft.payment.mode === "later" ? "Pay later" : `${draft.payment.method.replace("_", " ").toUpperCase()} · ${inrMinor(draft.payment.mode === "full" ? total : draft.payment.amountMinor)}`}
         </p>
         {draft.samples.length > 0 && <p className="mt-2 text-sm text-dark-700">{draft.samples.length} sample(s) attached</p>}
       </Card>

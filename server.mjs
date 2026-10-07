@@ -127,6 +127,17 @@ if (process.env.DATABASE_URL) {
 // a fatal misconfiguration: starting a "healthy" container that 404s every API
 // call is worse than not starting at all.
 // ---------------------------------------------------------------------------
+// Ephemeral containers start every deploy from the built image, so ./uploads
+// is empty and every product renders a broken image. Put the bundled
+// catalogue images back BEFORE the API starts serving /uploads. No-ops once
+// SPACES_* is configured, because images then live outside the container.
+try {
+  const { restoreSeedImages } = await import("./server/src/lib/restore-seed-images.mjs");
+  console.log(`  Images:   ${restoreSeedImages()}`);
+} catch (err) {
+  console.warn(`  Images:   restore skipped (${err.message.split("\n")[0]})`);
+}
+
 let apiApp;
 try {
   const { createApp } = await import("./server/src/app.mjs");

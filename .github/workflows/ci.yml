@@ -1,0 +1,63 @@
+# Checks every push and PR. Nothing here deploys — it only tells you whether
+# main is safe to deploy, which until now nothing did.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    # The server suite talks to a real PostgreSQL rather than a mock, because
+    # the behaviour under test (transactions, conditional stock updates,
+    # unique constraints) only exists in the database.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: zolo_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/zolo_test
+      # Test-only values. Real secrets live in the DigitalOcean dashboard and
+      # are never needed to run the suite.
+      JWT_SECRET: ci-only-secret-at-least-32-characters-long-xxxxx
+      BANK_ENC_KEY: ci-only-bank-encryption-key-not-used-in-prod
+      NODE_ENV: development
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+
+      # postinstall also installs server deps and generates the Prisma client.
+      - run: npm ci
+
+      - name: Apply migrations
+        run: npm --prefix server run db:migrate:deploy
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Frontend tests
+        run: npm test
+
+      - name: Server tests
+        run: npm --prefix server test

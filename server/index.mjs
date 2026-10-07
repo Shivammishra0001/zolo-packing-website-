@@ -4,6 +4,7 @@ import { createApp } from "./src/app.mjs";
 import { env } from "./src/lib/env.mjs";
 import { prisma } from "./src/lib/prisma.mjs";
 import { describe as storageBackend } from "./src/lib/object-storage.mjs";
+import { restoreSeedImages } from "./src/lib/restore-seed-images.mjs";
 import { initChatGateway } from "./src/realtime/chat-gateway.mjs";
 import { ensureAdmin } from "./src/lib/ensure-admin.mjs";
 
@@ -46,7 +47,14 @@ server.on("listening", () => {
   console.log("  Database: postgresql/zolo_packing (connected)");
   // Say which storage backend is live: "local disk" in production means every
   // uploaded file is lost on the next deploy, which is worth seeing at boot.
-  console.log(`  Uploads:  ${storageBackend()}\n`);
+  console.log(`  Uploads:  ${storageBackend()}`);
+  // Ephemeral containers lose ./uploads on every deploy; put the bundled
+  // catalogue images back so the storefront is never blank after a release.
+  try {
+    console.log(`  Images:   ${restoreSeedImages()}\n`);
+  } catch (e) {
+    console.warn(`  Images:   restore skipped (${e.message.split("\n")[0]})\n`);
+  }
 });
 
 // A port clash must fail loudly. Silently drifting to another port is what

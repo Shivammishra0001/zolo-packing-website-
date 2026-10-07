@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
-import { API_BASE } from "./api-config";
+import { API_BASE } from "./api-config.ts";
 import type { Category, SubCategory } from "@/data/products";
 import type { StoreProduct } from "./products";
 

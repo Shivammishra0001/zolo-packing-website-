@@ -4,7 +4,7 @@ import { Plus, TrendingUp, Loader2 } from "lucide-react";
 import { salesApi, type SalesKpis, type SalesOrderRow } from "@/lib/api/sales";
 import { describeApiError } from "@/lib/api/client";
 import { useAuthSession } from "@/components/auth/AuthContext";
-import { Card, PrimaryButton, inr, Empty } from "../ui";
+import { Card, PrimaryButton, inrMinor, Empty } from "../ui";
 
 /** Midnight today, as an ISO string — the window for "today's performance". */
 const startOfToday = () => {
@@ -58,9 +58,9 @@ export default function SalesHome() {
         {kpis ? (
           <div className="grid grid-cols-2 gap-3">
             <Card><p className="text-xs text-dark-500">Orders</p><p className="text-xl font-bold text-dark-900">{kpis.orders}</p></Card>
-            <Card><p className="text-xs text-dark-500">Sales</p><p className="text-xl font-bold text-dark-900">{inr(kpis.salesMinor)}</p></Card>
-            <Card><p className="text-xs text-dark-500">Collected</p><p className="text-xl font-bold text-green-700">{inr(kpis.collectedMinor)}</p></Card>
-            <Card><p className="text-xs text-dark-500">Outstanding</p><p className="text-xl font-bold text-red-600">{inr(kpis.outstandingMinor)}</p></Card>
+            <Card><p className="text-xs text-dark-500">Sales</p><p className="text-xl font-bold text-dark-900">{inrMinor(kpis.salesMinor)}</p></Card>
+            <Card><p className="text-xs text-dark-500">Collected</p><p className="text-xl font-bold text-green-700">{inrMinor(kpis.collectedMinor)}</p></Card>
+            <Card><p className="text-xs text-dark-500">Outstanding</p><p className="text-xl font-bold text-red-600">{inrMinor(kpis.outstandingMinor)}</p></Card>
           </div>
         ) : (
           <Card className="flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-dark-300" /></Card>
@@ -92,9 +92,9 @@ export function OrderRow({ o }: { o: SalesOrderRow }) {
           <p className="text-xs text-dark-500">{o.orderNumber} · {o.itemCount} item(s)</p>
         </div>
         <div className="shrink-0 text-right">
-          <p className="font-bold text-dark-900">{inr(o.grandTotalMinor)}</p>
+          <p className="font-bold text-dark-900">{inrMinor(o.grandTotalMinor)}</p>
           {o.balanceMinor > 0
-            ? <p className="text-xs font-semibold text-red-600">{inr(o.balanceMinor)} due</p>
+            ? <p className="text-xs font-semibold text-red-600">{inrMinor(o.balanceMinor)} due</p>
             : <p className="text-xs font-semibold text-green-700">Paid</p>}
         </div>
       </div>
