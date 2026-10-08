@@ -1,0 +1,85 @@
+{
+  "_comment": [
+    "SHAPE REFERENCE for scripts/import-legacy-orders.mjs. Fictional data.",
+    "",
+    "The real file is server/data/legacy-orders.json, which is deliberately NOT",
+    "committed: it holds actual customer names, company names and mobile numbers,",
+    "and this repository is public. Keep it locally and run the import from there.",
+    "",
+    "Money is written in RUPEES, exactly as the source spreadsheet records it. The",
+    "importer converts to integer paise at the boundary — never put paise here.",
+    "",
+    "Reconciliation, which is the subtle part: 'received' on an order is the master",
+    "ledger's per-order figure, while entries in 'receipts' are dated payments",
+    "recorded against a CUSTOMER ACCOUNT, not against one order. The importer pools",
+    "each customer's receipts and allocates them oldest-order-first, so a payment",
+    "that settles two orders lands correctly on both. Give every receipt the id of",
+    "any order belonging to the right customer; the date and amount do the work."
+  ],
+
+  "salespeople": [
+    { "name": "Example Rep", "phone": "9000000001" }
+  ],
+
+  "customers": [
+    {
+      "key": "acme",
+      "name": "A. Example",
+      "company": "Acme Packaging",
+      "phone": "9000000002"
+    },
+    {
+      "key": "no-phone-co",
+      "name": "B. Example",
+      "company": "No Phone Co",
+      "phone": null
+    }
+  ],
+
+  "orders": [
+    {
+      "legacyId": "ORD001",
+      "date": "2026-01-15",
+      "customer": "acme",
+      "product": "Printed Carton — 5 ply",
+      "qty": 1000,
+      "rate": 7.5,
+      "sale": 7500,
+      "cost": 6200,
+      "received": 5000,
+      "paymentMode": "upi",
+      "receivedBy": "Example Rep",
+      "salesperson": "Example Rep",
+      "status": "DELIVERED",
+      "deliveryDate": "2026-01-22",
+      "remarks": "Free-text note, appended to Order.notes",
+      "collectionStatus": "Order closed"
+    },
+    {
+      "legacyId": "ORD002",
+      "date": "2026-02-01",
+      "customer": "no-phone-co",
+      "product": "Khaki Box",
+      "qty": 500,
+      "rate": 12,
+      "sale": 6000,
+      "cost": 5100,
+      "received": 0,
+      "status": "CONFIRMED"
+    }
+  ],
+
+  "_openOrdersFromOctoberSheet": [],
+
+  "advances": [],
+
+  "receipts": [
+    {
+      "date": "2026-01-20",
+      "legacyId": "ORD001",
+      "amount": 5000,
+      "from": "Acme Packaging",
+      "to": "company account"
+    }
+  ]
+}

@@ -38,3 +38,14 @@ server/uploads-test/
 # a committed pnpm lockfile can make a build pick the wrong package manager.
 pnpm-lock.yaml
 pnpm-workspace.yaml
+
+# Historical business data imported from the operations spreadsheet. Contains
+# REAL customer names, company names and mobile numbers. This repository is
+# PUBLIC, and git history is permanent — committing this would publish personal
+# contact details irreversibly. The importer (server/scripts/import-legacy-
+# orders.mjs) IS tracked; the data it reads is not. Keep the file locally and
+# run the import against the database directly.
+server/data/*.json
+# ...but the fictional shape reference IS tracked, so the importer is usable
+# and self-documenting without exposing anyone's details.
+!server/data/*.example.json

@@ -117,6 +117,43 @@ Before relying on admin image uploads, move them to DigitalOcean Spaces
 local disk does not) or mount a volume at the uploads path. Until then, commit
 product imagery to the repo so it ships with the build.
 
+## Importing the historical order book
+
+The trading record from the operations spreadsheet (May-Oct 2026: customers,
+orders, and the payment ledger) is loaded by:
+
+```
+cd server
+npm run import:legacy          # dry run - reports what it would create
+npm run import:legacy -- --yes # perform the import
+```
+
+**The data file is not in this repository and must not be.** It holds real
+customer names, company names and mobile numbers, and this repo is public -
+git history is permanent, so committing it would publish personal contact
+details irreversibly. `server/data/legacy-orders.json` is gitignored; keep it
+locally and run the import against whichever database you are targeting.
+`server/data/legacy-orders.example.json` documents the file's shape with
+fictional data.
+
+The importer is **idempotent**: every order it creates is tagged
+`[legacy:ORD001]` in `Order.notes` and every customer gets a deterministic
+`@legacy.zolopacking.invalid` address, so a second run creates nothing. It is
+safe to re-run after a partial failure.
+
+Two things it deliberately does not do. It creates no catalog `Product` rows -
+these are bespoke print jobs described by a free-text name, not SKUs anyone can
+reorder, so each line is a custom order item. And it skips the vendor-payment
+and salary sheets, which are accounts-payable records the schema has no model
+for.
+
+Reconciliation is the subtle part. The spreadsheet records money twice: a
+per-order "Amount Received" column, and a dated receipts sheet whose entries
+are per **customer account**, not per order - one of Rahul Dangi's payments
+settles two orders at once. The importer pools each customer's receipts and
+allocates them oldest-order-first, then reports every place the two sources
+disagree rather than silently picking one.
+
 ## Deployment
 
 DigitalOcean App Platform via `.do/app.yaml`, one process serving both halves
