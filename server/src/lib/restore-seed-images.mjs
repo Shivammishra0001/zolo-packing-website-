@@ -16,13 +16,15 @@ import { readdirSync, existsSync, copyFileSync, mkdirSync, statSync } from "node
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { UPLOADS_PATH } from "./storage.mjs";
-import { isEnabled as objectStorageEnabled } from "./object-storage.mjs";
 
 const SEED_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "seed-images");
 
 export function restoreSeedImages() {
-  // With object storage on, images are not served from local disk at all.
-  if (objectStorageEnabled) return "skipped (object storage active)";
+  // NOT skipped when object storage is enabled. Rows written before the Spaces
+  // switch still carry plain "/uploads/<file>" keys, and getUrl() serves those
+  // from this container's disk — which a deploy wipes. Restoring the bundled
+  // copies keeps that existing catalogue rendering while new uploads go to
+  // Spaces. Once every row has a "public/..." key this becomes a no-op.
   if (!existsSync(SEED_DIR)) return "no seed images bundled";
 
   mkdirSync(UPLOADS_PATH, { recursive: true });
