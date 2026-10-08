@@ -167,6 +167,8 @@ export interface AdminCustomer {
   avatarUrl: string | null;
   businessType: string | null; gstin: string | null; industry: string | null;
   alternatePhone: string | null;
+  /** The rep who owns this account (assignable by an admin). */
+  salesperson: { id: string; name: string } | null;
   city: string | null; state: string | null;
   isActive: boolean; totalOrders: number; lifetimeValueMinor: number;
   lastOrderAt: string | null; createdAt: string; lastLoginAt: string | null;
@@ -259,9 +261,19 @@ export const useAdminCollections = () =>
     generatedAt: string;
   }>("/admin/collections?limit=8", 30_000);
 
-/** Gross margin plus how much of the period's revenue it actually covers. */
-export const useAdminProfit = () =>
-  useAdminQuery<{
+/**
+ * Gross margin plus how much of the period's revenue it actually covers.
+ *
+ * Range-aware: coverage is often far better in a recent window than across the
+ * whole book, so the period genuinely changes the answer, not just the size of
+ * the number.
+ */
+export const useAdminProfit = (range?: { from?: string; to?: string }) => {
+  const qs = new URLSearchParams();
+  if (range?.from) qs.set("from", range.from);
+  if (range?.to) qs.set("to", range.to);
+  const s = qs.toString();
+  return useAdminQuery<{
     profitMinor: number;
     coveredRevenueMinor: number;
     coveredCostMinor: number;
@@ -271,7 +283,8 @@ export const useAdminProfit = () =>
     coverageBps: number;
     lines: number;
     linesWithCost: number;
-  }>("/admin/profit", 60_000);
+  }>(`/admin/profit${s ? `?${s}` : ""}`, 60_000);
+};
 
 /** Deliveries due, orders awaiting confirmation, and leads going cold. */
 export const useAdminActionQueue = () =>

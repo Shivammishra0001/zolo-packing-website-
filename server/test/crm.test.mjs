@@ -168,6 +168,43 @@ test("a real email is stored as given and stays contactable", async () => {
   assert.equal(bad.body.code, "EMAIL_INVALID");
 });
 
+test("an account manager can be assigned, cleared, and cannot be a non-rep", async () => {
+  const c = await makeCustomer();
+
+  // capturedById was written by the field-capture flow and then never read,
+  // so the business could not see who owned an account or hand one over.
+  const rep = await prisma.user.findFirst({ where: { role: "salesperson" } });
+  assert.ok(rep, "a salesperson exists to assign");
+
+  const assigned = await admin(`/admin/crm/customers/${c.id}`, {
+    method: "PATCH",
+    body: { salespersonId: rep.id },
+  });
+  assert.equal(assigned.status, 200);
+
+  const list = await admin(`/admin/crm/customers?q=${encodeURIComponent(c.email)}`);
+  const row = list.body.data.customers.find((x) => x.id === c.id);
+  assert.equal(row.salesperson?.id, rep.id, "the list shows who owns the account");
+
+  // Assigning a buyer would silently corrupt every report grouped by this
+  // column, so the role is checked server-side rather than trusted.
+  const bad = await admin(`/admin/crm/customers/${c.id}`, {
+    method: "PATCH",
+    body: { salespersonId: c.id },
+  });
+  assert.equal(bad.status, 400);
+  assert.equal(bad.body.code, "NOT_A_SALESPERSON");
+
+  // "" clears it: an account can be unassigned, not just reassigned.
+  const cleared = await admin(`/admin/crm/customers/${c.id}`, {
+    method: "PATCH",
+    body: { salespersonId: "" },
+  });
+  assert.equal(cleared.status, 200);
+  const after = await admin(`/admin/crm/customers?q=${encodeURIComponent(c.email)}`);
+  assert.equal(after.body.data.customers.find((x) => x.id === c.id).salesperson, null);
+});
+
 test("TEST 2 — order with 3 items + advance ⇒ totals computed, status PARTIAL", async () => {
   const c = await makeCustomer();
   const order = await makeOrder(c.id, {

@@ -46,13 +46,15 @@ const THEME_OPTIONS: { key: ThemePref; label: string; icon: typeof Sun }[] = [
 ];
 
 // ---------- date range options shown in the top bar selector ----------
-export type DateRange = "today" | "7d" | "30d" | "quarter";
-export const DATE_RANGE_LABEL: Record<DateRange, string> = {
-  today: "Today",
-  "7d": "Last 7 days",
-  "30d": "Last 30 days",
-  quarter: "This quarter",
-};
+//
+// Re-exported from the shared preset helper so the control and the queries it
+// drives cannot drift apart. The old list had a "This quarter" option that no
+// API could express, which is part of why this selector ended up wired to
+// nothing at all.
+import { RANGE_LABEL, type RangeKey } from "../date-range";
+
+export type DateRange = RangeKey;
+export const DATE_RANGE_LABEL = RANGE_LABEL;
 
 function useClickOutside(onOutside: () => void) {
   const ref = useRef<HTMLDivElement>(null);

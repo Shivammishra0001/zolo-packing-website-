@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button, Dialog, Select } from "../components/ui";
 import { useToast } from "@/components/ui/Toast";
 import { adminCrmApi, type CustomerInput } from "@/lib/api/admin-crm";
+import { adminSalesApi } from "@/lib/api/sales";
 import { friendlyError } from "./money";
 
 // ============================================================
@@ -28,6 +29,8 @@ export interface EditableCustomer {
   company: string | null;
   gstin: string | null;
   customerType: string | null;
+  /** Current account manager, when one is assigned. */
+  salesperson?: { id: string; name: string } | null;
 }
 
 const EMPTY = {
@@ -38,6 +41,7 @@ const EMPTY = {
   company: "",
   gstin: "",
   customerType: "business",
+  salespersonId: "",
   line1: "",
   line2: "",
   city: "",
@@ -62,7 +66,28 @@ export function CustomerFormDialog({
   const isEdit = mode.kind === "edit";
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
+  // Active reps, for the account-manager picker. Loaded when the dialog opens
+  // rather than on mount, so a page that never opens it costs nothing.
+  const [reps, setReps] = useState<{ userId: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    adminSalesApi
+      .list("ACTIVE")
+      .then((r) => {
+        // A rep who has left must not be assignable, but one already assigned
+        // should still render rather than silently vanishing from the field.
+        if (!cancelled) setReps(r.salespeople.map((sp) => ({ userId: sp.userId, name: sp.name })));
+      })
+      .catch(() => {
+        // Non-fatal: the rest of the form still works, the picker just stays
+        // at "Unassigned" rather than blocking a customer edit.
+        if (!cancelled) setReps([]);
+      });
+    return () => { cancelled = true; };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -77,6 +102,7 @@ export function CustomerFormDialog({
         company: c.company ?? "",
         gstin: c.gstin ?? "",
         customerType: c.customerType || "business",
+        salespersonId: c.salesperson?.id ?? "",
       });
     } else {
       setForm(EMPTY);
@@ -108,6 +134,9 @@ export function CustomerFormDialog({
         gstin: form.gstin.trim() || undefined,
         alternatePhone: form.alternatePhone.trim() || undefined,
         customerType: form.customerType as "individual" | "business",
+        // "" clears the assignment, so an account can be unassigned as well as
+        // handed to a different rep.
+        salespersonId: form.salespersonId,
       };
 
       if (mode.kind === "edit") {
@@ -176,6 +205,17 @@ export function CustomerFormDialog({
               <Select id="c-type" value={form.customerType} onChange={setValue("customerType")}>
                 <option value="business">Business</option>
                 <option value="individual">Individual</option>
+              </Select>
+            </div>
+            <div>
+              <label className={label} htmlFor="c-rep">Account manager</label>
+              <Select id="c-rep" value={form.salespersonId} onChange={setValue("salespersonId")}>
+                <option value="">Unassigned</option>
+                {reps.map((r) => (
+                  <option key={r.userId} value={r.userId}>
+                    {r.name}
+                  </option>
+                ))}
               </Select>
             </div>
           </div>

@@ -151,6 +151,17 @@ export default function CrmCustomers() {
       render: (c) => <span className="text-xs erp-text-muted">{c.lastOrderAt ? relativeTime(c.lastOrderAt) : "—"}</span>,
     },
     {
+      key: "salesperson",
+      header: "Sales person",
+      hideBelow: "lg",
+      render: (c) =>
+        c.salesperson ? (
+          <span className="text-xs erp-text">{c.salesperson.name}</span>
+        ) : (
+          <span className="text-xs erp-text-faint">Unassigned</span>
+        ),
+    },
+    {
       key: "status",
       header: "Status",
       hideBelow: "sm",

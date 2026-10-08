@@ -69,6 +69,8 @@ export interface CrmCustomer {
   overdueMinor: number;
   lastOrderAt: string | null;
   financialStatus: CustomerFinancialStatus;
+  /** The rep who owns this account, or null when unassigned. */
+  salesperson: { id: string; name: string } | null;
 }
 
 export interface CrmOrderItem {
@@ -215,6 +217,8 @@ export interface CustomerInput {
   gstin?: string;
   alternatePhone?: string;
   customerType?: "individual" | "business";
+  /** Account manager; "" clears the assignment. */
+  salespersonId?: string;
   address?: {
     line1?: string;
     line2?: string;

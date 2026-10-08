@@ -179,6 +179,7 @@ export default function CustomerDetail() {
             company: customer.company ?? null,
             gstin: customer.gstin ?? null,
             customerType: customer.businessType ?? null,
+            salesperson: customer.salesperson,
           },
         }}
         // Refetch rather than reload: a full page reload threw away the
@@ -252,6 +253,16 @@ export default function CustomerDetail() {
                 { label: "Website", value: customer.website ? <a href={customer.website} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">{customer.website}</a> : dash },
                 { label: "Phone", value: customer.phone ?? dash },
                 { label: "Alternate phone", value: customer.alternatePhone ?? dash },
+                {
+                  label: "Account manager",
+                  value: customer.salesperson ? (
+                    <Link to="/admin/sales-team" className="font-semibold text-primary-600 hover:underline">
+                      {customer.salesperson.name}
+                    </Link>
+                  ) : (
+                    <span className="erp-text-muted">Unassigned</span>
+                  ),
+                },
                 { label: "Email", value: customer.email },
                 { label: "Date of birth", value: customer.dateOfBirth ? formatDate(customer.dateOfBirth) : dash },
                 { label: "Gender", value: customer.gender ? customer.gender.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()) : dash },

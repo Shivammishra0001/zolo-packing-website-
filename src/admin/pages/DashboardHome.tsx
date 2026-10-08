@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowRight,
   Boxes,
@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/utils/cn";
+import { useAdminContext } from "../AdminLayout";
+import { RANGE_LABEL, resolveRange } from "../date-range";
 import { MetricCard, MetricCardSkeleton } from "../components/MetricCard";
 import { EmptyState, ListSkeleton, Panel, QueryState, Skeleton } from "../components/Panel";
 import { Badge, Button } from "../components/ui";
@@ -578,9 +580,13 @@ function TodayRevenueChip() {
  * coverage sits next to the number rather than in a tooltip.
  */
 function ProfitPanel() {
-  const q = asQueryState(useAdminProfit());
+  // Follows the topbar's period, so the margin and its coverage describe the
+  // window the operator is actually looking at.
+  const { range } = useAdminContext();
+  const resolved = useMemo(() => resolveRange(range), [range]);
+  const q = asQueryState(useAdminProfit(resolved));
   return (
-    <Panel title="Gross margin">
+    <Panel title={`Gross margin · ${RANGE_LABEL[range]}`}>
       <QueryState query={q} skeleton={<ListSkeleton rows={2} />}>
         {(d) =>
           d.linesWithCost === 0 ? (

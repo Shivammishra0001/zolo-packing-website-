@@ -268,6 +268,24 @@ export async function updateCustomer(adminUser, userId, input = {}) {
     if (val !== undefined) data[key] = String(val).trim() || null;
   }
   if (input.alternatePhone !== undefined) data.alternatePhone = normalizePhone(input.alternatePhone);
+
+  // Account manager. "" / null clears it, so an account can be unassigned as
+  // well as handed over. Validated against the role rather than trusted from
+  // the client: assigning a customer to a buyer would silently corrupt every
+  // sales report that groups by this column.
+  if (input.salespersonId !== undefined) {
+    const target = String(input.salespersonId ?? "").trim();
+    if (!target) {
+      data.capturedById = null;
+    } else {
+      const rep = await prisma.user.findUnique({ where: { id: target }, select: { id: true, role: true } });
+      if (!rep) throw notFound("Sales person not found");
+      if (rep.role !== "salesperson" && rep.role !== "admin") {
+        throw badRequest("That user is not a sales person", "NOT_A_SALESPERSON");
+      }
+      data.capturedById = rep.id;
+    }
+  }
   if (input.customerType !== undefined) data.businessType = input.customerType || null;
   if (input.isActive !== undefined) data.isActive = Boolean(input.isActive);
 
@@ -702,7 +720,17 @@ export async function listCustomers(query = {}) {
 
   const [total, users] = await Promise.all([
     prisma.user.count({ where }),
-    prisma.user.findMany({ where, orderBy: { createdAt: "desc" }, skip, take: limit }),
+    prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
+      // The rep who owns this account. Written when a rep captures a customer
+      // in the field, and assignable by an admin — previously stored and then
+      // never read anywhere, so the business could not see who owned an
+      // account or hand one over.
+      include: { capturedBy: { select: { id: true, firstName: true, lastName: true, email: true } } },
+    }),
   ]);
 
   const ids = users.map((u) => u.id);
@@ -753,6 +781,14 @@ export async function listCustomers(query = {}) {
       gstin: u.gstin,
       isActive: u.isActive,
       createdAt: u.createdAt,
+      salesperson: u.capturedBy
+        ? {
+            id: u.capturedBy.id,
+            name:
+              [u.capturedBy.firstName, u.capturedBy.lastName].filter(Boolean).join(" ") ||
+              u.capturedBy.email,
+          }
+        : null,
       orderCount: t?._count._all ?? 0,
       orderValueMinor,
       paidMinor,

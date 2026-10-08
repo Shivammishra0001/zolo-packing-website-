@@ -492,6 +492,8 @@ export async function customerDetail(userId) {
       avatarUrl: true, alternatePhone: true, company: true, businessType: true,
       gstin: true, pan: true, website: true, industry: true, preferences: true,
       dateOfBirth: true, gender: true,
+      // The rep who owns this account.
+      capturedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
     },
   });
   if (!user) return null;
@@ -563,6 +565,14 @@ export async function customerDetail(userId) {
       company: user.company ?? membership?.organization?.name ?? null,
       avatarUrl: user.avatarUrl ?? null,
       alternatePhone: user.alternatePhone ?? null,
+      salesperson: user.capturedBy
+        ? {
+            id: user.capturedBy.id,
+            name:
+              [user.capturedBy.firstName, user.capturedBy.lastName].filter(Boolean).join(" ") ||
+              user.capturedBy.email,
+          }
+        : null,
       businessType: user.businessType ?? null,
       gstin: user.gstin ?? null,
       pan: user.pan ?? null,
