@@ -6,6 +6,7 @@ import DashboardHome from "./pages/DashboardHome";
 import Customers from "./pages/crm/CrmCustomers";
 import Users from "./pages/Users";
 import CustomerDetail from "./pages/CustomerDetail";
+import SalesTeam from "./pages/SalesTeam";
 import Quotations from "./pages/Quotations";
 import QuotationDetail from "./pages/QuotationDetail";
 import ChatInbox from "./pages/ChatInbox";
@@ -65,6 +66,7 @@ export default function AdminRoutes() {
         <Route path="users" element={<Users />} />
         <Route path="customers" element={<Customers />} />
         <Route path="customers/:id" element={<CustomerDetail />} />
+        <Route path="sales-team" element={<SalesTeam />} />
         <Route path="quotes" element={<Quotations />} />
         <Route path="quotes/:id" element={<QuotationDetail />} />
         <Route path="chat" element={<ChatInbox />} />

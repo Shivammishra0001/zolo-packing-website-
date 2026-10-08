@@ -1,4 +1,5 @@
 import {
+  Building2,
   FileText,
   LayoutDashboard,
   Megaphone,
@@ -9,6 +10,7 @@ import {
   Settings,
   Store,
   ShoppingCart,
+  TrendingUp,
   Truck,
   Users,
   Wallet,
@@ -46,6 +48,11 @@ const NAV_GROUPS: NavGroup[] = [
       // sales staff and sellers are all Users, separated by a tab inside the
       // page rather than by three sidebar entries.
       { to: "/admin/users", label: "Users", icon: Users },
+      // Customers and Sales Team were reachable only by typing the URL. Both
+      // are the pages this business actually works out of, so they get their
+      // own entries rather than hiding behind a tab in Users.
+      { to: "/admin/customers", label: "Customers", icon: Building2 },
+      { to: "/admin/sales-team", label: "Sales Team", icon: TrendingUp },
       { to: "/admin/orders", label: "Orders", icon: ShoppingCart },
       // "Quotations (RFQ)" was jargon; negotiations live inside the same page
       // as a tab, since a negotiation is only ever about a quote.

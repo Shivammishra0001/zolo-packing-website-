@@ -361,20 +361,66 @@ export async function salespersonKpis(salespersonId, { from, to } = {}) {
   };
 }
 
-/** Leaderboard across every rep, for the admin Sales dashboard. */
+/**
+ * Leaderboard across every rep, for the admin Sales dashboard.
+ *
+ * Driven by WHO CAPTURED ORDERS, not by who has an HR profile. Iterating
+ * SalespersonProfile alone silently hid any rep without one — which is exactly
+ * what happened to the reps carried in from the historical order book, where
+ * the spreadsheet named the person but there was no employee record to create
+ * a profile from. A rep with 31 orders and no profile row is still a rep, and
+ * omitting them understated the team's revenue with no visible clue why.
+ *
+ * The union is ordered by revenue, so a profile-less rep sorts on merit rather
+ * than being appended at the end.
+ */
 export async function adminSalesPerformance({ from, to } = {}) {
-  const profiles = await prisma.salespersonProfile.findMany({
-    include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } },
-  });
-  const rows = await Promise.all(
-    profiles.map(async (p) => ({
+  const [profiles, captured] = await Promise.all([
+    prisma.salespersonProfile.findMany({
+      include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } },
+    }),
+    // Anyone who actually captured an order in range, profile or not.
+    prisma.order.findMany({
+      where: {
+        salespersonId: { not: null },
+        ...(from || to
+          ? { placedAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lt: new Date(to) } : {}) } }
+          : {}),
+      },
+      distinct: ["salespersonId"],
+      select: {
+        salespersonId: true,
+        salesperson: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    }),
+  ]);
+
+  const byId = new Map();
+  for (const p of profiles) {
+    byId.set(p.userId, {
       salespersonId: p.userId,
       employeeId: p.employeeId,
       name: [p.user.firstName, p.user.lastName].filter(Boolean).join(" ") || p.user.email,
       territory: p.territory,
       status: p.status,
-      ...(await salespersonKpis(p.userId, { from, to })),
-    })),
+    });
+  }
+  for (const o of captured) {
+    if (!o.salesperson || byId.has(o.salespersonId)) continue;
+    byId.set(o.salespersonId, {
+      salespersonId: o.salespersonId,
+      // No employee record exists; say so rather than inventing an id.
+      employeeId: "—",
+      name:
+        [o.salesperson.firstName, o.salesperson.lastName].filter(Boolean).join(" ") ||
+        o.salesperson.email,
+      territory: null,
+      status: "ACTIVE",
+    });
+  }
+
+  const rows = await Promise.all(
+    [...byId.values()].map(async (base) => ({ ...base, ...(await salespersonKpis(base.salespersonId, { from, to })) })),
   );
   return rows.sort((a, b) => b.salesMinor - a.salesMinor);
 }
