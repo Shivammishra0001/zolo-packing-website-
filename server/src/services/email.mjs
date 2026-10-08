@@ -40,7 +40,19 @@ const fromHeader = (e) => (e.fromName ? `${e.fromName} <${e.fromEmail}>` : e.fro
  * the customer it was for (null for owner/admin alerts).
  */
 export async function sendMail({ to, subject, text, html, messageType = "email", entityType = null, entityId = null, userId = null }) {
-  const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean);
+  // Drop placeholder addresses before anything else.
+  //
+  // A customer who gave only a phone number is stored with a generated
+  // `.invalid` address (crm.createCustomer), and the legacy import uses the
+  // same suffix. RFC 2606 reserves `.invalid` so it can never resolve —
+  // attempting delivery would just manufacture a permanent bounce and, with
+  // enough of them, damage the sending domain's reputation.
+  //
+  // Filtered HERE because this is the single chokepoint every mail path goes
+  // through; guarding at each call site would miss one eventually.
+  const recipients = (Array.isArray(to) ? to : [to])
+    .filter(Boolean)
+    .filter((addr) => !String(addr).toLowerCase().endsWith(".invalid"));
   const s = await getNotificationSettings();
   const configured = isEmailConfigured(s);
   let delivery = null;

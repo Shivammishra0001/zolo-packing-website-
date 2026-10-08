@@ -172,10 +172,11 @@ function NewCustomerForm({ onCancel }: { onCancel: () => void }) {
   const save = async () => {
     setBusy(true);
     try {
-      // Email is required by the API but a field rep often has only a phone,
-      // so synthesise a placeholder rather than blocking the order.
-      const email = f.email.trim() || `${f.phone.replace(/\D/g, "")}@no-email.zolo`;
-      const created = await salesApi.createCustomer({ ...f, email });
+      // Email is optional: the API generates a non-deliverable placeholder when
+      // a rep has only a phone number. Synthesising one here too would give the
+      // same customer a different address depending on which screen created
+      // them.
+      const created = await salesApi.createCustomer({ ...f, email: f.email.trim() });
       const snap = await salesApi.snapshot(created.id).catch(() => null);
       selectCustomer(created.id, f.company || f.name, snap);
     } catch (e) {

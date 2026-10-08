@@ -208,7 +208,8 @@ export type CrmOutstandingList = PageMeta & { orders: CrmOutstandingRow[] };
 
 export interface CustomerInput {
   name: string;
-  email: string;
+  /** Optional: the API stores a non-deliverable placeholder when omitted. */
+  email?: string;
   phone: string;
   company?: string;
   gstin?: string;

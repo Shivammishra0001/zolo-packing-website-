@@ -3,7 +3,7 @@ import { UserRound, Briefcase, Factory, Plus, Search, Loader2 } from "lucide-rea
 import { useToast } from "@/components/ui/Toast";
 import { request, describeApiError } from "@/lib/api/client";
 import { adminSalesApi } from "@/lib/api/sales";
-import { adminCrmApi } from "@/lib/api/admin-crm";
+import { CustomerFormDialog } from "../crm/CustomerFormDialog";
 import { DataTable, TableSkeleton, type Column } from "../components/DataTable";
 import { Panel, EmptyState } from "../components/Panel";
 import { Dialog } from "../components/ui";
@@ -55,6 +55,7 @@ export default function Users() {
   const [data, setData] = useState<Directory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [addingCustomer, setAddingCustomer] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -160,7 +161,18 @@ export default function Users() {
         )}
       </Panel>
 
-      <AddUserDialog open={adding} onClose={() => setAdding(false)} onCreated={() => { setAdding(false); void load(); }} />
+      <AddUserDialog
+        open={adding}
+        onClose={() => setAdding(false)}
+        onCreated={() => { setAdding(false); void load(); }}
+        onPickCustomer={() => { setAdding(false); setAddingCustomer(true); }}
+      />
+      <CustomerFormDialog
+        open={addingCustomer}
+        onClose={() => setAddingCustomer(false)}
+        mode={{ kind: "create" }}
+        onSaved={() => { setAddingCustomer(false); void load(); }}
+      />
     </div>
   );
 }
@@ -180,7 +192,17 @@ const USER_TYPES = [
  * choose between values like "seller_owner" and leaves most fields irrelevant
  * to whoever they are actually creating.
  */
-function AddUserDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+function AddUserDialog({
+  open,
+  onClose,
+  onCreated,
+  onPickCustomer,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+  onPickCustomer: () => void;
+}) {
   const [type, setType] = useState<(typeof USER_TYPES)[number]["key"] | null>(null);
 
   return (
@@ -194,7 +216,13 @@ function AddUserDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
       {!type ? (
         <div className="grid gap-3 sm:grid-cols-3">
           {USER_TYPES.map((t) => (
-            <button key={t.key} type="button" onClick={() => setType(t.key)}
+            <button
+              key={t.key}
+              type="button"
+              // "Customer" hands off to the canonical CustomerFormDialog — the
+              // same form the Customers page uses — rather than a second
+              // hand-rolled one that collected different fields.
+              onClick={() => (t.key === "customer" ? onPickCustomer() : setType(t.key))}
               className="flex flex-col items-center gap-2 rounded-xl border-2 border-dark-200 p-5 text-center transition hover:border-green-500 hover:bg-green-50">
               <t.icon className="h-7 w-7 text-green-600" aria-hidden />
               <span className="font-bold erp-text">{t.title}</span>
@@ -202,8 +230,6 @@ function AddUserDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
             </button>
           ))}
         </div>
-      ) : type === "customer" ? (
-        <CustomerForm onBack={() => setType(null)} onCreated={onCreated} />
       ) : type === "sales" ? (
         <SalespersonForm onBack={() => setType(null)} onCreated={onCreated} />
       ) : (
@@ -221,50 +247,6 @@ function FormRow({ label, children, required }: { label: string; children: React
       </span>
       {children}
     </label>
-  );
-}
-
-function CustomerForm({ onBack, onCreated }: { onBack: () => void; onCreated: () => void }) {
-  const [f, setF] = useState({ name: "", phone: "", email: "", company: "", gstin: "" });
-  const [busy, setBusy] = useState(false);
-  const toast = useToast();
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      await adminCrmApi.createCustomer({
-        name: f.name, phone: f.phone,
-        // The API requires an email; a walk-in customer often has only a
-        // phone, so synthesise one rather than blocking the record.
-        email: f.email.trim() || `${f.phone.replace(/\D/g, "")}@no-email.zolo`,
-        company: f.company || undefined,
-        gstin: f.gstin || undefined,
-      });
-      toast.success("Customer created");
-      onCreated();
-    } catch (e) {
-      toast.error("Couldn't create customer", describeApiError(e).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <FormRow label="Name" required><input className="input w-full" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></FormRow>
-        <FormRow label="Phone" required><input className="input w-full" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></FormRow>
-        <FormRow label="Business / brand"><input className="input w-full" value={f.company} onChange={(e) => setF({ ...f, company: e.target.value })} /></FormRow>
-        <FormRow label="Email"><input className="input w-full" inputMode="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></FormRow>
-        <FormRow label="GSTIN"><input className="input w-full" value={f.gstin} onChange={(e) => setF({ ...f, gstin: e.target.value.toUpperCase() })} /></FormRow>
-      </div>
-      <div className="flex justify-end gap-2 pt-2">
-        <button type="button" className="btn btn-outline btn-sm" onClick={onBack}>Back</button>
-        <button type="button" className="btn btn-primary btn-sm" disabled={busy || !f.name.trim() || !f.phone.trim()} onClick={save}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Create customer
-        </button>
-      </div>
-    </div>
   );
 }
 

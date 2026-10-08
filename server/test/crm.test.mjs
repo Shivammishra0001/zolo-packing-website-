@@ -112,6 +112,62 @@ test("customer validation: duplicate email/phone refused, bad input refused", as
   assert.equal(noName.status, 400);
 });
 
+test("a customer can be created with NO email; the placeholder is never mailable", async () => {
+  const { hasEmail } = await import("../src/services/crm.mjs");
+  const phone = `9${String(Date.now() + 77).slice(-9)}`;
+
+  // Most walk-in trade customers have only a phone number. Refusing the record
+  // until someone invents an address is what pushed three separate screens
+  // into each synthesising their own fake one.
+  const res = await admin("/admin/crm/customers", {
+    method: "POST",
+    body: { name: "Walk In", phone },
+  });
+  assert.equal(res.status, 201, "a customer with no email is accepted");
+  const created = res.body.data.customer ?? res.body.data;
+  MADE_USERS.push(created.id);
+
+  // A row still needs a unique address, but it must be undeliverable by
+  // construction: .invalid is reserved by RFC 2606 and can never resolve.
+  assert.ok(created.email.endsWith(".invalid"), `placeholder is .invalid, got ${created.email}`);
+  assert.ok(created.email.includes(phone), "placeholder is derived from the phone number");
+  assert.equal(hasEmail(created.email), false, "placeholder is not treated as contactable");
+
+  // The single chokepoint every mail path goes through must refuse it, so a
+  // walk-in customer can never become a permanent bounce.
+  const { sendMail } = await import("../src/services/email.mjs");
+  const sent = await sendMail({ to: created.email, subject: "x", text: "x", messageType: "test" });
+  assert.equal(sent.status, "SKIPPED", "mail to a placeholder is skipped, not attempted");
+
+  // A second walk-in on the same number is still a duplicate, and the error
+  // must name the phone rather than an email the admin never typed.
+  const dup = await admin("/admin/crm/customers", { method: "POST", body: { name: "Walk In Again", phone } });
+  assert.equal(dup.status, 409);
+  assert.equal(dup.body.code, "PHONE_TAKEN");
+});
+
+test("a real email is stored as given and stays contactable", async () => {
+  const { hasEmail } = await import("../src/services/crm.mjs");
+  const email = `real-${rnd()}@zolo-test.local`;
+  const res = await admin("/admin/crm/customers", {
+    method: "POST",
+    body: { name: "Has Email", phone: `9${String(Date.now() + 88).slice(-9)}`, email },
+  });
+  assert.equal(res.status, 201);
+  const created = res.body.data.customer ?? res.body.data;
+  MADE_USERS.push(created.id);
+  assert.equal(created.email, email);
+  assert.equal(hasEmail(created.email), true);
+
+  // A malformed address is still rejected — optional does not mean unvalidated.
+  const bad = await admin("/admin/crm/customers", {
+    method: "POST",
+    body: { name: "Bad Email", phone: `9${String(Date.now() + 99).slice(-9)}`, email: "not-an-email" },
+  });
+  assert.equal(bad.status, 400);
+  assert.equal(bad.body.code, "EMAIL_INVALID");
+});
+
 test("TEST 2 — order with 3 items + advance ⇒ totals computed, status PARTIAL", async () => {
   const c = await makeCustomer();
   const order = await makeOrder(c.id, {

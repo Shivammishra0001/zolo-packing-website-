@@ -26,6 +26,18 @@ const PAYMENT_KINDS = new Set(["ADVANCE", "PARTIAL", "FINAL", "ADJUSTMENT"]);
 const PAYMENT_METHODS = new Set(["cash", "bank_transfer", "upi", "card", "cheque", "other"]);
 const ORDER_SOURCES = new Set(["website", "admin", "whatsapp", "phone", "offline", "quote"]);
 
+/**
+ * Is this a real, contactable address — or the placeholder stored for a
+ * customer who only gave a phone number?
+ *
+ * The ONE test for "can we email this person". Anything that sends mail must
+ * check it, otherwise a walk-in customer's generated address becomes a
+ * permanent bounce. `.invalid` is reserved by RFC 2606 precisely so it can
+ * never resolve; the legacy import uses the same suffix.
+ */
+export const hasEmail = (email) =>
+  Boolean(email) && !String(email).toLowerCase().endsWith(".invalid");
+
 const digits = (s) => String(s ?? "").replace(/\D/g, "");
 /** Phone stored normalised (last 10 digits) to match the User.phone convention. */
 const normalizePhone = (raw) => {
@@ -131,15 +143,36 @@ export async function createCustomer(adminUser, input = {}) {
   const phone = normalizePhone(input.phone);
 
   if (!name) throw badRequest("Customer name is required", "NAME_REQUIRED");
-  if (!email) throw badRequest("Email is required", "EMAIL_REQUIRED");
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw badRequest("Enter a valid email address", "EMAIL_INVALID");
   if (!phone || phone.length !== 10) throw badRequest("Enter a valid 10-digit phone number", "PHONE_INVALID");
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    throw badRequest("Enter a valid email address", "EMAIL_INVALID");
+  }
+
+  // Email is OPTIONAL for an admin-created customer. Most walk-in trade
+  // customers have only a phone number, and refusing the record until someone
+  // invents an address is how three different screens each grew their own
+  // placeholder convention.
+  //
+  // User.email is a required unique column, so a row still needs a value. The
+  // placeholder is generated HERE, once, from the phone number (which is
+  // already validated unique), rather than in each form:
+  //   * .invalid is reserved by RFC 2606 and can never be deliverable, so no
+  //     mail is ever sent to a real stranger;
+  //   * hasEmail() below is the single test the rest of the system uses to
+  //     decide whether a customer is contactable by email.
+  const placeholder = !email;
+  const storedEmail = email || `${phone}@no-email.zolopacking.invalid`;
 
   const [firstName, ...rest] = name.split(/\s+/);
 
   return prisma.$transaction(async (tx) => {
-    if (await tx.user.findUnique({ where: { email } })) {
-      throw conflict("A customer with this email already exists", "EMAIL_TAKEN");
+    if (await tx.user.findUnique({ where: { email: storedEmail } })) {
+      throw conflict(
+        placeholder
+          ? "A customer with this phone number already exists"
+          : "A customer with this email already exists",
+        placeholder ? "PHONE_TAKEN" : "EMAIL_TAKEN",
+      );
     }
     if (await tx.user.findUnique({ where: { phone } })) {
       throw conflict("A customer with this phone number already exists", "PHONE_TAKEN");
@@ -147,7 +180,7 @@ export async function createCustomer(adminUser, input = {}) {
 
     const user = await tx.user.create({
       data: {
-        email,
+        email: storedEmail,
         phone,
         firstName,
         lastName: rest.join(" ") || null,

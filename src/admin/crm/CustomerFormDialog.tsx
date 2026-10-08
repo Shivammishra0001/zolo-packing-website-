@@ -88,9 +88,11 @@ export function CustomerFormDialog({
   /** Select hands back the value itself, not a change event. */
   const setValue = (k: keyof typeof EMPTY) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Email is OPTIONAL: most walk-in trade customers have only a phone, and the
+  // API generates a non-deliverable placeholder when one is omitted. Requiring
+  // it here is what pushed the other screens into inventing fake addresses.
   const canSubmit =
     form.name.trim() !== "" &&
-    form.email.trim() !== "" &&
     form.phone.replace(/\D/g, "").length >= 10 &&
     !saving;
 
@@ -182,7 +184,7 @@ export function CustomerFormDialog({
         <Section title="Contact information">
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className={label} htmlFor="c-email">Email *</label>
+              <label className={label} htmlFor="c-email">Email</label>
               <input id="c-email" type="email" className={field} value={form.email} onChange={set("email")} />
             </div>
             <div>
