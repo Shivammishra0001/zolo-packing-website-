@@ -163,6 +163,21 @@ function fillDays(series: { day: string; revenueMinor: number }[], days: number)
   });
 }
 
+/**
+ * Short money label for a chart axis, from PAISE.
+ *
+ * The series carries integer minor units, so dividing by 1000 would read a
+ * ₹52,000 day as "5200k". Convert to rupees first, then use Indian scale
+ * words: a B2B day is lakhs, not thousands of thousands.
+ */
+function axisLabel(minor: number): string {
+  const rupees = minor / 100;
+  if (rupees >= 10_000_000) return `${(rupees / 10_000_000).toFixed(1)}Cr`;
+  if (rupees >= 100_000) return `${(rupees / 100_000).toFixed(1)}L`;
+  if (rupees >= 1_000) return `${Math.round(rupees / 1_000)}k`;
+  return String(Math.round(rupees));
+}
+
 function SalesChart() {
   const q = asQueryState(useAdminAnalytics(14));
   const [hover, setHover] = useState<number | null>(null);
@@ -173,7 +188,7 @@ function SalesChart() {
       action={
         q.data ? (
           <span className="text-xs font-semibold erp-text-muted">
-            Total <span className="erp-text">{inr(total)}</span>
+            Total <span className="erp-text">{inrMinor(total)}</span>
           </span>
         ) : null
       }
@@ -194,7 +209,7 @@ function SalesChart() {
                 <div className="relative flex w-12 shrink-0 flex-col justify-between py-1 text-right">
                   {[...steps].reverse().map((s) => (
                     <span key={s} className="text-[10px] tabular-nums erp-text-faint">
-                      {s === 0 ? "0" : `${Math.round((max * s) / 1000)}k`}
+                      {s === 0 ? "0" : axisLabel(max * s)}
                     </span>
                   ))}
                 </div>
@@ -222,7 +237,7 @@ function SalesChart() {
                           onBlur={() => setHover(null)}
                           tabIndex={0}
                           role="img"
-                          aria-label={`${d.day}: ${inr(d.revenue)}`}
+                          aria-label={`${d.day}: ${inrMinor(d.revenue)}`}
                         >
                           <div
                             className={cn(
@@ -237,7 +252,7 @@ function SalesChart() {
                           />
                           {active && (
                             <div className="pointer-events-none absolute -top-1 left-1/2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border erp-border erp-surface px-2.5 py-1.5 text-center card-shadow">
-                              <div className="text-xs font-bold erp-text">{inr(d.revenue)}</div>
+                              <div className="text-xs font-bold erp-text">{inrMinor(d.revenue)}</div>
                               <div className="text-[10px] erp-text-muted">{d.day}</div>
                             </div>
                           )}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { IndianRupee, Plus, Users, Wallet } from "lucide-react";
 import { MetricCard, MetricCardSkeleton } from "../../components/MetricCard";
 import { DataTable, TableSkeleton, type Column } from "../../components/DataTable";
@@ -34,8 +35,19 @@ export default function CrmCustomers() {
   const [balance, setBalance] = useState("all");
   const [page, setPage] = useState(1);
 
-  const [addOpen, setAddOpen] = useState(false);
+  // `?new=1` opens the create dialog straight away, so the "New Customer"
+  // quick actions in the topbar and on the dashboard land on an open form
+  // instead of silently dropping the admin on the plain list.
+  const [params, setParams] = useSearchParams();
+  const [addOpen, setAddOpen] = useState(() => params.get("new") === "1");
   const [orderFor, setOrderFor] = useState<OrderCustomer | null>(null);
+
+  useEffect(() => {
+    if (params.get("new") !== "1") return;
+    const next = new URLSearchParams(params);
+    next.delete("new");
+    setParams(next, { replace: true });
+  }, [params, setParams]);
 
   const load = useCallback(async () => {
     setLoading(true);

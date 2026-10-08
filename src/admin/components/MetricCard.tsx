@@ -5,6 +5,14 @@ import { Link } from "react-router-dom";
 import { cn } from "@/utils/cn";
 import { Skeleton } from "./Panel";
 
+/**
+ * A KPI tile.
+ *
+ * It is always actionable: either it links somewhere (`to`) or it runs a
+ * handler (`onClick`, e.g. to switch to the tab that explains the number).
+ * Passing neither renders a plain, non-interactive tile rather than a link to
+ * "#", which looked clickable and navigated nowhere.
+ */
 export function MetricCard({
   label,
   value,
@@ -13,6 +21,7 @@ export function MetricCard({
   detail,
   tone = "default",
   to,
+  onClick,
 }: {
   label: string;
   value: ReactNode;
@@ -22,20 +31,23 @@ export function MetricCard({
   /** Small line under the value, e.g. a split or a warning */
   detail?: ReactNode;
   tone?: "default" | "warn" | "danger";
-  to: string;
+  to?: string;
+  onClick?: () => void;
 }) {
-  return (
-    <Link
-      to={to}
-      className={cn(
+  const interactive = Boolean(to || onClick);
+  const className = cn(
+    onClick ? "w-full text-left" : "",
         "group flex min-h-[104px] flex-col justify-between rounded-xl border erp-surface card-shadow p-4 transition-colors focus-visible:outline-2 focus-visible:outline-primary-500",
         tone === "danger"
           ? "border-red-200 dark:border-red-500/30"
           : tone === "warn"
             ? "border-amber-200 dark:border-amber-500/30"
-            : "erp-border hover:border-dark-300 dark:hover:border-dark-600",
-      )}
-    >
+            : interactive
+              ? "erp-border hover:border-dark-300 dark:hover:border-dark-600"
+              : "erp-border",
+  );
+  const body = (
+    <>
       <div className="flex items-start justify-between gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide erp-text-muted">
           {label}
@@ -78,8 +90,12 @@ export function MetricCard({
         </div>
         {detail && <div className="mt-1 text-xs erp-text-muted">{detail}</div>}
       </div>
-    </Link>
+    </>
   );
+
+  if (to) return <Link to={to} className={className}>{body}</Link>;
+  if (onClick) return <button type="button" onClick={onClick} className={className}>{body}</button>;
+  return <div className={className}>{body}</div>;
 }
 
 export function MetricCardSkeleton() {

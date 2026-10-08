@@ -181,7 +181,9 @@ export default function CustomerDetail() {
             customerType: customer.businessType ?? null,
           },
         }}
-        onSaved={() => window.location.reload()}
+        // Refetch rather than reload: a full page reload threw away the
+        // active tab and scroll position for no benefit.
+        onSaved={() => q.refetch()}
       />
       <OrderFormDialog
         open={orderOpen}
@@ -204,16 +206,16 @@ export default function CustomerDetail() {
       />
 
       <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Order Value" value={inrMinor(customer.lifetimeValueMinor)} icon={IndianRupee} detail="lifetime, excl. cancelled" to="#" />
-        <MetricCard label="Orders" value={customer.totalOrders} icon={Package} detail={customer.cancelledOrders ? `${customer.cancelledOrders} cancelled` : "none cancelled"} to="#" />
-        <MetricCard label="Paid" value={inrMinor(totals.paidMinor)} icon={Wallet} detail={totals.refundedMinor ? `${inrMinor(totals.refundedMinor)} refunded` : "no refunds"} to="#" />
+        <MetricCard label="Order Value" value={inrMinor(customer.lifetimeValueMinor)} icon={IndianRupee} detail="lifetime, excl. cancelled" onClick={() => setTab("orders")} />
+        <MetricCard label="Orders" value={customer.totalOrders} icon={Package} detail={customer.cancelledOrders ? `${customer.cancelledOrders} cancelled` : "none cancelled"} onClick={() => setTab("orders")} />
+        <MetricCard label="Paid" value={inrMinor(totals.paidMinor)} icon={Wallet} detail={totals.refundedMinor ? `${inrMinor(totals.refundedMinor)} refunded` : "no refunds"} onClick={() => setTab("payments")} />
         <MetricCard
           label="Outstanding"
           value={inrMinor(totals.outstandingMinor)}
           icon={Wallet}
           tone={totals.outstandingMinor > 0 ? "warn" : "default"}
           detail="awaiting payment"
-          to="#"
+          onClick={() => setTab("payments")}
         />
       </div>
 
