@@ -207,11 +207,6 @@ export interface AdminCustomerRfq {
   itemCount: number; quotationCount: number; createdAt: string;
 }
 
-export const useAdminCustomers = (search = "", limit = 100) =>
-  useAdminQuery<{ customers: AdminCustomer[]; total: number }>(
-    `/admin/customers?limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ""}`,
-  );
-
 export const useAdminCustomer = (id: string | null) =>
   useAdminQuery<{
     customer: AdminCustomerDetail;
