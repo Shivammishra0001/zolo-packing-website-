@@ -79,23 +79,29 @@ async function schemaPresent() {
 
 let result = prisma(["migrate", "deploy"], { stdio: "inherit" });
 
-if (result.status !== 0) {
+// Several migrations can be blocked at once: resolving one lets `migrate
+// deploy` advance to the next, which may also be recorded as failed. Loop
+// until it succeeds or stops progressing. Bounded, and each pass must resolve
+// a NEW migration, so it cannot spin.
+const resolved = new Set();
+for (let pass = 0; result.status !== 0 && pass < 30; pass++) {
   const failed = await findFailed();
-  if (failed) {
-    console.log(`\n  Migration ${failed} is recorded as failed — checking whether its tables exist…`);
-    if (await schemaPresent()) {
-      console.log(`  Tables are present. Marking ${failed} as applied (bookkeeping only, no data touched).`);
-      if (prisma(["migrate", "resolve", "--applied", failed], { stdio: "inherit" }).status === 0) {
-        console.log("  Retrying migrations…\n");
-        result = prisma(["migrate", "deploy"], { stdio: "inherit" });
-      }
-    } else {
-      console.error(
-        `\n  ✖ ${failed} failed and its tables are NOT present.\n` +
-          "    This is a genuine partial migration and needs a human — refusing to mark it applied.\n",
-      );
-    }
+  if (!failed || resolved.has(failed)) break;
+
+  console.log(`\n  Migration ${failed} is recorded as failed — checking whether its tables exist…`);
+  if (!(await schemaPresent())) {
+    console.error(
+      `\n  ✖ ${failed} failed and its tables are NOT present.\n` +
+        "    This is a genuine partial migration and needs a human — refusing to mark it applied.\n",
+    );
+    break;
   }
+  console.log(`  Tables are present. Marking ${failed} as applied (bookkeeping only, no data touched).`);
+  if (prisma(["migrate", "resolve", "--applied", failed], { stdio: "inherit" }).status !== 0) break;
+
+  resolved.add(failed);
+  console.log("  Retrying migrations…\n");
+  result = prisma(["migrate", "deploy"], { stdio: "inherit" });
 }
 
 process.exit(result.status ?? 1);

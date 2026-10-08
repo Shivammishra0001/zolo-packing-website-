@@ -150,21 +150,26 @@ if (process.env.SKIP_MIGRATIONS !== "1" && process.env.DATABASE_URL) {
   // to the _prisma_migrations table and never touches application data. It is
   // still gated: we only do it when the migration's own tables genuinely exist,
   // so a migration that truly failed part-way is never waved through.
-  if (migrate.status !== 0) {
+  // Several migrations can be blocked at once: resolving one lets `migrate
+  // deploy` advance to the next, which may ALSO be recorded as failed. Loop
+  // until it succeeds or stops making progress. Bounded, and each pass must
+  // resolve a NEW migration, so this can never spin.
+  const alreadyResolved = new Set();
+  for (let pass = 0; migrate.status !== 0 && pass < 30; pass++) {
     const failed = await findFailedMigration();
-    if (failed) {
-      console.log(`  Migration ${failed} is recorded as failed; checking whether its schema is actually present…`);
-      if (await schemaLooksApplied()) {
-        console.log(`  Tables exist — marking ${failed} as applied (no data is touched).`);
-        const resolved = runPrisma(["migrate", "resolve", "--applied", failed], { stdio: "inherit" });
-        if (resolved.status === 0) {
-          console.log("  Retrying migrations…");
-          migrate = runPrisma(["migrate", "deploy"], { stdio: "inherit" });
-        }
-      } else {
-        console.error(`  ${failed} failed and its tables are NOT present — this needs a human, not an automatic retry.`);
-      }
+    if (!failed || alreadyResolved.has(failed)) break;
+
+    console.log(`  Migration ${failed} is recorded as failed; checking whether its schema is actually present…`);
+    if (!(await schemaLooksApplied())) {
+      console.error(`  ${failed} failed and its tables are NOT present — this needs a human, not an automatic retry.`);
+      break;
     }
+    console.log(`  Tables exist — marking ${failed} as applied (no data is touched).`);
+    if (runPrisma(["migrate", "resolve", "--applied", failed], { stdio: "inherit" }).status !== 0) break;
+
+    alreadyResolved.add(failed);
+    console.log("  Retrying migrations…");
+    migrate = runPrisma(["migrate", "deploy"], { stdio: "inherit" });
   }
   // A failed migration means the schema is not what the code expects. Starting
   // anyway would serve 500s from a half-migrated database; fail loudly instead.
