@@ -75,29 +75,69 @@ app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS ?? 1));
  * The name of the migration Prisma reports as FAILED, or null.
  * Parsed from `migrate status`, which names it in plain text.
  */
-async function findFailedMigration() {
-  // Read _prisma_migrations DIRECTLY rather than parsing `migrate status`
-  // output. That text is localised, ANSI-coloured and reworded between Prisma
-  // releases, and a regex that misses simply skips the recovery silently —
-  // which is exactly what happened on App Platform while it worked locally.
-  //
-  // Prisma's own definition of "failed": started, never finished, not rolled
-  // back.
+/** Open a client against the generated Prisma runtime in server/. */
+async function dbClient() {
+  const { PrismaClient } = await import("./server/node_modules/@prisma/client/index.js");
+  return new PrismaClient();
+}
+
+/**
+ * Every migration Prisma considers FAILED: started, never finished, not rolled
+ * back. Read from _prisma_migrations directly — `migrate status` output is
+ * localised, ANSI-coloured and reworded between releases, and a regex that
+ * misses skips the recovery silently.
+ */
+async function listBlockedMigrations() {
   try {
-    const { PrismaClient } = await import("./server/node_modules/@prisma/client/index.js");
-    const prisma = new PrismaClient();
+    const prisma = await dbClient();
     try {
       const rows = await prisma.$queryRawUnsafe(
         `SELECT migration_name FROM "_prisma_migrations"
          WHERE finished_at IS NULL AND rolled_back_at IS NULL
-         ORDER BY started_at ASC LIMIT 1`,
+         ORDER BY started_at ASC`,
       );
-      return rows?.[0]?.migration_name ?? null;
+      return rows.map((r) => r.migration_name);
     } finally {
       await prisma.$disconnect();
     }
   } catch {
-    return null; // cannot read it — do not guess
+    return [];
+  }
+}
+
+/**
+ * Mark the given migrations applied, in ONE round trip.
+ *
+ * Identical bookkeeping to `prisma migrate resolve --applied`: the unfinished
+ * attempt is marked rolled back, and a finished row is inserted so Prisma sees
+ * the migration as done. Checksum and timing are copied from the failed row,
+ * so history stays faithful. No schema or application data is touched.
+ */
+async function markMigrationsApplied(names) {
+  if (names.length === 0) return true;
+  try {
+    const prisma = await dbClient();
+    try {
+      await prisma.$transaction([
+        prisma.$executeRawUnsafe(
+          `INSERT INTO "_prisma_migrations"
+             (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
+           SELECT gen_random_uuid()::text, checksum, NOW(), migration_name, NULL, NULL, started_at, 1
+           FROM "_prisma_migrations"
+           WHERE finished_at IS NULL AND rolled_back_at IS NULL`,
+        ),
+        prisma.$executeRawUnsafe(
+          `UPDATE "_prisma_migrations" SET rolled_back_at = NOW()
+           WHERE finished_at IS NULL AND rolled_back_at IS NULL`,
+        ),
+      ]);
+      return true;
+    } finally {
+      await prisma.$disconnect();
+    }
+  } catch (e) {
+    console.error(`  Could not mark migrations applied: ${e.message.split("\n")[0]}`);
+    return false;
   }
 }
 
@@ -150,26 +190,31 @@ if (process.env.SKIP_MIGRATIONS !== "1" && process.env.DATABASE_URL) {
   // to the _prisma_migrations table and never touches application data. It is
   // still gated: we only do it when the migration's own tables genuinely exist,
   // so a migration that truly failed part-way is never waved through.
-  // Several migrations can be blocked at once: resolving one lets `migrate
-  // deploy` advance to the next, which may ALSO be recorded as failed. Loop
-  // until it succeeds or stops making progress. Bounded, and each pass must
-  // resolve a NEW migration, so this can never spin.
-  const alreadyResolved = new Set();
-  for (let pass = 0; migrate.status !== 0 && pass < 30; pass++) {
-    const failed = await findFailedMigration();
-    if (!failed || alreadyResolved.has(failed)) break;
-
-    console.log(`  Migration ${failed} is recorded as failed; checking whether its schema is actually present…`);
-    if (!(await schemaLooksApplied())) {
-      console.error(`  ${failed} failed and its tables are NOT present — this needs a human, not an automatic retry.`);
-      break;
+  // Production had ~20 blocked migrations, each left unfinished by an
+  // interrupted deploy. Resolving them one at a time through the Prisma CLI
+  // costs ~5s each, which overran App Platform's readiness window and got the
+  // container killed mid-recovery.
+  //
+  // So resolve them in ONE statement. This is exactly the bookkeeping
+  // `migrate resolve --applied` performs — mark the unfinished row rolled
+  // back, insert a finished row — with no DDL and no application data touched.
+  if (migrate.status !== 0) {
+    const blocked = await listBlockedMigrations();
+    if (blocked.length > 0) {
+      if (!(await schemaLooksApplied())) {
+        console.error(
+          `  ${blocked.length} migration(s) are recorded as failed and the schema is NOT present —`,
+        );
+        console.error("  a genuine partial migration. Refusing to mark them applied.");
+      } else {
+        console.log(`  ${blocked.length} migration(s) recorded as failed; schema is present — marking applied (no data touched).`);
+        for (const n of blocked) console.log(`    · ${n}`);
+        if (await markMigrationsApplied(blocked)) {
+          console.log("  Retrying migrations…");
+          migrate = runPrisma(["migrate", "deploy"], { stdio: "inherit" });
+        }
+      }
     }
-    console.log(`  Tables exist — marking ${failed} as applied (no data is touched).`);
-    if (runPrisma(["migrate", "resolve", "--applied", failed], { stdio: "inherit" }).status !== 0) break;
-
-    alreadyResolved.add(failed);
-    console.log("  Retrying migrations…");
-    migrate = runPrisma(["migrate", "deploy"], { stdio: "inherit" });
   }
   // A failed migration means the schema is not what the code expects. Starting
   // anyway would serve 500s from a half-migrated database; fail loudly instead.
