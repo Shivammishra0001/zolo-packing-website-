@@ -30,16 +30,29 @@ const prisma = (args, opts = {}) =>
     ...opts,
   });
 
-/** Name of the migration Prisma reports as failed, or null. */
-function findFailed() {
-  const out = prisma(["migrate", "status"], { encoding: "utf8" });
-  const text = `${out.stdout ?? ""}${out.stderr ?? ""}`;
-  // Two wordings depending on which command reported it:
-  //   status: "Following migration have failed:" then the name on its own line
-  //   deploy: "The `<name>` migration started at ... failed"
-  const listed = text.match(/Following migration[^\n]*failed:\s*\n\s*([0-9]{14}_[a-z0-9_]+)/i);
-  if (listed) return listed[1];
-  return text.match(/`([0-9]{14}_[a-z0-9_]+)`[^\n]*failed/i)?.[1] ?? null;
+/**
+ * The migration Prisma considers FAILED: started, never finished, not rolled
+ * back. Read straight from _prisma_migrations rather than parsed out of
+ * `migrate status` text, which is localised, ANSI-coloured and reworded
+ * between releases — a regex that misses skips the recovery silently.
+ */
+async function findFailed() {
+  try {
+    const { PrismaClient } = await import("@prisma/client");
+    const db = new PrismaClient();
+    try {
+      const rows = await db.$queryRawUnsafe(
+        `SELECT migration_name FROM "_prisma_migrations"
+         WHERE finished_at IS NULL AND rolled_back_at IS NULL
+         ORDER BY started_at ASC LIMIT 1`,
+      );
+      return rows?.[0]?.migration_name ?? null;
+    } finally {
+      await db.$disconnect();
+    }
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -67,7 +80,7 @@ async function schemaPresent() {
 let result = prisma(["migrate", "deploy"], { stdio: "inherit" });
 
 if (result.status !== 0) {
-  const failed = findFailed();
+  const failed = await findFailed();
   if (failed) {
     console.log(`\n  Migration ${failed} is recorded as failed — checking whether its tables exist…`);
     if (await schemaPresent()) {

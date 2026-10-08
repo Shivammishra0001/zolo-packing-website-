@@ -75,22 +75,30 @@ app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS ?? 1));
  * The name of the migration Prisma reports as FAILED, or null.
  * Parsed from `migrate status`, which names it in plain text.
  */
-async function findFailedMigration(cwd, schema) {
-  const { spawnSync } = await import("node:child_process");
-  const out = spawnSync("npx", ["prisma", "migrate", "status", "--schema", schema], {
-    cwd,
-    env: process.env,
-    encoding: "utf8",
-  });
-  const text = `${out.stdout ?? ""}${out.stderr ?? ""}`;
-
-  // Two different wordings, depending on which command reported it:
-  //   migrate status: "Following migration have failed:" then the name alone
-  //                   on the next line.
-  //   migrate deploy: "The `2026..._init` migration started at ... failed"
-  const listed = text.match(/Following migration[^\n]*failed:\s*\n\s*([0-9]{14}_[a-z0-9_]+)/i);
-  if (listed) return listed[1];
-  return text.match(/`([0-9]{14}_[a-z0-9_]+)`[^\n]*failed/i)?.[1] ?? null;
+async function findFailedMigration() {
+  // Read _prisma_migrations DIRECTLY rather than parsing `migrate status`
+  // output. That text is localised, ANSI-coloured and reworded between Prisma
+  // releases, and a regex that misses simply skips the recovery silently —
+  // which is exactly what happened on App Platform while it worked locally.
+  //
+  // Prisma's own definition of "failed": started, never finished, not rolled
+  // back.
+  try {
+    const { PrismaClient } = await import("./server/node_modules/@prisma/client/index.js");
+    const prisma = new PrismaClient();
+    try {
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT migration_name FROM "_prisma_migrations"
+         WHERE finished_at IS NULL AND rolled_back_at IS NULL
+         ORDER BY started_at ASC LIMIT 1`,
+      );
+      return rows?.[0]?.migration_name ?? null;
+    } finally {
+      await prisma.$disconnect();
+    }
+  } catch {
+    return null; // cannot read it — do not guess
+  }
 }
 
 /**
@@ -143,7 +151,7 @@ if (process.env.SKIP_MIGRATIONS !== "1" && process.env.DATABASE_URL) {
   // still gated: we only do it when the migration's own tables genuinely exist,
   // so a migration that truly failed part-way is never waved through.
   if (migrate.status !== 0) {
-    const failed = await findFailedMigration(serverDir, schema);
+    const failed = await findFailedMigration();
     if (failed) {
       console.log(`  Migration ${failed} is recorded as failed; checking whether its schema is actually present…`);
       if (await schemaLooksApplied()) {
