@@ -853,3 +853,187 @@ export async function customerOrderTracking(userId, orderId) {
     })),
   };
 }
+
+// ===========================================================================
+// "What needs attention" — the action queue behind the dashboard tiles.
+//
+// The rest of this file answers "how is the business doing?". This answers
+// "what must someone do today?", which is a different question and the one an
+// operator opens the dashboard to settle.
+//
+// Every figure is a real row the admin can click through to. Nothing is a
+// projection, a target or a score: a number here always means "this many
+// records are in this state right now".
+// ===========================================================================
+
+/** Outstanding = what is unpaid on an order, never its full value. */
+const unpaidMinor = (o) => Math.max(0, o.grandTotalMinor - o.paidMinor);
+
+/**
+ * Orders whose money is late, bucketed by how late.
+ *
+ * Age is measured from the DUE DATE where one is set, otherwise from the order
+ * date — an order with no agreed terms still ages, and treating it as never
+ * overdue is how a six-week-old debt stays invisible.
+ *
+ * `dueDate` is deliberately not stored as an OVERDUE flag anywhere: overdue is
+ * a function of the clock, so it is computed here per request (see
+ * crm.derivePaymentState, which applies the same rule on the read side).
+ */
+export async function collectionsQueue({ limit = 8 } = {}) {
+  const take = Math.min(Math.max(Number(limit) || 8, 1), 50);
+  const now = new Date();
+  const dayMs = 86_400_000;
+
+  const open = await prisma.order.findMany({
+    where: { ...REVENUE_WHERE, paymentStatus: { in: ["PENDING", "PARTIAL"] } },
+    select: {
+      id: true, orderNumber: true, grandTotalMinor: true, paidMinor: true,
+      placedAt: true, dueDate: true, status: true,
+      user: { select: { id: true, firstName: true, lastName: true, company: true, phone: true } },
+      salesperson: { select: { firstName: true, lastName: true } },
+    },
+  });
+
+  const rows = open
+    .map((o) => {
+      const since = o.dueDate ?? o.placedAt;
+      const days = Math.floor((now.getTime() - new Date(since).getTime()) / dayMs);
+      return {
+        id: o.id,
+        orderNumber: o.orderNumber,
+        customerId: o.user?.id ?? null,
+        customer: o.user
+          ? o.user.company || [o.user.firstName, o.user.lastName].filter(Boolean).join(" ")
+          : "—",
+        phone: o.user?.phone ?? null,
+        salesperson: o.salesperson
+          ? [o.salesperson.firstName, o.salesperson.lastName].filter(Boolean).join(" ")
+          : null,
+        outstandingMinor: unpaidMinor(o),
+        daysOverdue: Math.max(0, days),
+        // Whether the clock started from agreed terms or from the order date,
+        // so the UI can be honest about which it is showing.
+        basis: o.dueDate ? "due" : "placed",
+        status: o.status,
+      };
+    })
+    .filter((r) => r.outstandingMinor > 0);
+
+  // Ageing buckets, the way a collections desk reads a ledger.
+  const bucket = (lo, hi) => rows.filter((r) => r.daysOverdue >= lo && (hi === null || r.daysOverdue < hi));
+  const sum = (list) => list.reduce((s, r) => s + r.outstandingMinor, 0);
+  const current = bucket(0, 15);
+  const d15 = bucket(15, 30);
+  const d30 = bucket(30, 60);
+  const d60 = bucket(60, null);
+
+  // Oldest and largest first: the ones worth a call today.
+  const followUps = rows
+    .filter((r) => r.daysOverdue >= 15)
+    .sort((a, b) => b.daysOverdue - a.daysOverdue || b.outstandingMinor - a.outstandingMinor)
+    .slice(0, take);
+
+  return {
+    totalOutstandingMinor: sum(rows),
+    openOrders: rows.length,
+    ageing: {
+      current: { orders: current.length, amountMinor: sum(current) },
+      d15: { orders: d15.length, amountMinor: sum(d15) },
+      d30: { orders: d30.length, amountMinor: sum(d30) },
+      d60: { orders: d60.length, amountMinor: sum(d60) },
+    },
+    followUps,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Work that is committed but not yet delivered, plus the quotes that could
+ * still become work.
+ *
+ * "Upcoming" is deliberately split: a delivery promised for tomorrow and a
+ * quote sent three weeks ago need different actions, and averaging them into
+ * one "pipeline" number tells an operator nothing they can act on.
+ */
+export async function actionQueue({ limit = 8 } = {}) {
+  const take = Math.min(Math.max(Number(limit) || 8, 1), 50);
+  const now = new Date();
+  const soon = new Date(now.getTime() + 7 * 86_400_000);
+  const staleBefore = new Date(now.getTime() - 7 * 86_400_000);
+
+  const OPEN_ORDER = { status: { in: ["PENDING", "CONFIRMED", "PROCESSING", "PACKED"] } };
+
+  const [dueSoon, late, unconfirmed, staleQuotes, openRfqs, lowStock] = await Promise.all([
+    // Deliveries promised within the next 7 days.
+    prisma.order.findMany({
+      where: { ...OPEN_ORDER, expectedDeliveryDate: { gte: now, lte: soon } },
+      orderBy: { expectedDeliveryDate: "asc" },
+      take,
+      select: {
+        id: true, orderNumber: true, expectedDeliveryDate: true, status: true,
+        grandTotalMinor: true,
+        user: { select: { firstName: true, lastName: true, company: true } },
+      },
+    }),
+    // Promised dates already missed.
+    prisma.order.count({ where: { ...OPEN_ORDER, expectedDeliveryDate: { lt: now } } }),
+    // Sitting in PENDING: nobody has accepted the order yet.
+    prisma.order.count({ where: { status: "PENDING" } }),
+    // Quotes sent and not answered for a week — the real "lead needs action".
+    prisma.quotation.findMany({
+      where: { status: { in: ["SENT", "CHANGES_REQUESTED"] }, createdAt: { lt: staleBefore } },
+      orderBy: { createdAt: "asc" },
+      take,
+      select: {
+        id: true, quotationNumber: true, createdAt: true, grandTotalMinor: true, status: true,
+        user: { select: { firstName: true, lastName: true, company: true } },
+      },
+    }),
+    // Enquiries with no quote yet.
+    prisma.rfq.count({ where: { status: { in: ["SUBMITTED", "UNDER_REVIEW"] } } }),
+    // Low stock is already defined by adminDashboard (available vs
+    // lowStockLevel). Reusing that rule rather than inventing a second
+    // threshold keeps the two tiles from disagreeing.
+    prisma.product.findMany({
+      where: { status: "active", lowStockLevel: { not: null } },
+      select: { stock: true, reservedStock: true, lowStockLevel: true },
+    }),
+  ]);
+
+  const nameOf = (u) =>
+    u ? u.company || [u.firstName, u.lastName].filter(Boolean).join(" ") || "—" : "—";
+
+  return {
+    deliveries: {
+      dueSoon: dueSoon.map((o) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        customer: nameOf(o.user),
+        expectedDeliveryDate: o.expectedDeliveryDate,
+        status: o.status,
+        valueMinor: o.grandTotalMinor,
+        daysAway: Math.ceil((new Date(o.expectedDeliveryDate).getTime() - now.getTime()) / 86_400_000),
+      })),
+      lateCount: late,
+    },
+    unconfirmedOrders: unconfirmed,
+    leads: {
+      staleQuotes: staleQuotes.map((q) => ({
+        id: q.id,
+        number: q.quotationNumber,
+        customer: nameOf(q.user),
+        createdAt: q.createdAt,
+        valueMinor: q.grandTotalMinor,
+        status: q.status,
+        daysWaiting: Math.floor((now.getTime() - new Date(q.createdAt).getTime()) / 86_400_000),
+      })),
+      openRfqs,
+    },
+    lowStock: lowStock.filter((p) => {
+      const available = p.stock - (p.reservedStock ?? 0);
+      return available <= p.lowStockLevel;
+    }).length,
+    generatedAt: new Date().toISOString(),
+  };
+}

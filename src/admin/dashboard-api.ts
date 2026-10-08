@@ -235,6 +235,57 @@ export const useAdminShipping = () =>
     total: number; pendingDispatch: number;
   }>("/admin/shipping");
 
+export interface CollectionFollowUp {
+  id: string;
+  orderNumber: string;
+  customerId: string | null;
+  customer: string;
+  phone: string | null;
+  salesperson: string | null;
+  outstandingMinor: number;
+  daysOverdue: number;
+  /** Whether the clock ran from agreed terms or from the order date. */
+  basis: "due" | "placed";
+  status: string;
+}
+
+export interface AgeingBucket {
+  orders: number;
+  amountMinor: number;
+}
+
+/** Money that is late, bucketed by age, plus who to call today. */
+export const useAdminCollections = () =>
+  useAdminQuery<{
+    totalOutstandingMinor: number;
+    openOrders: number;
+    ageing: { current: AgeingBucket; d15: AgeingBucket; d30: AgeingBucket; d60: AgeingBucket };
+    followUps: CollectionFollowUp[];
+    generatedAt: string;
+  }>("/admin/collections?limit=8", 30_000);
+
+/** Deliveries due, orders awaiting confirmation, and leads going cold. */
+export const useAdminActionQueue = () =>
+  useAdminQuery<{
+    deliveries: {
+      dueSoon: {
+        id: string; orderNumber: string; customer: string;
+        expectedDeliveryDate: string; status: string; valueMinor: number; daysAway: number;
+      }[];
+      lateCount: number;
+    };
+    unconfirmedOrders: number;
+    leads: {
+      staleQuotes: {
+        id: string; number: string; customer: string; createdAt: string;
+        valueMinor: number; status: string; daysWaiting: number;
+      }[];
+      openRfqs: number;
+    };
+    lowStock: number;
+    generatedAt: string;
+  }>("/admin/action-queue?limit=8", 30_000);
+
 // Marketing (coupons + campaigns) has its own typed client: lib/api/marketing.ts.
 
 /**

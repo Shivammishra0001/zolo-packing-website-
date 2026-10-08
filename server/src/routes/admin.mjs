@@ -73,6 +73,20 @@ adminRouter.get("/dashboard", wrap(async (req, res) => {
   }));
 }));
 
+/**
+ * Money that is late, bucketed by age, plus the specific orders worth chasing.
+ * Separate from /dashboard because it is polled on its own cadence and an
+ * operator often wants it without the rest of the overview.
+ */
+adminRouter.get("/collections", wrap(async (req, res) => {
+  ok(res, await dashboards.collectionsQueue({ limit: req.query.limit }));
+}));
+
+/** Deliveries due, orders awaiting confirmation, and leads going cold. */
+adminRouter.get("/action-queue", wrap(async (req, res) => {
+  ok(res, await dashboards.actionQueue({ limit: req.query.limit }));
+}));
+
 /** Paginated business activity feed (cursor-based). */
 adminRouter.get("/activity", wrap(async (req, res) => {
   ok(res, await dashboards.activityFeed({

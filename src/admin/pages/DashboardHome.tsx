@@ -8,7 +8,10 @@ import {
   IndianRupee,
   Package,
   PackagePlus,
+  PhoneCall,
   Sparkles,
+  CalendarClock,
+  Clock,
   TriangleAlert,
   Truck,
   Users,
@@ -22,7 +25,14 @@ import { MetricCard, MetricCardSkeleton } from "../components/MetricCard";
 import { EmptyState, ListSkeleton, Panel, QueryState, Skeleton } from "../components/Panel";
 import { Badge, Button } from "../components/ui";
 import { inr, inrMinor } from "../format";
-import { asQueryState, useAdminAnalytics, useAdminDashboard, useAdminShipping } from "../dashboard-api";
+import {
+  asQueryState,
+  useAdminActionQueue,
+  useAdminAnalytics,
+  useAdminCollections,
+  useAdminDashboard,
+  useAdminShipping,
+} from "../dashboard-api";
 
 // ---------- 1. KPI row ----------
 
@@ -558,6 +568,204 @@ function TodayRevenueChip() {
   );
 }
 
+
+// ---------- Needs attention: collections + the action queue ----------
+
+/**
+ * The money that is late, and who to call about it.
+ *
+ * Ageing buckets rather than one "outstanding" figure: 4.5 lakh owed is a
+ * different problem depending on whether it is a week old or three months old,
+ * and a single total hides that completely.
+ */
+function CollectionsPanel() {
+  const q = asQueryState(useAdminCollections());
+  return (
+    <Panel
+      title="Collections"
+      action={
+        <Link to="/admin/payments" className="text-xs font-semibold text-primary-600 hover:underline">
+          Payments
+        </Link>
+      }
+    >
+      <QueryState query={q} skeleton={<ListSkeleton rows={4} />}>
+        {(d) => {
+          const buckets = [
+            { key: "current", label: "Under 15 days", tone: "erp-text-muted", data: d.ageing.current },
+            { key: "d15", label: "15–30 days", tone: "text-amber-600", data: d.ageing.d15 },
+            { key: "d30", label: "30–60 days", tone: "text-orange-600", data: d.ageing.d30 },
+            { key: "d60", label: "Over 60 days", tone: "text-red-600", data: d.ageing.d60 },
+          ];
+          return (
+            <div className="space-y-4">
+              <div>
+                <div className="font-display text-2xl font-extrabold tracking-tight erp-text">
+                  {inrMinor(d.totalOutstandingMinor)}
+                </div>
+                <p className="text-xs erp-text-muted">
+                  outstanding across {d.openOrders} order{d.openOrders === 1 ? "" : "s"}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {buckets.map((b) => (
+                  <div key={b.key} className="rounded-lg erp-surface-2 p-2.5">
+                    <div className={cn("text-sm font-bold tabular-nums", b.tone)}>
+                      {inrMinor(b.data.amountMinor)}
+                    </div>
+                    <div className="text-[11px] erp-text-muted">{b.label}</div>
+                    <div className="text-[11px] erp-text-faint">{b.data.orders} orders</div>
+                  </div>
+                ))}
+              </div>
+              {d.followUps.length === 0 ? (
+                <EmptyState
+                  icon={PhoneCall}
+                  title="Nothing overdue"
+                  message="No order has been unpaid for more than two weeks."
+                />
+              ) : (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide erp-text-muted">
+                    Follow up today
+                  </p>
+                  <ul className="divide-y erp-divide">
+                    {d.followUps.map((f) => (
+                      <li key={f.id} className="flex items-center gap-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          <Link
+                            to={`/admin/orders/${f.id}`}
+                            className="block truncate text-sm font-semibold erp-text hover:text-primary-600"
+                          >
+                            {f.customer}
+                          </Link>
+                          <div className="truncate text-xs erp-text-muted">
+                            {f.orderNumber}
+                            {f.salesperson ? ` · ${f.salesperson}` : ""}
+                            {f.phone ? ` · ${f.phone}` : ""}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="text-sm font-bold tabular-nums erp-text">
+                            {inrMinor(f.outstandingMinor)}
+                          </div>
+                          <div
+                            className={cn(
+                              "text-[11px] font-semibold",
+                              f.daysOverdue >= 60 ? "text-red-600" : f.daysOverdue >= 30 ? "text-orange-600" : "text-amber-600",
+                            )}
+                            // The basis matters: "90 days since the order" is a
+                            // weaker claim than "90 days past agreed terms".
+                            title={f.basis === "due" ? "past the agreed due date" : "since the order was placed"}
+                          >
+                            {f.daysOverdue}d {f.basis === "due" ? "overdue" : "old"}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          );
+        }}
+      </QueryState>
+    </Panel>
+  );
+}
+
+/** Work promised, work unconfirmed, and leads going cold. */
+function ActionQueuePanel() {
+  const q = asQueryState(useAdminActionQueue());
+  return (
+    <Panel title="Needs action">
+      <QueryState query={q} skeleton={<ListSkeleton rows={4} />}>
+        {(d) => {
+          const chips = [
+            { label: "Awaiting confirmation", value: d.unconfirmedOrders, to: "/admin/orders?status=PENDING", tone: d.unconfirmedOrders > 0 },
+            { label: "Deliveries overdue", value: d.deliveries.lateCount, to: "/admin/orders", tone: d.deliveries.lateCount > 0 },
+            { label: "Enquiries to quote", value: d.leads.openRfqs, to: "/admin/quotes", tone: d.leads.openRfqs > 0 },
+            { label: "Low stock", value: d.lowStock, to: "/admin/inventory", tone: d.lowStock > 0 },
+          ];
+          return (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2">
+                {chips.map((c) => (
+                  <Link
+                    key={c.label}
+                    to={c.to}
+                    className={cn(
+                      "rounded-lg border p-2.5 transition-colors",
+                      c.tone
+                        ? "border-amber-200 bg-amber-50/60 hover:border-amber-300 dark:border-amber-500/30 dark:bg-amber-500/5"
+                        : "erp-border erp-surface-2 hover:border-dark-300 dark:hover:border-dark-600",
+                    )}
+                  >
+                    <div className="text-lg font-extrabold tabular-nums erp-text">{c.value}</div>
+                    <div className="text-[11px] erp-text-muted">{c.label}</div>
+                  </Link>
+                ))}
+              </div>
+
+              <div>
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide erp-text-muted">
+                  <CalendarClock className="h-3.5 w-3.5" aria-hidden /> Delivering this week
+                </p>
+                {d.deliveries.dueSoon.length === 0 ? (
+                  <p className="py-2 text-sm erp-text-muted">No deliveries promised in the next 7 days.</p>
+                ) : (
+                  <ul className="divide-y erp-divide">
+                    {d.deliveries.dueSoon.map((o) => (
+                      <li key={o.id} className="flex items-center gap-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          <Link to={`/admin/orders/${o.id}`} className="block truncate text-sm font-semibold erp-text hover:text-primary-600">
+                            {o.customer}
+                          </Link>
+                          <div className="truncate text-xs erp-text-muted">{o.orderNumber} · {o.status.toLowerCase()}</div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="text-sm font-bold tabular-nums erp-text">{inrMinor(o.valueMinor)}</div>
+                          <div className="text-[11px] erp-text-muted">
+                            {o.daysAway <= 0 ? "today" : o.daysAway === 1 ? "tomorrow" : `in ${o.daysAway}d`}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {d.leads.staleQuotes.length > 0 && (
+                <div>
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide erp-text-muted">
+                    <Clock className="h-3.5 w-3.5" aria-hidden /> Quotes with no reply
+                  </p>
+                  <ul className="divide-y erp-divide">
+                    {d.leads.staleQuotes.map((qt) => (
+                      <li key={qt.id} className="flex items-center gap-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          <Link to={`/admin/quotes/${qt.id}`} className="block truncate text-sm font-semibold erp-text hover:text-primary-600">
+                            {qt.customer}
+                          </Link>
+                          <div className="truncate text-xs erp-text-muted">{qt.number}</div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="text-sm font-bold tabular-nums erp-text">{inrMinor(qt.valueMinor)}</div>
+                          <div className="text-[11px] text-amber-600">{qt.daysWaiting}d waiting</div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          );
+        }}
+      </QueryState>
+    </Panel>
+  );
+}
+
 // ---------- Page ----------
 
 export default function DashboardHome() {
@@ -585,6 +793,13 @@ export default function DashboardHome() {
       </div>
 
       <KpiRow />
+
+      {/* Attention before analysis: what must someone do today, above how the
+          business is trending. */}
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
+        <CollectionsPanel />
+        <ActionQueuePanel />
+      </div>
 
       {/* Database-driven: new orders and business events appear here without a
           manual refresh (the dashboard query polls). */}
