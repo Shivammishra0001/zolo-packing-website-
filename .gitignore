@@ -33,3 +33,8 @@ server/uploads-test/
 /TASKS.md
 /dashboard.html
 /memory/
+
+# pnpm artefacts. This project deploys with `npm ci` from package-lock.json;
+# a committed pnpm lockfile can make a build pick the wrong package manager.
+pnpm-lock.yaml
+pnpm-workspace.yaml
