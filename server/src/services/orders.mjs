@@ -79,6 +79,11 @@ async function buildPricedItems(userId, tx = prisma) {
       variant: it.variant,
       quantity: it.quantity,
       unitPriceMinor,
+      // Cost SNAPSHOT, frozen for the same reason as the commission above:
+      // joining to Product.costMinor when reading would restate an old order's
+      // margin every time someone corrects a cost. Null when the product has
+      // no cost recorded — never 0, which would report the sale as pure profit.
+      unitCostMinor: p.costMinor ?? null,
       lineTotalMinor,
       isSaleItem,
       isTierDiscounted,
@@ -309,6 +314,7 @@ export async function placeOrder(user, input) {
             specs: it.specs ?? {},
             quantity: it.quantity,
             unitPriceMinor: it.unitPriceMinor,
+            unitCostMinor: it.unitCostMinor ?? null,
             // proportional share of order discount, then GST on the net line
             discountMinor: totals.subtotalMinor
               ? Math.round((it.lineTotalMinor / totals.subtotalMinor) * totals.discountMinor)

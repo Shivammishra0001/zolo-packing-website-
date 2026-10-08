@@ -295,6 +295,9 @@ async function buildAdminItems(tx, rawItems) {
     let productName;
     let sku = null;
     let unitPriceMinor;
+    // Cost SNAPSHOT. Null when unknown — never 0, which would claim the line
+    // was free and report the whole sale as profit.
+    let unitCostMinor = null;
 
     if (raw.productId) {
       const product = byId.get(raw.productId);
@@ -302,6 +305,8 @@ async function buildAdminItems(tx, rawItems) {
       productId = product.id;
       productName = product.name;
       sku = product.sku;
+      // Frozen here so a later cost edit cannot restate this order's margin.
+      unitCostMinor = product.costMinor ?? null;
       unitPriceMinor = raw.unitPriceMinor === undefined || raw.unitPriceMinor === null
         ? Math.round(product.basePrice * 100)
         : Math.round(Number(raw.unitPriceMinor));
@@ -310,6 +315,11 @@ async function buildAdminItems(tx, rawItems) {
       if (!productName) throw badRequest(`Item ${idx + 1}: choose a product or enter an item name`, "ITEM_NAME_REQUIRED");
       sku = raw.sku?.trim() || null;
       unitPriceMinor = Math.round(Number(raw.unitPriceMinor));
+      // A bespoke job has no catalog cost, so the admin may state one.
+      if (raw.unitCostMinor !== undefined && raw.unitCostMinor !== null && raw.unitCostMinor !== "") {
+        const c = Math.round(Number(raw.unitCostMinor));
+        if (Number.isFinite(c) && c >= 0) unitCostMinor = c;
+      }
     }
 
     if (!Number.isFinite(unitPriceMinor) || unitPriceMinor < 0) {
@@ -326,6 +336,7 @@ async function buildAdminItems(tx, rawItems) {
       specs: raw.specs ?? {},
       quantity,
       unitPriceMinor,
+      unitCostMinor,
       discountMinor,
       taxMinor,
       lineTotalMinor,

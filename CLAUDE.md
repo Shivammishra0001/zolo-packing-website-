@@ -37,6 +37,13 @@ those stacks and have to be translated.
 | Foreign records return **404, not 403** | Never confirm someone else's record exists |
 | No mock data on production paths | A failed fetch must read as an error, not an empty list |
 
+Profit comes from `OrderItem.unitCostMinor`, a snapshot frozen at placement
+like the price and commission beside it. It is **nullable on purpose**: null
+means "cost unknown", which is not zero cost. `profitSummary()` therefore
+reports its own `coverageBps` — the share of revenue that actually has cost
+data — and the dashboard shows that next to the margin. A margin over 13% of
+the book must never be presented as if it described all of it.
+
 Field names that have caught me out: `Order.placedAt` (not `createdAt`), CRM
 custom lines use `itemName` (not `productName`), and CRM requires an explicit
 `unitPriceMinor` rather than defaulting to catalog price.

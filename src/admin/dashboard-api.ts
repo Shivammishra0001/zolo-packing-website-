@@ -259,6 +259,20 @@ export const useAdminCollections = () =>
     generatedAt: string;
   }>("/admin/collections?limit=8", 30_000);
 
+/** Gross margin plus how much of the period's revenue it actually covers. */
+export const useAdminProfit = () =>
+  useAdminQuery<{
+    profitMinor: number;
+    coveredRevenueMinor: number;
+    coveredCostMinor: number;
+    uncoveredRevenueMinor: number;
+    totalRevenueMinor: number;
+    marginBps: number;
+    coverageBps: number;
+    lines: number;
+    linesWithCost: number;
+  }>("/admin/profit", 60_000);
+
 /** Deliveries due, orders awaiting confirmation, and leads going cold. */
 export const useAdminActionQueue = () =>
   useAdminQuery<{

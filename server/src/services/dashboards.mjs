@@ -1037,3 +1037,61 @@ export async function actionQueue({ limit = 8 } = {}) {
     generatedAt: new Date().toISOString(),
   };
 }
+
+/**
+ * Gross margin over a period, with its own coverage stated alongside it.
+ *
+ * Profit is only computable for lines that carry a cost snapshot
+ * (OrderItem.unitCostMinor). Most historical lines do not, and a margin
+ * computed over the covered subset would be presented as if it described the
+ * whole book — the same trap the inventory valuation avoids by reporting
+ * `pricedProducts` next to `stockValueMinor`.
+ *
+ * So this returns the covered revenue/cost AND how much of the period's
+ * revenue that covers. The UI must show the coverage; a margin without it is
+ * a number that invites a wrong decision.
+ */
+export async function profitSummary({ from, to } = {}) {
+  const range =
+    from || to
+      ? { placedAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lt: new Date(to) } : {}) } }
+      : {};
+
+  const items = await prisma.orderItem.findMany({
+    where: { order: { ...REVENUE_WHERE, ...range } },
+    select: { quantity: true, unitPriceMinor: true, unitCostMinor: true, discountMinor: true },
+  });
+
+  let coveredRevenueMinor = 0;
+  let coveredCostMinor = 0;
+  let uncoveredRevenueMinor = 0;
+
+  for (const it of items) {
+    // Net of the line's share of discount: margin on what was actually
+    // charged, not on list price.
+    const revenue = it.unitPriceMinor * it.quantity - (it.discountMinor ?? 0);
+    if (it.unitCostMinor == null) {
+      uncoveredRevenueMinor += revenue;
+      continue;
+    }
+    coveredRevenueMinor += revenue;
+    coveredCostMinor += it.unitCostMinor * it.quantity;
+  }
+
+  const profitMinor = coveredRevenueMinor - coveredCostMinor;
+  const totalRevenueMinor = coveredRevenueMinor + uncoveredRevenueMinor;
+
+  return {
+    profitMinor,
+    coveredRevenueMinor,
+    coveredCostMinor,
+    uncoveredRevenueMinor,
+    totalRevenueMinor,
+    // Basis points, to stay integer like every other rate in this codebase.
+    marginBps: coveredRevenueMinor > 0 ? Math.round((profitMinor / coveredRevenueMinor) * 10_000) : 0,
+    coverageBps: totalRevenueMinor > 0 ? Math.round((coveredRevenueMinor / totalRevenueMinor) * 10_000) : 0,
+    lines: items.length,
+    linesWithCost: items.filter((i) => i.unitCostMinor != null).length,
+    generatedAt: new Date().toISOString(),
+  };
+}

@@ -898,6 +898,17 @@ model OrderItem {
   // restates historical payouts.
   commissionBps   Int             @default(0)
   commissionMinor Int             @default(0)
+  // COST SNAPSHOT — what this line cost US, frozen at placement.
+  //
+  // Nullable on purpose: null means "cost was never recorded", which is NOT
+  // the same as zero cost. Profit is only reported for lines that carry one,
+  // and the coverage is shown alongside it, so a margin computed over half the
+  // order book can never be presented as if it covered all of it.
+  //
+  // Snapshotted for the same reason the price and commission are: joining to
+  // Product.costMinor at read time would restate last year's profit every time
+  // someone edits a cost, and a custom line has no product to join to at all.
+  unitCostMinor   Int?
   // Custom packaging line that has no catalog product (productId stays null).
   isCustomItem    Boolean         @default(false)
   description     String?

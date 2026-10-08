@@ -31,6 +31,7 @@ import {
   useAdminAnalytics,
   useAdminCollections,
   useAdminDashboard,
+  useAdminProfit,
   useAdminShipping,
 } from "../dashboard-api";
 
@@ -569,6 +570,61 @@ function TodayRevenueChip() {
 }
 
 
+/**
+ * Gross margin, shown WITH its coverage.
+ *
+ * Only lines carrying a cost snapshot can contribute. Presenting the margin
+ * alone would describe 13% of the book as if it were all of it, so the
+ * coverage sits next to the number rather than in a tooltip.
+ */
+function ProfitPanel() {
+  const q = asQueryState(useAdminProfit());
+  return (
+    <Panel title="Gross margin">
+      <QueryState query={q} skeleton={<ListSkeleton rows={2} />}>
+        {(d) =>
+          d.linesWithCost === 0 ? (
+            <EmptyState
+              icon={IndianRupee}
+              title="No cost data recorded"
+              message="Margin appears once products carry a cost price. Set one on a product, or record it when raising an order — it is never estimated."
+            />
+          ) : (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="font-display text-2xl font-extrabold tracking-tight erp-text">
+                  {inrMinor(d.profitMinor)}
+                </span>
+                <span className="text-sm font-bold text-emerald-600">
+                  {(d.marginBps / 100).toFixed(1)}% margin
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg erp-surface-2 p-2.5">
+                  <div className="text-sm font-bold tabular-nums erp-text">{inrMinor(d.coveredRevenueMinor)}</div>
+                  <div className="text-[11px] erp-text-muted">revenue measured</div>
+                </div>
+                <div className="rounded-lg erp-surface-2 p-2.5">
+                  <div className="text-sm font-bold tabular-nums erp-text">{inrMinor(d.coveredCostMinor)}</div>
+                  <div className="text-[11px] erp-text-muted">cost of those sales</div>
+                </div>
+              </div>
+              {/* The honest caveat, not hidden: this margin describes only the
+                  slice of revenue that has cost data behind it. */}
+              <p className="text-xs erp-text-muted">
+                Covers {(d.coverageBps / 100).toFixed(0)}% of revenue ({d.linesWithCost} of {d.lines} order lines).
+                {d.uncoveredRevenueMinor > 0 && (
+                  <> {inrMinor(d.uncoveredRevenueMinor)} of sales have no recorded cost and are excluded.</>
+                )}
+              </p>
+            </div>
+          )
+        }
+      </QueryState>
+    </Panel>
+  );
+}
+
 // ---------- Needs attention: collections + the action queue ----------
 
 /**
@@ -800,6 +856,8 @@ export default function DashboardHome() {
         <CollectionsPanel />
         <ActionQueuePanel />
       </div>
+
+      <ProfitPanel />
 
       {/* Database-driven: new orders and business events appear here without a
           manual refresh (the dashboard query polls). */}

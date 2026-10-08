@@ -82,6 +82,15 @@ adminRouter.get("/collections", wrap(async (req, res) => {
   ok(res, await dashboards.collectionsQueue({ limit: req.query.limit }));
 }));
 
+/**
+ * Gross margin for a period. Returns its own coverage: profit is only
+ * computable for lines carrying a cost snapshot, and a margin shown without
+ * saying how much of the book it covers invites a wrong decision.
+ */
+adminRouter.get("/profit", wrap(async (req, res) => {
+  ok(res, await dashboards.profitSummary({ from: req.query.from, to: req.query.to }));
+}));
+
 /** Deliveries due, orders awaiting confirmation, and leads going cold. */
 adminRouter.get("/action-queue", wrap(async (req, res) => {
   ok(res, await dashboards.actionQueue({ limit: req.query.limit }));

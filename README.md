@@ -147,6 +147,11 @@ reorder, so each line is a custom order item. And it skips the vendor-payment
 and salary sheets, which are accounts-payable records the schema has no model
 for.
 
+After importing, `npm run backfill:cost` moves the spreadsheet's cost column
+into `OrderItem.unitCostMinor` so profit becomes a real figure rather than text
+in a notes field. It only fills rows where the cost is still null, so a cost
+corrected by hand in the admin UI is never overwritten.
+
 Reconciliation is the subtle part. The spreadsheet records money twice: a
 per-order "Amount Received" column, and a dated receipts sheet whose entries
 are per **customer account**, not per order - one of Rahul Dangi's payments
