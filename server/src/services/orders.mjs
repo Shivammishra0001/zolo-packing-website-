@@ -854,10 +854,14 @@ export async function adminCreateRefund(adminUser, paymentId, { amountMinor, rea
       throw badRequest("Refund exceeds the remaining refundable amount");
     }
 
-    const seq = await tx.refund.count();
     const refund = await tx.refund.create({
       data: {
-        refundNumber: `REF-${String(seq + 1).padStart(6, "0")}`,
+        // Random, not count()+1. The sequential form collides whenever a
+        // refund already exists at that ordinal — two concurrent refunds read
+        // the same count, and a database that has ever had a refund deleted
+        // reuses a number — surfacing as an unmapped P2002. Matches
+        // crm.refundPayment and the order/payment number generators.
+        refundNumber: `REF-${newPaymentNumber().slice(4)}`,
         paymentId: payment.id,
         amountMinor: amount,
         reason: reason ?? null,
@@ -868,10 +872,15 @@ export async function adminCreateRefund(adminUser, paymentId, { amountMinor, rea
 
     const totalRefunded = alreadyRefunded + amount;
     const fullyRefunded = totalRefunded >= payment.amountMinor;
-    await tx.payment.update({
-      where: { id: payment.id },
-      data: { status: fullyRefunded ? "REFUNDED" : "PARTIALLY_REFUNDED" },
-    });
+    // Only a FULL refund rewrites the payment row. A partial one leaves it
+    // PAID and lives in the Refund ledger, because recomputeOrderPayment
+    // counts receipts from PAID/SUCCESS rows and subtracts processed refunds
+    // against them. Flipping the row to PARTIALLY_REFUNDED dropped it out of
+    // receipts entirely, so refunding half of a payment zeroed the whole
+    // order. Matches crm.refundPayment, which is the canonical path.
+    if (fullyRefunded) {
+      await tx.payment.update({ where: { id: payment.id }, data: { status: "REFUNDED" } });
+    }
     // Derive paidMinor AND paymentStatus from the ledger rather than writing
     // the status alone. Setting the status by hand here left paidMinor still
     // claiming the money was held: 20 orders in the local database read

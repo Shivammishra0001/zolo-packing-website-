@@ -83,8 +83,21 @@ test("a partial refund moves the order to PARTIALLY_REFUNDED and shows in Financ
 
   const after = await prisma.order.findUnique({ where: { id: order.id } });
   assert.equal(after.paymentStatus, "PARTIALLY_REFUNDED");
+  // The payment row stays PAID on a PARTIAL refund; the refund lives in the
+  // Refund ledger. This is not cosmetic: recomputeOrderPayment counts
+  // receipts from PAID/SUCCESS rows and subtracts processed refunds booked
+  // against them, so flipping the row to PARTIALLY_REFUNDED drops it out of
+  // receipts entirely and refunding half a payment zeroes the whole order.
+  // crm.refundPayment has always behaved this way; the refund paths in
+  // orders.mjs and returns.mjs did not, which is what this test was pinning.
   const pay = await prisma.payment.findUnique({ where: { id: payment.id } });
-  assert.equal(pay.status, "PARTIALLY_REFUNDED");
+  assert.equal(pay.status, "PAID", "a partial refund does not rewrite the original receipt");
+  const refunds = await prisma.refund.findMany({ where: { paymentId: payment.id } });
+  assert.equal(refunds.length, 1, "the refund is recorded in the ledger instead");
+  assert.equal(refunds[0].amountMinor, half);
+
+  // The order, which is what anyone actually reads, reflects the partial state.
+  assert.equal(after.paidMinor, payment.amountMinor - half, "paid drops by the refund");
 
   const fin = await api("/admin/finance", { token: adminTok });
   assert.equal(fin.status, 200);

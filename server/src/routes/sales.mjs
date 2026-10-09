@@ -85,6 +85,16 @@ adminSalesRouter.get("/users", wrap(async (req, res) => {
   ok(res, await sales.adminListUsers({ type: req.query.type, q: req.query.q, take: req.query.take }));
 }));
 
+/**
+ * One representative in full. Separate from /performance, which is the
+ * leaderboard: this is the drill-down behind a row.
+ */
+adminSalesRouter.get("/salespeople/:id/detail", wrap(async (req, res) => {
+  const detail = await sales.adminSalespersonDetail(req.params.id, { from: req.query.from, to: req.query.to });
+  if (!detail) return notFound(res);
+  ok(res, detail);
+}));
+
 adminSalesRouter.get("/performance", wrap(async (req, res) => {
   ok(res, { rows: await sales.adminSalesPerformance({ from: req.query.from, to: req.query.to }) });
 }));

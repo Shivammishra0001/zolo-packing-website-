@@ -530,3 +530,188 @@ export async function adminListUsers({ type, q, take = 100 } = {}) {
     },
   };
 }
+
+/**
+ * One representative, in full: their KPIs, the customers they own, the orders
+ * they captured, and the payments they personally took.
+ *
+ * ATTRIBUTION — three distinct relationships, deliberately NOT merged:
+ *
+ *   Order.salespersonId  the rep who CAPTURED the order. This is credit, and
+ *                        it is what every revenue figure here is built on.
+ *   User.capturedById    the rep who OWNS the customer account. A customer can
+ *                        be owned by one rep while another captures an order
+ *                        from them, so counting both as "their orders" would
+ *                        double-count the same sale.
+ *   Payment.receivedById the person who physically took the money, which is
+ *                        often an office admin rather than the rep.
+ *
+ * So `orders` means captured, `customers` means owned, and `collections`
+ * means personally received. Each is labelled as such in the response rather
+ * than summed into one misleading "performance" number.
+ */
+export async function adminSalespersonDetail(salespersonId, { from, to } = {}) {
+  const user = await prisma.user.findUnique({
+    where: { id: salespersonId },
+    select: {
+      id: true, firstName: true, lastName: true, email: true, phone: true,
+      isActive: true, createdAt: true, role: true,
+      salespersonProfile: { select: { employeeId: true, territory: true, branch: true, status: true, joinedAt: true } },
+    },
+  });
+  if (!user) return null;
+
+  const range =
+    from || to
+      ? { placedAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lt: new Date(to) } : {}) } }
+      : {};
+
+  const [kpis, orders, ownedCustomers, collections] = await Promise.all([
+    salespersonKpis(salespersonId, { from, to }),
+
+    // Orders they captured.
+    prisma.order.findMany({
+      where: { salespersonId, ...range },
+      orderBy: { placedAt: "desc" },
+      take: 200,
+      select: {
+        id: true, orderNumber: true, placedAt: true, status: true, paymentStatus: true,
+        grandTotalMinor: true, paidMinor: true, dueDate: true, expectedDeliveryDate: true,
+        user: { select: { id: true, firstName: true, lastName: true, company: true } },
+        items: { select: { productName: true, quantity: true, unitPriceMinor: true, unitCostMinor: true } },
+        shipments: { where: { deliveredAt: { not: null } }, take: 1, orderBy: { deliveredAt: "desc" }, select: { deliveredAt: true } },
+      },
+    }),
+
+    // Customers whose account they own — NOT derived from orders.
+    prisma.user.findMany({
+      where: { capturedById: salespersonId, role: "buyer" },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      select: { id: true, firstName: true, lastName: true, company: true, phone: true, createdAt: true, isActive: true },
+    }),
+
+    // Money this person physically received.
+    prisma.payment.findMany({
+      where: {
+        receivedById: salespersonId,
+        status: { in: ["PAID", "SUCCESS"] },
+        ...(from || to
+          ? { paidAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lt: new Date(to) } : {}) } }
+          : {}),
+      },
+      orderBy: { paidAt: "desc" },
+      take: 200,
+      select: {
+        id: true, paymentNumber: true, amountMinor: true, method: true, paidAt: true, kind: true,
+        order: { select: { id: true, orderNumber: true, user: { select: { firstName: true, lastName: true, company: true } } } },
+      },
+    }),
+  ]);
+
+  const nameOf = (u) => (u ? u.company || [u.firstName, u.lastName].filter(Boolean).join(" ") || "—" : "—");
+
+  // Cost/profit over the captured orders, counting only lines that carry a
+  // cost snapshot. Coverage is reported so a margin over part of the book is
+  // never presented as if it covered all of it.
+  let costMinor = 0;
+  let costedRevenueMinor = 0;
+  let costedLines = 0;
+  let totalLines = 0;
+  for (const o of orders) {
+    for (const it of o.items) {
+      totalLines++;
+      if (it.unitCostMinor == null) continue;
+      costMinor += it.unitCostMinor * it.quantity;
+      costedRevenueMinor += it.unitPriceMinor * it.quantity;
+      costedLines++;
+    }
+  }
+
+  const byStatus = {};
+  for (const o of orders) byStatus[o.status] = (byStatus[o.status] ?? 0) + 1;
+
+  // Revenue by month, for the trend.
+  const monthly = new Map();
+  for (const o of orders) {
+    const key = o.placedAt.toISOString().slice(0, 7);
+    const m = monthly.get(key) ?? { month: key, orders: 0, salesMinor: 0, collectedMinor: 0 };
+    m.orders++;
+    m.salesMinor += o.grandTotalMinor;
+    m.collectedMinor += o.paidMinor;
+    monthly.set(key, m);
+  }
+
+  return {
+    salesperson: {
+      id: user.id,
+      name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email,
+      email: user.email,
+      phone: user.phone,
+      isActive: user.isActive,
+      createdAt: user.createdAt,
+      // "—" rather than an invented id: a rep carried in from the historical
+      // order book has no employee record.
+      employeeId: user.salespersonProfile?.employeeId ?? "—",
+      territory: user.salespersonProfile?.territory ?? null,
+      branch: user.salespersonProfile?.branch ?? null,
+      status: user.salespersonProfile?.status ?? (user.isActive ? "ACTIVE" : "SUSPENDED"),
+      joinedAt: user.salespersonProfile?.joinedAt ?? null,
+      hasProfile: Boolean(user.salespersonProfile),
+    },
+    kpis: {
+      ...kpis,
+      costMinor,
+      profitMinor: costedRevenueMinor - costMinor,
+      costedLines,
+      totalLines,
+      costCoverageBps: costedLines > 0 && kpis.salesMinor > 0
+        ? Math.round((costedRevenueMinor / kpis.salesMinor) * 10_000)
+        : 0,
+      ownedCustomers: ownedCustomers.length,
+      collectedByThemMinor: collections.reduce((s, p) => s + p.amountMinor, 0),
+    },
+    ordersByStatus: byStatus,
+    monthly: [...monthly.values()].sort((a, b) => a.month.localeCompare(b.month)),
+    orders: orders.map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      placedAt: o.placedAt,
+      customerId: o.user?.id ?? null,
+      customer: nameOf(o.user),
+      products: o.items.map((i) => i.productName).join(", "),
+      itemCount: o.items.length,
+      saleMinor: o.grandTotalMinor,
+      receivedMinor: o.paidMinor,
+      balanceMinor: Math.max(0, o.grandTotalMinor - o.paidMinor),
+      profitMinor: o.items.every((i) => i.unitCostMinor == null)
+        ? null
+        : o.items.reduce(
+            (s, i) => s + (i.unitCostMinor == null ? 0 : (i.unitPriceMinor - i.unitCostMinor) * i.quantity),
+            0,
+          ),
+      deliveryDate: o.shipments[0]?.deliveredAt ?? o.expectedDeliveryDate ?? null,
+      delivered: Boolean(o.shipments[0]?.deliveredAt) || o.status === "DELIVERED",
+      status: o.status,
+      paymentStatus: o.paymentStatus,
+    })),
+    customers: ownedCustomers.map((c) => ({
+      id: c.id,
+      name: nameOf(c),
+      phone: c.phone,
+      isActive: c.isActive,
+      createdAt: c.createdAt,
+    })),
+    collections: collections.map((p) => ({
+      id: p.id,
+      paymentNumber: p.paymentNumber,
+      amountMinor: p.amountMinor,
+      method: p.method,
+      kind: p.kind,
+      paidAt: p.paidAt,
+      orderId: p.order?.id ?? null,
+      orderNumber: p.order?.orderNumber ?? null,
+      customer: nameOf(p.order?.user),
+    })),
+  };
+}

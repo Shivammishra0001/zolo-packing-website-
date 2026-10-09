@@ -586,7 +586,11 @@ export async function adminCompleteRefund(adminId, id, { amountMinor, reference,
       },
     });
     const fullyRefunded = alreadyRefunded + amount >= payment.amountMinor;
-    await tx.payment.update({ where: { id: payment.id }, data: { status: fullyRefunded ? "REFUNDED" : "PARTIALLY_REFUNDED" } });
+    // Full refund only: a partial one stays PAID and lives in the Refund
+    // ledger, which is what recomputeOrderPayment reads. See orders.mjs.
+    if (fullyRefunded) {
+      await tx.payment.update({ where: { id: payment.id }, data: { status: "REFUNDED" } });
+    }
     // Restate the order from its ledger. Without this the refund was recorded
     // but Order.paidMinor still claimed the money was held, so the customer
     // page, the reports and the dashboard all kept counting refunded cash as
