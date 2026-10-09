@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { IndianRupee, Package, TrendingUp, Users, Wallet } from "lucide-react";
 import { MetricCard, MetricCardSkeleton } from "../components/MetricCard";
 import { DataTable, TableSkeleton, type Column } from "../components/DataTable";
@@ -79,7 +80,9 @@ export default function SalesTeam() {
       header: "Sales person",
       render: (r) => (
         <div className="min-w-0">
-          <div className="truncate font-semibold erp-text">{r.name}</div>
+          <Link to={`/admin/sales-team/${r.salespersonId}`} className="block truncate font-semibold erp-text hover:text-primary-600">
+            {r.name}
+          </Link>
           <div className="truncate text-xs erp-text-muted">
             {r.employeeId}
             {r.territory ? ` · ${r.territory}` : ""}
@@ -214,7 +217,12 @@ export default function SalesTeam() {
             message="Orders captured by a sales representative will appear here. Add representatives from the Users page."
           />
         ) : (
-          <DataTable columns={columns} rows={rows} rowKey={(r) => r.salespersonId} />
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(r) => r.salespersonId}
+            rowHref={(r) => `/admin/sales-team/${r.salespersonId}`}
+          />
         )}
       </Panel>
     </div>

@@ -168,3 +168,78 @@ export const adminSalesApi = {
     return request<{ rows: PerformanceRow[] }>(`/admin/sales/performance${s ? `?${s}` : ""}`);
   },
 };
+
+// ---------------------------------------------------------------------------
+// Salesperson detail (admin drill-down behind a leaderboard row)
+// ---------------------------------------------------------------------------
+
+export interface SalespersonOrderRow {
+  id: string;
+  orderNumber: string;
+  placedAt: string;
+  customerId: string | null;
+  customer: string;
+  products: string;
+  itemCount: number;
+  saleMinor: number;
+  receivedMinor: number;
+  balanceMinor: number;
+  /** null when no line on the order carries a cost snapshot. */
+  profitMinor: number | null;
+  deliveryDate: string | null;
+  delivered: boolean;
+  status: string;
+  paymentStatus: string;
+}
+
+export interface SalespersonDetail {
+  salesperson: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    isActive: boolean;
+    createdAt: string;
+    employeeId: string;
+    territory: string | null;
+    branch: string | null;
+    status: string;
+    joinedAt: string | null;
+    hasProfile: boolean;
+  };
+  kpis: SalesKpis & {
+    costMinor: number;
+    profitMinor: number;
+    costedLines: number;
+    totalLines: number;
+    costCoverageBps: number;
+    /** Customers whose ACCOUNT this rep owns — not derived from orders. */
+    ownedCustomers: number;
+    /** Money this person physically received, which may differ from orders. */
+    collectedByThemMinor: number;
+  };
+  ordersByStatus: Record<string, number>;
+  monthly: { month: string; orders: number; salesMinor: number; collectedMinor: number }[];
+  orders: SalespersonOrderRow[];
+  customers: { id: string; name: string; phone: string | null; isActive: boolean; createdAt: string }[];
+  collections: {
+    id: string;
+    paymentNumber: string;
+    amountMinor: number;
+    method: string;
+    kind: string;
+    paidAt: string | null;
+    orderId: string | null;
+    orderNumber: string | null;
+    customer: string;
+  }[];
+}
+
+export const salespersonDetailApi = {
+  get: (id: string, params: { from?: string; to?: string } = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+    const s = qs.toString();
+    return request<SalespersonDetail>(`/admin/sales/salespeople/${id}/detail${s ? `?${s}` : ""}`);
+  },
+};

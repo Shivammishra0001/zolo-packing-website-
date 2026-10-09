@@ -271,3 +271,59 @@ test("a buyer cannot use the sales portal", async () => {
   assert.equal((await api("/sales/orders", { token: buyer.token })).status, 403);
   assert.equal((await api("/sales/me", { token: buyer.token })).status, 403);
 });
+
+test("the salesperson profile separates orders captured from customers owned", async () => {
+  const admin = await adminToken();
+  const repA = await makeRep(admin);
+  const repB = await makeRep(admin);
+
+  // repA creates the customer, so repA OWNS the account (User.capturedById).
+  const customerId = await makeCustomer(repA.token);
+
+  // repB captures an order from that same customer, so repB gets the REVENUE
+  // credit (Order.salespersonId). This is the case that double-counts if the
+  // two relationships are merged: the sale belongs to repB, the relationship
+  // to repA, and adding "their customers' orders" to "their orders" would
+  // report the same money under both.
+  const product = await makeProduct();
+  const placed = await api("/sales/orders", {
+    method: "POST", token: repB.token,
+    body: { customerId, items: [{ productId: product.id, quantity: 5, unitPriceMinor: 20000 }] },
+  });
+  assert.equal(placed.status, 201, JSON.stringify(placed.body).slice(0, 200));
+
+  const a = await api(`/admin/sales/salespeople/${repA.userId}/detail`, { token: admin });
+  const b = await api(`/admin/sales/salespeople/${repB.userId}/detail`, { token: admin });
+  assert.equal(a.status, 200);
+  assert.equal(b.status, 200);
+
+  // repA: owns the account, captured nothing, so earns no revenue from it.
+  assert.equal(a.body.data.kpis.ownedCustomers, 1, "repA owns the customer");
+  assert.equal(a.body.data.kpis.orders, 0, "repA captured no orders");
+  assert.equal(a.body.data.kpis.salesMinor, 0, "owning an account is not revenue");
+
+  // repB: captured the order, owns no account.
+  assert.equal(b.body.data.kpis.orders, 1, "repB captured the order");
+  assert.equal(b.body.data.kpis.salesMinor, 100000, "repB gets the revenue credit");
+  assert.equal(b.body.data.kpis.ownedCustomers, 0, "repB owns no accounts");
+
+  // The sale is counted exactly once across the whole team.
+  assert.equal(
+    a.body.data.kpis.salesMinor + b.body.data.kpis.salesMinor,
+    100000,
+    "the same sale must not appear under both reps",
+  );
+});
+
+test("a salesperson with no employee record still has a profile page", async () => {
+  // Reps carried in from the historical order book have orders but no
+  // SalespersonProfile. Hiding them understated team revenue with no clue why.
+  const admin = await adminToken();
+  const rep = await makeRep(admin);
+  await prisma.salespersonProfile.deleteMany({ where: { userId: rep.userId } });
+
+  const res = await api(`/admin/sales/salespeople/${rep.userId}/detail`, { token: admin });
+  assert.equal(res.status, 200, "the page still loads without an employee record");
+  assert.equal(res.body.data.salesperson.hasProfile, false);
+  assert.equal(res.body.data.salesperson.employeeId, "—", "no invented employee id");
+});
