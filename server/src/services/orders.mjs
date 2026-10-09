@@ -872,10 +872,12 @@ export async function adminCreateRefund(adminUser, paymentId, { amountMinor, rea
       where: { id: payment.id },
       data: { status: fullyRefunded ? "REFUNDED" : "PARTIALLY_REFUNDED" },
     });
-    await tx.order.update({
-      where: { id: payment.orderId },
-      data: { paymentStatus: fullyRefunded ? "REFUNDED" : "PARTIALLY_REFUNDED" },
-    });
+    // Derive paidMinor AND paymentStatus from the ledger rather than writing
+    // the status alone. Setting the status by hand here left paidMinor still
+    // claiming the money was held: 20 orders in the local database read
+    // "REFUNDED" while reporting the full amount as paid, and every report
+    // built on paidMinor inherited that.
+    await recomputeOrderPayment(tx, payment.orderId);
 
     await recordEvent(
       {

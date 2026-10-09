@@ -9,6 +9,7 @@ import * as crm from "../services/crm.mjs";
 import * as crmNotify from "../services/crm-notifications.mjs";
 import * as aiGen from "../services/ai-generate.mjs";
 import * as dashboards from "../services/dashboards.mjs";
+import * as financialReport from "../services/financial-report.mjs";
 import * as inventory from "../services/inventory.mjs";
 import * as pricing from "../services/pricing.mjs";
 import * as payouts from "../services/payouts.mjs";
@@ -89,6 +90,20 @@ adminRouter.get("/collections", wrap(async (req, res) => {
  */
 adminRouter.get("/profit", wrap(async (req, res) => {
   ok(res, await dashboards.profitSummary({ from: req.query.from, to: req.query.to }));
+}));
+
+/**
+ * Sales & Financial Details — one row per order LINE.
+ *
+ * `all=1` returns every matching row for export, so the spreadsheet and the
+ * screen are built from the same query and cannot disagree.
+ */
+adminRouter.get("/reports/sales-financial", wrap(async (req, res) => {
+  const [report, totals] = await Promise.all([
+    financialReport.salesFinancialReport(req.query),
+    financialReport.salesFinancialTotals(req.query),
+  ]);
+  ok(res, { ...report, totals });
 }));
 
 /** Deliveries due, orders awaiting confirmation, and leads going cold. */

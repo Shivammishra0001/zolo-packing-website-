@@ -235,6 +235,36 @@ test("two simultaneous full payments cannot overpay an order", async () => {
   assert.ok(after.paidMinor <= after.grandTotalMinor, "the order is never overpaid");
 });
 
+test("a refund restates paidMinor, not just the status", async () => {
+  const c = await makeCustomer();
+  const o = await makeOrder(c.id);
+
+  const pay = await admin(`/admin/crm/orders/${o.id}/payments`, {
+    method: "POST",
+    body: { amountMinor: o.grandTotalMinor, method: "cash" },
+  });
+  assert.equal(pay.status, 201);
+  const paymentId = pay.body.data.payment.id;
+
+  const half = Math.floor(o.grandTotalMinor / 2);
+  const ref = await admin(`/admin/crm/payments/${paymentId}/refund`, {
+    method: "POST",
+    body: { amountMinor: half, reason: "test" },
+  });
+  assert.equal(ref.status, 200, JSON.stringify(ref.body));
+
+  // The bug this guards: two refund paths wrote paymentStatus and left
+  // paidMinor claiming the money was still held, so every report built on
+  // paidMinor counted refunded cash as collected. 20 live orders had drifted.
+  const after = await prisma.order.findUnique({ where: { id: o.id } });
+  assert.equal(
+    after.paidMinor,
+    o.grandTotalMinor - half,
+    "paidMinor drops by the refunded amount",
+  );
+  assert.equal(after.paymentStatus, "PARTIALLY_REFUNDED");
+});
+
 test("TEST 2 — order with 3 items + advance ⇒ totals computed, status PARTIAL", async () => {
   const c = await makeCustomer();
   const order = await makeOrder(c.id, {

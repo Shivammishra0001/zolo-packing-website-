@@ -18,6 +18,8 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.mjs";
 import { badRequest, notFound, conflict, forbidden } from "../lib/http.mjs";
 import { recordEvent, notify, notifyRoles } from "./events.mjs";
+import { recomputeOrderPayment } from "./crm.mjs";
+import { newPaymentNumber } from "../lib/commerce.mjs";
 import { putPrivate, readPrivate, supportedPrivateMime } from "../lib/storage.mjs";
 
 // ---- Policy ----------------------------------------------------------------
@@ -567,10 +569,12 @@ export async function adminCompleteRefund(adminId, id, { amountMinor, reference,
     const alreadyRefunded = payment.refunds.filter((x) => x.status !== "rejected").reduce((s, x) => s + x.amountMinor, 0);
     if (alreadyRefunded + amount > payment.amountMinor) throw badRequest("Refund exceeds the remaining refundable amount");
 
-    const seq = await tx.refund.count();
     await tx.refund.create({
       data: {
-        refundNumber: `REF-${String(seq + 1).padStart(6, "0")}`,
+        // Random, not count()+1: two concurrent refunds both read the same
+        // count and collide on refundNumber @unique, surfacing as an unmapped
+        // 500. Matches how order/payment numbers are generated.
+        refundNumber: `REF-${newPaymentNumber().slice(4)}`,
         paymentId: payment.id,
         returnRequestId: r.id,
         amountMinor: amount,
@@ -583,6 +587,11 @@ export async function adminCompleteRefund(adminId, id, { amountMinor, reference,
     });
     const fullyRefunded = alreadyRefunded + amount >= payment.amountMinor;
     await tx.payment.update({ where: { id: payment.id }, data: { status: fullyRefunded ? "REFUNDED" : "PARTIALLY_REFUNDED" } });
+    // Restate the order from its ledger. Without this the refund was recorded
+    // but Order.paidMinor still claimed the money was held, so the customer
+    // page, the reports and the dashboard all kept counting refunded cash as
+    // collected.
+    await recomputeOrderPayment(tx, payment.orderId);
 
     return transition(tx, r, "REFUNDED", { actorId: adminId, note: notes ?? `Refund ₹${(amount / 100).toFixed(2)} · ref ${ref}` });
   });

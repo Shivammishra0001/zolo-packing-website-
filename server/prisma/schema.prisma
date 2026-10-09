@@ -875,6 +875,10 @@ model Order {
   @@index([status])
   @@index([paymentStatus])
   @@index([placedAt])
+  // Every per-rep KPI, the sales leaderboard and the financial report filter
+  // on this. Without it they sequential-scan the whole order table once per
+  // representative.
+  @@index([salespersonId])
 }
 
 // Frozen snapshot — immune to later product/price edits.
