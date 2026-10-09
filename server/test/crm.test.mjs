@@ -205,6 +205,36 @@ test("an account manager can be assigned, cleared, and cannot be a non-rep", asy
   assert.equal(after.body.data.customers.find((x) => x.id === c.id).salesperson, null);
 });
 
+test("two simultaneous full payments cannot overpay an order", async () => {
+  const c = await makeCustomer();
+  const o = await makeOrder(c.id);
+  const full = o.grandTotalMinor;
+
+  // Reproduces an admin double-clicking "Mark full payment". Before the row
+  // lock in addPaymentInTx, both requests read the same outstanding balance,
+  // both passed the overpayment check and both inserted: a 1,000 order
+  // recorded 2,000 paid and still reported PAID.
+  const [a, b] = await Promise.allSettled([
+    admin(`/admin/crm/orders/${o.id}/payments`, { method: "POST", body: { amountMinor: full, method: "cash" } }),
+    admin(`/admin/crm/orders/${o.id}/payments`, { method: "POST", body: { amountMinor: full, method: "cash" } }),
+  ]);
+
+  const statuses = [a, b].map((r) => (r.status === "fulfilled" ? r.value.status : 500));
+  assert.ok(statuses.includes(201), "one payment is accepted");
+  assert.ok(
+    statuses.some((st) => st >= 400),
+    `the second must be refused, got ${statuses.join(" and ")}`,
+  );
+
+  const after = await prisma.order.findUnique({
+    where: { id: o.id },
+    include: { payments: true },
+  });
+  assert.equal(after.payments.length, 1, "exactly one payment row exists");
+  assert.equal(after.paidMinor, full, "paid equals the order total, never more");
+  assert.ok(after.paidMinor <= after.grandTotalMinor, "the order is never overpaid");
+});
+
 test("TEST 2 — order with 3 items + advance ⇒ totals computed, status PARTIAL", async () => {
   const c = await makeCustomer();
   const order = await makeOrder(c.id, {

@@ -527,6 +527,23 @@ export async function createOrder(adminUser, input = {}) {
  * reference for the same order.
  */
 async function addPaymentInTx(tx, adminUser, orderId, input = {}) {
+  // LOCK THE ORDER ROW FIRST.
+  //
+  // Without this, two concurrent requests both read the same outstanding
+  // balance, both pass the overpayment check below, and both insert. Verified
+  // reproducible: two simultaneous full payments on a 1,000 order recorded
+  // 2,000 paid and still reported PAID. An admin double-clicking "Mark full
+  // payment" is enough to trigger it.
+  //
+  // SELECT ... FOR UPDATE makes the second transaction wait here until the
+  // first commits, so it then reads the balance the first one left behind and
+  // is correctly refused. Raw SQL because Prisma has no row-lock API.
+  const locked = await tx.$queryRawUnsafe(
+    `SELECT id FROM "Order" WHERE id = $1 FOR UPDATE`,
+    orderId,
+  );
+  if (locked.length === 0) throw notFound("Order not found");
+
   const order = await tx.order.findUnique({ where: { id: orderId } });
   if (!order) throw notFound("Order not found");
 
