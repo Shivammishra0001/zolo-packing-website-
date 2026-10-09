@@ -343,3 +343,86 @@ export const adminCrmApi = {
   outstanding: (params: { bucket?: "overdue" | "today" | "week" | "month" | "all"; page?: number; limit?: number } = {}) =>
     request<CrmOutstandingList>(`/admin/crm/outstanding${qs(params)}`),
 };
+
+// ---------------------------------------------------------------------------
+// Sales & Financial Details report
+// ---------------------------------------------------------------------------
+
+export interface FinancialReportRow {
+  customerId: string | null;
+  customerName: string;
+  orderId: string;
+  orderNumber: string;
+  orderDate: string;
+  productName: string;
+  quantity: number;
+  rateMinor: number;
+  saleMinor: number;
+  costMinor: number | null;
+  receivedMinor: number | null;
+  balanceMinor: number | null;
+  orderTotalMinor: number | null;
+  receivedShareMinor: number;
+  paymentMode: string | null;
+  paymentReceivedBy: string | null;
+  profitMinor: number | null;
+  deliveryDate: string | null;
+  deliveredActual: boolean;
+  salespersonId: string | null;
+  salesperson: string | null;
+  orderStatus: string;
+  remarks: string | null;
+  collectionStatus: string;
+  isFirstLineOfOrder: boolean;
+}
+
+export interface FinancialReportTotals {
+  lines: number;
+  orders: number;
+  saleMinor: number;
+  costMinor: number;
+  profitMinor: number;
+  costedLines: number;
+  costCoverageBps: number;
+  orderTotalMinor: number;
+  receivedMinor: number;
+  balanceMinor: number;
+}
+
+export interface FinancialReportFilters {
+  from?: string;
+  to?: string;
+  salespersonId?: string;
+  customerId?: string;
+  status?: string;
+  collection?: string;
+  paymentMode?: string;
+  q?: string;
+  sort?: string;
+  dir?: "asc" | "desc";
+  page?: number;
+  limit?: number;
+  /** Ignore paging and return every matching row — used by the export. */
+  all?: boolean;
+}
+
+export const adminReportsApi = {
+  salesFinancial: (f: FinancialReportFilters = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(f)) {
+      if (v === undefined || v === null || v === "" || v === false) continue;
+      qs.set(k, String(v));
+    }
+    const s = qs.toString();
+    return request<{
+      rows: FinancialReportRow[];
+      total: number;
+      page: number;
+      limit: number;
+      pages: number;
+      truncated: boolean;
+      convention: string;
+      totals: FinancialReportTotals;
+    }>(`/admin/reports/sales-financial${s ? `?${s}` : ""}`);
+  },
+};

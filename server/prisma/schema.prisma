@@ -106,6 +106,8 @@ model User {
   capturedById           String?
 
   @@index([role])
+  // "Customers owned by this rep" — read by the salesperson profile page.
+  @@index([capturedById])
 }
 
 // A persisted session/refresh record. The access token is a short-lived JWT;
