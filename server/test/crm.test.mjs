@@ -265,6 +265,62 @@ test("a refund restates paidMinor, not just the status", async () => {
   assert.equal(after.paymentStatus, "PARTIALLY_REFUNDED");
 });
 
+test("Mark full payment settles exactly the balance and cannot be repeated", async () => {
+  const c = await makeCustomer();
+  const o = await makeOrder(c.id);
+  await admin(`/admin/crm/orders/${o.id}/payments`, {
+    method: "POST",
+    body: { amountMinor: 30000, method: "upi" },
+  });
+
+  // The client sends NO amount: a balance read seconds ago may be stale, so
+  // the server recomputes it under a row lock.
+  const res = await admin(`/admin/crm/orders/${o.id}/payments/full`, { method: "POST", body: { method: "cash" } });
+  assert.equal(res.status, 201, JSON.stringify(res.body).slice(0, 200));
+  assert.equal(res.body.data.settledMinor, o.grandTotalMinor - 30000, "settles exactly what was left");
+  assert.equal(res.body.data.totals.paidMinor, o.grandTotalMinor);
+  assert.equal(res.body.data.totals.paymentStatus, "PAID");
+
+  // A second click must not write a zero-value row or overpay.
+  const again = await admin(`/admin/crm/orders/${o.id}/payments/full`, { method: "POST", body: {} });
+  assert.equal(again.status, 409);
+  assert.equal(again.body.code, "ALREADY_SETTLED");
+
+  const after = await prisma.order.findUnique({ where: { id: o.id }, include: { payments: true } });
+  assert.equal(after.payments.length, 2, "no extra payment row was written");
+  assert.equal(after.paidMinor, o.grandTotalMinor, "never overpaid");
+});
+
+test("a write-off needs a reason and is recorded as an adjustment, not a status flip", async () => {
+  const c = await makeCustomer();
+  const o = await makeOrder(c.id);
+
+  const noReason = await admin(`/admin/crm/orders/${o.id}/payments/write-off`, { method: "POST", body: {} });
+  assert.equal(noReason.status, 400);
+  assert.equal(noReason.body.code, "REASON_REQUIRED");
+
+  const res = await admin(`/admin/crm/orders/${o.id}/payments/write-off`, {
+    method: "POST",
+    body: { reason: "customer ceased trading" },
+  });
+  assert.equal(res.status, 201, JSON.stringify(res.body).slice(0, 200));
+  assert.equal(res.body.data.writtenOffMinor, o.grandTotalMinor);
+
+  // The order reads settled, but the ledger still explains that no money came
+  // in — which is the whole difference between this and flipping a status.
+  const after = await prisma.order.findUnique({ where: { id: o.id }, include: { payments: true } });
+  assert.equal(after.paymentStatus, "PAID");
+  const adj = after.payments.find((p) => p.kind === "ADJUSTMENT");
+  assert.ok(adj, "an ADJUSTMENT payment records the write-off");
+  assert.match(adj.notes, /ceased trading/, "the reason is kept on the ledger");
+
+  const event = await prisma.auditLog.findFirst({
+    where: { eventType: "payment.written_off", entityId: o.id },
+  });
+  assert.ok(event, "the write-off is audited");
+  assert.equal(event.metadata.amountMinor, o.grandTotalMinor);
+});
+
 test("TEST 2 — order with 3 items + advance ⇒ totals computed, status PARTIAL", async () => {
   const c = await makeCustomer();
   const order = await makeOrder(c.id, {

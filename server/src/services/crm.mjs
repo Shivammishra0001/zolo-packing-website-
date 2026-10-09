@@ -626,6 +626,102 @@ export async function addPayment(adminUser, orderId, input = {}) {
 }
 
 /**
+ * Settle an order's ENTIRE remaining balance in one action.
+ *
+ * The amount is computed server-side from the ledger inside the transaction,
+ * never taken from the client. A balance the browser read ten seconds ago may
+ * already be stale, and trusting it would let a slow click overpay — the same
+ * class of bug the row lock in addPaymentInTx exists to prevent.
+ *
+ * Refuses an already-settled order rather than writing a zero-value payment,
+ * so the ledger never fills with no-op rows.
+ */
+export async function markFullPayment(adminUser, orderId, input = {}) {
+  return prisma.$transaction(async (tx) => {
+    // Same lock as addPaymentInTx: two clicks must not both settle.
+    const locked = await tx.$queryRawUnsafe(`SELECT id FROM "Order" WHERE id = $1 FOR UPDATE`, orderId);
+    if (locked.length === 0) throw notFound("Order not found");
+
+    const order = await tx.order.findUnique({ where: { id: orderId } });
+    const rows = await tx.payment.findMany({ where: { orderId } });
+    const paid = rows.filter((p) => PAID_STATUSES.has(p.status)).reduce((s, p) => s + p.amountMinor, 0);
+    const outstanding = order.grandTotalMinor - paid;
+
+    if (outstanding <= 0) {
+      throw conflict("This order is already fully paid", "ALREADY_SETTLED");
+    }
+
+    const payment = await addPaymentInTx(tx, adminUser, orderId, {
+      amountMinor: outstanding,
+      method: input.method ?? "cash",
+      kind: "FINAL",
+      reference: input.reference,
+      notes: input.notes,
+      paidAt: input.paidAt,
+    });
+    const totals = await recomputeOrderPayment(tx, orderId);
+    return { payment, totals, settledMinor: outstanding };
+  });
+}
+
+/**
+ * Write off the remainder of an order — the ONLY way to mark something paid
+ * that has not actually been paid.
+ *
+ * Deliberately NOT a status flip. A balance that will never arrive is an
+ * accounting event, so it is recorded as an ADJUSTMENT payment carrying a
+ * mandatory reason, which keeps the ledger explaining itself: the order reads
+ * settled, and the row says why. Flipping paymentStatus directly would leave
+ * an unpaid balance behind a paid label, which is what the brief forbids.
+ */
+export async function writeOffBalance(adminUser, orderId, input = {}) {
+  const reason = String(input.reason ?? "").trim();
+  if (reason.length < 3) {
+    throw badRequest("A write-off needs a reason", "REASON_REQUIRED");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRawUnsafe(`SELECT id FROM "Order" WHERE id = $1 FOR UPDATE`, orderId);
+    if (locked.length === 0) throw notFound("Order not found");
+
+    const order = await tx.order.findUnique({ where: { id: orderId } });
+    const rows = await tx.payment.findMany({ where: { orderId } });
+    const paid = rows.filter((p) => PAID_STATUSES.has(p.status)).reduce((s, p) => s + p.amountMinor, 0);
+    const outstanding = order.grandTotalMinor - paid;
+    if (outstanding <= 0) throw conflict("Nothing outstanding to write off", "ALREADY_SETTLED");
+
+    const payment = await tx.payment.create({
+      data: {
+        paymentNumber: newPaymentNumber(),
+        orderId,
+        method: "other",
+        amountMinor: outstanding,
+        status: "PAID",
+        kind: "ADJUSTMENT",
+        notes: `Write-off: ${reason}`,
+        receivedById: adminUser.id,
+        paidAt: new Date(),
+      },
+    });
+
+    const totals = await recomputeOrderPayment(tx, orderId);
+
+    await recordEvent(
+      {
+        eventType: "payment.written_off",
+        actorId: adminUser.id,
+        entityType: "Order",
+        entityId: orderId,
+        metadata: { orderNumber: order.orderNumber, amountMinor: outstanding, reason },
+      },
+      tx,
+    );
+
+    return { payment, totals, writtenOffMinor: outstanding };
+  });
+}
+
+/**
  * Refund part or all of a payment.
  *
  * The original Payment row is NEVER deleted or reduced (§33): a `Refund` row
@@ -934,13 +1030,53 @@ export async function listOutstanding(query = {}) {
     return d;
   };
 
-  const where = { status: { not: "CANCELLED" }, paymentStatus: { in: ["PENDING", "PARTIAL", "FAILED"] } };
+  // `settled` widens the list to fully-paid orders so the page can show a
+  // complete collections picture. The default stays unpaid-only, which is
+  // what the dues views want.
+  const settled = query.settled === "1" || query.settled === true || query.paid === "paid";
+  const where = {
+    status: { not: "CANCELLED" },
+    ...(settled ? {} : { paymentStatus: { in: ["PENDING", "PARTIAL", "FAILED"] } }),
+  };
+
   switch (query.bucket) {
     case "overdue": where.dueDate = { lt: now }; break;
     case "today": where.dueDate = { gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()), lte: endOf(0) }; break;
     case "week": where.dueDate = { gte: now, lte: endOf(7) }; break;
     case "month": where.dueDate = { gte: now, lte: endOf(30) }; break;
     default: break;
+  }
+
+  // Collection state, independent of the due-date bucket.
+  if (query.collection === "paid") where.paymentStatus = { in: ["PAID", "SUCCESS"] };
+  if (query.collection === "partial") where.paymentStatus = "PARTIAL";
+  if (query.collection === "pending") where.paymentStatus = "PENDING";
+  if (query.collection === "overdue") {
+    where.paymentStatus = { in: ["PENDING", "PARTIAL"] };
+    where.dueDate = { lt: now };
+  }
+  // Delivery is a separate axis from payment: an undelivered order can be
+  // fully paid, and a delivered one can be unpaid. Never conflate them.
+  if (query.delivery === "delivered") where.status = "DELIVERED";
+  if (query.delivery === "undelivered") where.status = { notIn: ["CANCELLED", "DELIVERED", "RETURNED"] };
+
+  if (query.from || query.to) {
+    where.placedAt = {
+      ...(query.from ? { gte: new Date(query.from) } : {}),
+      ...(query.to ? { lt: new Date(query.to) } : {}),
+    };
+  }
+
+  const search = String(query.q ?? "").trim();
+  if (search) {
+    where.OR = [
+      { orderNumber: { contains: search, mode: "insensitive" } },
+      { user: { firstName: { contains: search, mode: "insensitive" } } },
+      { user: { lastName: { contains: search, mode: "insensitive" } } },
+      { user: { company: { contains: search, mode: "insensitive" } } },
+      { user: { email: { contains: search, mode: "insensitive" } } },
+      { user: { phone: { contains: digits(search) || search } } },
+    ];
   }
 
   const [total, rows] = await Promise.all([
@@ -950,7 +1086,12 @@ export async function listOutstanding(query = {}) {
       orderBy: [{ dueDate: "asc" }, { placedAt: "desc" }],
       skip,
       take: limit,
-      include: { user: { select: { id: true, firstName: true, lastName: true, company: true, email: true, phone: true } } },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, company: true, email: true, phone: true } },
+        // Actual delivery lives on the Shipment; the Order carries only a
+        // status and the promised date.
+        shipments: { where: { deliveredAt: { not: null } }, orderBy: { deliveredAt: "desc" }, take: 1, select: { deliveredAt: true } },
+      },
     }),
   ]);
 
@@ -972,6 +1113,11 @@ export async function listOutstanding(query = {}) {
         dueDate: o.dueDate,
         daysOverdue: state.overdue ? Math.floor((now - new Date(o.dueDate)) / MS_DAY) : 0,
         placedAt: o.placedAt,
+        // Delivery, reported independently of payment.
+        orderStatus: o.status,
+        delivered: o.status === "DELIVERED" || Boolean(o.shipments[0]?.deliveredAt),
+        deliveredAt: o.shipments[0]?.deliveredAt ?? null,
+        expectedDeliveryDate: o.expectedDeliveryDate ?? null,
       };
     }),
     total,

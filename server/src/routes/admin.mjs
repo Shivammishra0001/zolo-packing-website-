@@ -189,6 +189,20 @@ adminRouter.post("/crm/orders/:id/payments", wrap(async (req, res) => {
   ok(res, await crm.addPayment(req.user, req.params.id, req.body ?? {}), 201);
 }));
 
+/** Settle the entire remaining balance; the amount is computed server-side. */
+adminRouter.post("/crm/orders/:id/payments/full", wrap(async (req, res) => {
+  ok(res, await crm.markFullPayment(req.user, req.params.id, req.body ?? {}), 201);
+}));
+
+/**
+ * Write off an uncollectable balance. The only route that can make an unpaid
+ * order read as settled, and it records an ADJUSTMENT with a reason rather
+ * than flipping a status.
+ */
+adminRouter.post("/crm/orders/:id/payments/write-off", wrap(async (req, res) => {
+  ok(res, await crm.writeOffBalance(req.user, req.params.id, req.body ?? {}), 201);
+}));
+
 /** Refund against a payment — appends a Refund, never edits history. */
 adminRouter.post("/crm/payments/:id/refund", wrap(async (req, res) => {
   ok(res, await crm.refundPayment(req.user, req.params.id, req.body ?? {}));

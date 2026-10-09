@@ -44,6 +44,26 @@ reports its own `coverageBps` — the share of revenue that actually has cost
 data — and the dashboard shows that next to the margin. A margin over 13% of
 the book must never be presented as if it described all of it.
 
+Three salesperson relationships, never merged: `Order.salespersonId` (who
+CAPTURED the order — revenue credit), `User.capturedById` (who OWNS the
+account) and `Payment.receivedById` (who physically took the money). A
+customer owned by one rep can have an order captured by another, so adding
+"their customers' orders" to "their orders" double-counts the sale.
+
+The financial report is one row per order LINE. Line money (Qty/Rate/Sale/
+Cost/Profit) sums down the column; ORDER money (Received/Balance) appears only
+on the order's first row, so a SUM never multiplies one receipt by the line
+count. A blank there means "see the first row", never zero.
+
+A PARTIAL refund leaves its Payment row `PAID` and lives in the Refund ledger.
+`recomputeOrderPayment` counts receipts from PAID/SUCCESS rows and subtracts
+processed refunds against them, so flipping the row to PARTIALLY_REFUNDED
+drops it out of receipts and zeroes the order. Every refund path must call
+`recomputeOrderPayment` — two of them did not, and 20 orders drifted.
+
+Recording a payment takes `SELECT ... FOR UPDATE` on the order first.
+Without it two concurrent requests both pass the overpayment check.
+
 Field names that have caught me out: `Order.placedAt` (not `createdAt`), CRM
 custom lines use `itemName` (not `productName`), and CRM requires an explicit
 `unitPriceMinor` rather than defaulting to catalog price.

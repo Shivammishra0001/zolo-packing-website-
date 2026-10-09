@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, CalendarClock, IndianRupee, Wallet } from "lucide-react";
+import { Link } from "react-router-dom";
+import { AlertTriangle, CalendarClock, IndianRupee, Loader2, Wallet } from "lucide-react";
 import { MetricCard, MetricCardSkeleton } from "../../components/MetricCard";
 import { DataTable, TableSkeleton, type Column } from "../../components/DataTable";
 import { EmptyState, Panel } from "../../components/Panel";
-import { Badge, Button, PageHeader, Pagination, SearchInput, Select, Tabs, Toolbar } from "../../components/ui";
+import { Badge, Button, Dialog, PageHeader, Pagination, SearchInput, Select, Tabs, Toolbar } from "../../components/ui";
+import { useToast } from "@/components/ui/Toast";
+import { RecordPaymentDialog } from "../../crm/RecordPaymentDialog";
 import { formatDate, inrMinor } from "../../format";
 import { friendlyError, kindLabel, methodLabel, paymentLabel, paymentTone } from "../../crm/money";
 import {
@@ -28,15 +31,6 @@ import {
 
 const PAGE_SIZE = 25;
 
-const BUCKETS = [
-  { id: "all", label: "All due" },
-  { id: "overdue", label: "Overdue" },
-  { id: "today", label: "Due today" },
-  { id: "week", label: "Next 7 days" },
-  { id: "month", label: "Next 30 days" },
-] as const;
-
-type Bucket = (typeof BUCKETS)[number]["id"];
 
 export default function CrmPayments() {
   const [tab, setTab] = useState<"transactions" | "outstanding">("transactions");
@@ -261,18 +255,33 @@ function TransactionsTab() {
 // ---------------------------------------------------------------------------
 
 function OutstandingTab() {
+  const toast = useToast();
   const [rows, setRows] = useState<CrmOutstandingRow[]>([]);
   const [meta, setMeta] = useState({ total: 0, pages: 1 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [bucket, setBucket] = useState<Bucket>("all");
+  const [collection, setCollection] = useState("");
+  const [delivery, setDelivery] = useState("");
+  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [recordFor, setRecordFor] = useState<CrmOutstandingRow | null>(null);
+  const [writeOffFor, setWriteOffFor] = useState<CrmOutstandingRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await adminCrmApi.outstanding({ bucket, page, limit: PAGE_SIZE });
+      const res = await adminCrmApi.outstanding({
+        collection: (collection || undefined) as never,
+        delivery: (delivery || undefined) as never,
+        q: search.trim() || undefined,
+        // "paid" has to widen the query past unpaid-only, or it returns
+        // nothing by construction.
+        settled: collection === "paid" ? "1" : undefined,
+        page,
+        limit: PAGE_SIZE,
+      });
       setRows(res.orders);
       setMeta({ total: res.total, pages: res.pages });
     } catch (err) {
@@ -280,107 +289,246 @@ function OutstandingTab() {
     } finally {
       setLoading(false);
     }
-  }, [bucket, page]);
+  }, [collection, delivery, search, page]);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { setPage(1); }, [bucket]);
+  useEffect(() => { setPage(1); }, [collection, delivery, search]);
+
+  /**
+   * Settle the whole balance. The amount is NOT sent: the server recomputes
+   * it under a row lock, so a stale figure on screen cannot overpay.
+   */
+  async function markFull(o: CrmOutstandingRow) {
+    setBusyId(o.id);
+    try {
+      const res = await adminCrmApi.markFullPayment(o.id, { method: "cash" });
+      toast.success("Payment recorded", `${inrMinor(res.settledMinor)} settled for ${o.orderNumber}.`);
+      await load();
+    } catch (err) {
+      toast.error("Could not record the payment", friendlyError(err, "Please try again."));
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   const columns: Column<CrmOutstandingRow>[] = [
-    {
-      key: "order",
-      header: "Order",
-      render: (o) => (
-        <div className="min-w-0">
-          <div className="font-mono text-xs erp-text">{o.orderNumber}</div>
-          <div className="truncate text-xs erp-text-muted">{formatDate(o.placedAt)}</div>
-        </div>
-      ),
-    },
     {
       key: "customer",
       header: "Customer",
       render: (o) => (
         <div className="min-w-0">
-          <div className="truncate erp-text">{o.customerName}</div>
-          <div className="truncate text-xs erp-text-muted">{o.customerPhone ?? o.customerEmail}</div>
+          <Link to={`/admin/customers/${o.customerId}`} className="block truncate font-semibold erp-text hover:text-primary-600">
+            {o.customerName}
+          </Link>
+          <Link to={`/admin/orders/${o.id}`} className="block truncate font-mono text-xs erp-text-muted hover:text-primary-600">
+            {o.orderNumber}
+          </Link>
         </div>
       ),
     },
-    {
-      key: "total",
-      header: <span className="block text-right">Total</span>,
-      hideBelow: "sm",
-      render: (o) => <div className="text-right tabular-nums erp-text">{inrMinor(o.grandTotalMinor)}</div>,
-    },
-    {
-      key: "paid",
-      header: <span className="block text-right">Paid</span>,
-      hideBelow: "md",
-      render: (o) => <div className="text-right tabular-nums erp-text-muted">{inrMinor(o.paidMinor)}</div>,
-    },
+    { key: "total", header: "Total", className: "text-right tabular-nums", render: (o) => inrMinor(o.grandTotalMinor) },
+    { key: "paid", header: "Paid", className: "text-right tabular-nums", hideBelow: "sm", render: (o) => inrMinor(o.paidMinor) },
     {
       key: "pending",
-      header: <span className="block text-right">Pending</span>,
-      render: (o) => <div className="text-right font-bold tabular-nums erp-text">{inrMinor(o.pendingMinor)}</div>,
+      header: "Pending",
+      className: "text-right tabular-nums",
+      render: (o) => (
+        <span className={o.pendingMinor > 0 ? "font-bold text-amber-600" : "erp-text-muted"}>
+          {inrMinor(o.pendingMinor)}
+        </span>
+      ),
     },
     {
-      key: "due",
-      header: "Due",
+      key: "delivered",
+      header: "Delivered",
+      hideBelow: "md",
+      // Delivery is its own axis: an undelivered order can be fully paid and a
+      // delivered one unpaid, so this never mirrors the payment column.
+      render: (o) =>
+        o.delivered ? (
+          <div>
+            <Badge tone="success">Delivered</Badge>
+            {o.deliveredAt && <div className="mt-0.5 text-[11px] erp-text-muted">{formatDate(o.deliveredAt)}</div>}
+          </div>
+        ) : (
+          <div>
+            <Badge tone="neutral">{o.orderStatus.toLowerCase().replace(/_/g, " ")}</Badge>
+            {o.expectedDeliveryDate && (
+              <div className="mt-0.5 text-[11px] erp-text-muted">due {formatDate(o.expectedDeliveryDate)}</div>
+            )}
+          </div>
+        ),
+    },
+    {
+      key: "collection",
+      header: "Collection",
       render: (o) => (
-        <div className="text-xs">
-          <div className="erp-text">{o.dueDate ? formatDate(o.dueDate) : "No due date"}</div>
-          {o.daysOverdue > 0 && (
-            <div className="font-semibold text-red-600 dark:text-red-400">
-              {o.daysOverdue} day{o.daysOverdue === 1 ? "" : "s"} late
-            </div>
-          )}
+        <div>
+          <Badge tone={paymentTone(o.paymentStatus)}>{paymentLabel(o.paymentStatus)}</Badge>
+          {o.daysOverdue > 0 && <div className="mt-0.5 text-[11px] font-semibold text-red-600">{o.daysOverdue}d overdue</div>}
         </div>
       ),
     },
     {
-      key: "status",
-      header: "Status",
-      render: (o) => <Badge tone={paymentTone(o.paymentStatus)}>{paymentLabel(o.paymentStatus)}</Badge>,
+      key: "actions",
+      header: "",
+      render: (o) =>
+        o.pendingMinor <= 0 ? (
+          <span className="text-xs erp-text-faint">Settled</span>
+        ) : (
+          <div className="flex flex-wrap justify-end gap-1.5">
+            <Button size="sm" variant="secondary" onClick={() => setRecordFor(o)} disabled={busyId === o.id}>
+              Record
+            </Button>
+            <Button size="sm" onClick={() => void markFull(o)} disabled={busyId === o.id}>
+              {busyId === o.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
+              Mark full
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setWriteOffFor(o)} disabled={busyId === o.id}>
+              Write off
+            </Button>
+          </div>
+        ),
     },
   ];
 
   return (
-    <Panel
-      title="Outstanding orders"
-      action={
-        <Toolbar>
-          <Select value={bucket} onChange={(v) => setBucket(v as Bucket)} aria-label="Filter by due date">
-            {BUCKETS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
-          </Select>
-        </Toolbar>
-      }
-    >
+    <>
+      <Toolbar>
+        <Select value={collection} onChange={setCollection} aria-label="Collection status">
+          <option value="">All unpaid</option>
+          <option value="pending">Not paid</option>
+          <option value="partial">Partially paid</option>
+          <option value="overdue">Overdue</option>
+          <option value="paid">Fully paid</option>
+        </Select>
+        <Select value={delivery} onChange={setDelivery} aria-label="Delivery">
+          <option value="">Any delivery state</option>
+          <option value="delivered">Delivered</option>
+          <option value="undelivered">Not delivered</option>
+        </Select>
+        <SearchInput value={search} onChange={setSearch} placeholder="Customer, order or phone" />
+      </Toolbar>
+
       {loading ? (
-        <TableSkeleton rows={8} />
+        <TableSkeleton rows={6} />
       ) : error ? (
-        <EmptyState title="Unable to load outstanding orders" message={error} action={<Button variant="secondary" onClick={() => void load()}>Try again</Button>} />
+        <EmptyState
+          icon={AlertTriangle}
+          title="Unable to load collections"
+          message={error}
+          action={<Button size="sm" onClick={() => void load()}>Try again</Button>}
+        />
       ) : rows.length === 0 ? (
         <EmptyState
-          title={bucket === "overdue" ? "Nothing overdue" : "No pending payments"}
-          message={bucket === "all" ? "Every order is settled." : "Nothing falls in this window."}
-          action={bucket !== "all" ? <Button variant="secondary" onClick={() => setBucket("all")}>Show all due</Button> : undefined}
+          icon={Wallet}
+          title="Nothing to collect"
+          message="No order matches these filters."
+          action={
+            <Button size="sm" variant="secondary" onClick={() => { setCollection(""); setDelivery(""); setSearch(""); }}>
+              Clear filters
+            </Button>
+          }
         />
       ) : (
         <>
-          <DataTable
-            columns={columns}
-            rows={rows}
-            rowKey={(o) => o.id}
-            rowHref={(o) => `/admin/orders/${o.id}`}
-            caption="Orders with an outstanding balance"
-          />
-          {meta.pages > 1 && (
-            <div className="mt-4">
-              <Pagination page={page} pageCount={meta.pages} total={meta.total} pageSize={PAGE_SIZE} onPage={setPage} />
-            </div>
-          )}
+          <DataTable columns={columns} rows={rows} rowKey={(o) => o.id} />
+          <div className="mt-3">
+            <Pagination page={page} pageCount={meta.pages} total={meta.total} pageSize={PAGE_SIZE} onPage={setPage} />
+          </div>
         </>
       )}
-    </Panel>
+
+      {recordFor && (
+        <RecordPaymentDialog
+          open
+          onClose={() => setRecordFor(null)}
+          order={{
+            id: recordFor.id,
+            orderNumber: recordFor.orderNumber,
+            grandTotalMinor: recordFor.grandTotalMinor,
+            paidMinor: recordFor.paidMinor,
+          }}
+          onRecorded={() => { setRecordFor(null); void load(); }}
+        />
+      )}
+
+      {writeOffFor && (
+        <WriteOffDialog
+          order={writeOffFor}
+          onClose={() => setWriteOffFor(null)}
+          onDone={() => { setWriteOffFor(null); void load(); }}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Writing off a balance is NOT "mark as paid". It records an ADJUSTMENT
+ * payment with a mandatory reason, so the order reads settled and the ledger
+ * still explains why no money arrived.
+ */
+function WriteOffDialog({
+  order,
+  onClose,
+  onDone,
+}: {
+  order: CrmOutstandingRow;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    setSaving(true);
+    try {
+      const res = await adminCrmApi.writeOffBalance(order.id, { reason: reason.trim() });
+      toast.success("Balance written off", `${inrMinor(res.writtenOffMinor)} recorded as an adjustment.`);
+      onDone();
+    } catch (err) {
+      toast.error("Could not write off", friendlyError(err, "Please try again."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onClose={onClose} title="Write off balance" description={order.orderNumber}>
+      <div className="space-y-4">
+        <div className="rounded-lg erp-surface-2 p-3">
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm erp-text-muted">Outstanding</span>
+            <span className="font-display text-xl font-extrabold erp-text">{inrMinor(order.pendingMinor)}</span>
+          </div>
+          <p className="mt-2 text-xs erp-text-muted">
+            This records an adjustment for the full outstanding amount, so the order reads as settled. No money is
+            received. The reason stays on the payment ledger.
+          </p>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-bold erp-text" htmlFor="wo-reason">
+            Reason<span className="text-red-500">*</span>
+          </label>
+          <textarea
+            id="wo-reason"
+            className="input w-full"
+            rows={3}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. customer ceased trading; balance uncollectable"
+          />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={() => void submit()} disabled={saving || reason.trim().length < 3}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+            Write off {inrMinor(order.pendingMinor)}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   );
 }

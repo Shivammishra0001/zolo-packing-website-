@@ -154,6 +154,11 @@ export interface CrmOutstandingRow {
   dueDate: string | null;
   daysOverdue: number;
   placedAt: string;
+  /** Delivery, reported independently of payment — the two are separate axes. */
+  orderStatus: string;
+  delivered: boolean;
+  deliveredAt: string | null;
+  expectedDeliveryDate: string | null;
 }
 
 export interface CrmPaymentSummary {
@@ -340,8 +345,34 @@ export const adminCrmApi = {
   paymentSummary: () => request<CrmPaymentSummary>("/admin/crm/payments/summary"),
 
   // ---- dues
-  outstanding: (params: { bucket?: "overdue" | "today" | "week" | "month" | "all"; page?: number; limit?: number } = {}) =>
-    request<CrmOutstandingList>(`/admin/crm/outstanding${qs(params)}`),
+  outstanding: (
+    params: {
+      bucket?: "overdue" | "today" | "week" | "month" | "all";
+      collection?: "pending" | "partial" | "paid" | "overdue";
+      delivery?: "delivered" | "undelivered";
+      q?: string;
+      from?: string;
+      to?: string;
+      /** Include fully-paid orders; the default is unpaid only. */
+      settled?: string;
+      page?: number;
+      limit?: number;
+    } = {},
+  ) => request<CrmOutstandingList>(`/admin/crm/outstanding${qs(params)}`),
+
+  /** Settle the whole remaining balance; the amount is computed server-side. */
+  markFullPayment: (orderId: string, body: { method?: string; reference?: string; notes?: string; paidAt?: string } = {}) =>
+    request<{ payment: CrmPayment; totals: PaymentTotals; settledMinor: number }>(
+      `/admin/crm/orders/${orderId}/payments/full`,
+      { method: "POST", body },
+    ),
+
+  /** Write off an uncollectable balance. Requires a reason; records an ADJUSTMENT. */
+  writeOffBalance: (orderId: string, body: { reason: string }) =>
+    request<{ payment: CrmPayment; totals: PaymentTotals; writtenOffMinor: number }>(
+      `/admin/crm/orders/${orderId}/payments/write-off`,
+      { method: "POST", body },
+    ),
 };
 
 // ---------------------------------------------------------------------------
