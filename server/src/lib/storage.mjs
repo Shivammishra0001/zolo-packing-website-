@@ -109,6 +109,45 @@ export const getUrl = (storageKey) =>
     : `${env.uploadsBaseUrl}/${storageKey}`;
 
 /**
+ * Is this URL one that `getUrl()` produced — i.e. an image THIS app stored?
+ *
+ * Validators use it to refuse an arbitrary external URL pasted into a form
+ * while still accepting every backend we actually write to. Checking only
+ * `uploadsBaseUrl` was wrong the moment object storage was switched on: a
+ * Spaces upload is served from the CDN and never carries that prefix, so a
+ * freshly uploaded image was rejected as "not uploaded through the form".
+ *
+ * Deliberately permissive about the HOST and strict about the SHAPE. The host
+ * legitimately differs between local, the App Platform URL and a custom
+ * domain, and `UPLOADS_BASE_URL` on production is the app's own origin while
+ * the browser may be on www — comparing hosts rejects valid uploads for no
+ * security gain, since this value is only ever rendered as an image source.
+ */
+export function isStoredImageUrl(value) {
+  const url = String(value ?? "").trim();
+  if (!url) return false;
+
+  // Shape, not host. Object storage writes keys under "public/", local disk
+  // serves from "/uploads/", and both appear as a path segment whatever host
+  // fronts them — the CDN domain, the App Platform URL, a custom domain, or
+  // no host at all. Matching the PATH means the rule keeps working when any
+  // of those change, which is what broke it last time.
+  if (url.startsWith(`${env.uploadsBaseUrl}/`)) return true;
+
+  let path = url;
+  try {
+    const parsed = new URL(url);
+    // Only http(s) can be an image source; this rejects javascript:, data:
+    // and file: before they reach an <img src>.
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    path = parsed.pathname;
+  } catch {
+    // Not absolute — treat the whole value as a path.
+  }
+  return /^\/?(uploads|public)\/[^/]+/.test(path);
+}
+
+/**
  * Resolve a private key to an absolute path, refusing anything that escapes the
  * private directory. `storageKey` reaches us from the database rather than the
  * network, but a traversal guard here means a future caller cannot turn this

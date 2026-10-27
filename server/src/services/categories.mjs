@@ -12,7 +12,7 @@
 //    the importer's restore-on-import keep working
 import { z, ZodError } from "zod";
 import { prisma } from "../lib/prisma.mjs";
-import { env } from "../lib/env.mjs";
+import { isStoredImageUrl } from "../lib/storage.mjs";
 import { badRequest, conflict, notFound } from "../lib/http.mjs";
 import { slugify } from "./catalog-normalize.mjs";
 import { recordEvent } from "./events.mjs";
@@ -21,8 +21,12 @@ const issue = (path, message) => new ZodError([{ code: "custom", path: [path], m
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const plain = (max) => z.string().trim().max(max).transform((v) => v.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim());
+// Accept any URL this app's own storage produced, on either backend. The old
+// rule required the uploadsBaseUrl prefix, which a Spaces upload never has —
+// it is served from the CDN — so every category image upload failed with 400
+// once object storage was enabled.
 const uploadedImage = z.string().trim().max(600).nullable().optional().refine(
-  (v) => v == null || v === "" || v.startsWith(`${env.uploadsBaseUrl}/`),
+  (v) => v == null || v === "" || isStoredImageUrl(v),
   "Upload the image through the category form",
 ).transform((v) => (v ? v : null));
 

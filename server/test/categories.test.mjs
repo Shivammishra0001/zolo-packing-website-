@@ -304,3 +304,36 @@ test("move-products reassigns both FKs and names, after which the emptied catego
   assert.equal(tree.find((c) => c.id === to.id).productCount, 1);
   assert.equal(tree.find((c) => c.id === to.id).subcategories[0].productCount, 1);
 });
+
+test("a Spaces-hosted image URL is accepted, an external one is not", async () => {
+  // The validator used to require the uploadsBaseUrl prefix. An object-storage
+  // upload is served from the CDN and never carries it, so every category
+  // image upload failed with 400 once Spaces was switched on. The rule now
+  // matches the PATH shape, which is stable across backends and hosts.
+  const { isStoredImageUrl } = await import("../src/lib/storage.mjs");
+
+  for (const url of [
+    "https://zolo.blr1.cdn.digitaloceanspaces.com/public/1-box.png",
+    "/public/1-box.png",
+    "https://zolopacking.com/uploads/1-box.png",
+    "https://www.zolopacking.com/uploads/1-box.png",
+    "/uploads/1-box.png",
+  ]) {
+    assert.equal(isStoredImageUrl(url), true, `${url} must be accepted`);
+  }
+
+  for (const url of [
+    "",
+    "https://evil.example.com/steal.png",
+    "javascript:alert(1)",
+    "data:image/png;base64,AAAA",
+    "https://zolopacking.com/admin/secret",
+  ]) {
+    assert.equal(isStoredImageUrl(url), false, `${url} must be refused`);
+  }
+
+  // And through the API, so the schema wiring is covered too, not just the
+  // helper in isolation.
+  const spaces = await makeCat({ name: `Spaces ${rnd()}`, image: "/public/cdn-test.png" });
+  assert.equal(spaces.image, "/public/cdn-test.png", "an object-storage URL survives the round trip");
+});
