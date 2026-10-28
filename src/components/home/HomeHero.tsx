@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import heroVideo from "../../../images/banner-video .mp4";
 import heroBg3 from "../../../images/banner1-2.png";
 
@@ -25,35 +25,54 @@ const heroSlides = [
   { type: "image" as const, src: heroBg3, showContent: false },
 ];
 
-/** Dwell per slide. The video loops, so it gets longer before advancing. */
-const VIDEO_MS = 9000;
-const IMAGE_MS = 4500;
+/**
+ * How long the still banner holds before returning to the video.
+ *
+ * The VIDEO has no timer: it advances when it actually ends (onEnded), so the
+ * clip is never cut off mid-way and the sequence does not drift if the file is
+ * re-encoded to a different length.
+ */
+const IMAGE_MS = 6000;
 
 export function HomeHero() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const nextSlide = () => setCurrentSlide((prev) => (prev === heroSlides.length - 1 ? 0 : prev + 1));
-  const prevSlide = () => setCurrentSlide((prev) => (prev === 0 ? heroSlides.length - 1 : prev - 1));
 
+  // Only the image slide is on a timer. The video hands over in onEnded below.
   useEffect(() => {
-    const isVideo = heroSlides[currentSlide].type === "video";
-    const timer = setTimeout(nextSlide, isVideo ? VIDEO_MS : IMAGE_MS);
+    if (heroSlides[currentSlide].type === "video") return;
+    const timer = setTimeout(nextSlide, IMAGE_MS);
     return () => clearTimeout(timer);
   }, [currentSlide]);
 
-  // Kick the muted, looping clip into playback whenever we land on it, so
-  // autoplay still happens (and no browser play-button overlay appears) even
-  // if the first attempt was deferred while the slide was hidden.
+  // Start the muted clip from the top whenever we land on it, so autoplay
+  // still happens (and no browser play-button overlay appears) even if the
+  // first attempt was deferred while the slide was hidden.
   useEffect(() => {
     if (heroSlides[currentSlide].type !== "video") return;
     const v = videoRef.current;
     if (!v) return;
     v.currentTime = 0;
+
+    // The video normally hands over in onEnded. If autoplay is REFUSED — a
+    // data-saver setting, reduced-motion, an unsupported codec — onEnded never
+    // fires and the hero would sit frozen on the first frame forever. This
+    // fallback timer advances it anyway, and is cleared the moment playback
+    // actually starts so a playing video is never cut short.
+    let fallback: number | undefined;
+    const clearFallback = () => { if (fallback) window.clearTimeout(fallback); fallback = undefined; };
+    v.addEventListener("playing", clearFallback, { once: true });
+
     v.play().catch(() => {
-      // Autoplay refused (e.g. a data-saver setting). The poster frame stays,
-      // the copy and CTAs are unaffected, and the carousel keeps advancing.
+      fallback = window.setTimeout(nextSlide, IMAGE_MS);
     });
+
+    return () => {
+      clearFallback();
+      v.removeEventListener("playing", clearFallback);
+    };
   }, [currentSlide]);
 
   const showHeroCopy = heroSlides[currentSlide].showContent;
@@ -78,8 +97,10 @@ export function HomeHero() {
                 className="h-full w-full object-cover"
                 autoPlay
                 muted
-                loop
                 playsInline
+                // Plays through, then hands over to the banner. `loop` would
+                // mean the clip never ends and the carousel never advances.
+                onEnded={nextSlide}
                 preload="auto"
                 controls={false}
                 disablePictureInPicture
@@ -106,61 +127,43 @@ export function HomeHero() {
         ))}
       </div>
 
-      {/* Readability scrim, only while copy is shown. */}
+      {/* A soft gradient at the FOOT of the hero only.
+          The old full-bleed scrim existed to keep a headline legible; with the
+          headline gone it just dulled the artwork. This lifts contrast behind
+          the buttons and nowhere else. */}
       <div
-        className={`pointer-events-none absolute inset-0 z-10 bg-navy-950/45 transition-opacity duration-500 lg:bg-gradient-to-r lg:from-navy-950/75 lg:via-navy-950/40 lg:to-navy-950/5 ${showHeroCopy ? "opacity-100" : "opacity-0"}`}
+        className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-40 bg-gradient-to-t from-navy-950/70 via-navy-950/25 to-transparent transition-opacity duration-500 ${showHeroCopy ? "opacity-100" : "opacity-0"}`}
         aria-hidden
       />
 
-      {/* Hero message */}
+      {/* CTAs — bottom-centre.
+          The banner artwork carries its own headline and its own
+          "Get Your Custom Packaging" button on the left, so anchoring these
+          left stacked two competing sets of buttons on top of each other.
+          Centred at the foot, they read as the page's action rather than a
+          second version of the artwork's. */}
       {showHeroCopy && (
-        <div className="absolute inset-0 z-20 flex items-center">
+        // The benefit strip below overlaps the hero's foot, so the padding
+        // clears it rather than letting the buttons sit behind it.
+        <div className="absolute inset-x-0 bottom-0 z-20 flex justify-center pb-20 sm:pb-24 lg:pb-28">
           <div className="shell">
-            <div className="grid items-center gap-6 lg:grid-cols-2">
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.35 }}
-                className="max-w-xl"
-              >
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-cream-100">
-                  Premium packaging, made in India
-                </p>
-                <h1 className="h1 mt-2 text-white">Packaging that sells your brand</h1>
-                <p className="mt-3 max-w-md text-[15px] leading-relaxed text-white/85 sm:text-[17px]">
-                  Custom boxes, pouches and sustainable packaging — designed, printed and delivered.
-                </p>
-                <div className="mt-5 flex flex-wrap gap-3">
-                  <Link to="/rfq" className="btn btn-primary btn-lg">
-                    Get Custom Quote <ArrowRight className="h-4 w-4" aria-hidden />
-                  </Link>
-                  <Link to="/products" className="btn btn-white btn-lg">
-                    Explore Packaging
-                  </Link>
-                </div>
-              </motion.div>
-            </div>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35 }}
+              className="flex flex-wrap items-center justify-center gap-3"
+            >
+              <Link to="/rfq" className="btn btn-primary btn-lg">
+                Get Custom Quote <ArrowRight className="h-4 w-4" aria-hidden />
+              </Link>
+              <Link to="/products" className="btn btn-white btn-lg">
+                Explore Packaging
+              </Link>
+            </motion.div>
           </div>
         </div>
       )}
 
-      {/* Prev / Next */}
-      <button
-        type="button"
-        onClick={prevSlide}
-        aria-label="Previous slide"
-        className="absolute right-16 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/90 text-dark-900 transition-colors hover:bg-white sm:left-4 sm:right-auto sm:top-1/2 sm:-translate-y-1/2"
-      >
-        <ChevronLeft className="h-5 w-5" aria-hidden />
-      </button>
-      <button
-        type="button"
-        onClick={nextSlide}
-        aria-label="Next slide"
-        className="absolute right-4 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/90 text-dark-900 transition-colors hover:bg-white sm:top-1/2 sm:-translate-y-1/2"
-      >
-        <ChevronRight className="h-5 w-5" aria-hidden />
-      </button>
 
       {/* Slide dots */}
       <div className="absolute bottom-4 right-4 z-30 flex gap-2 sm:bottom-6 sm:right-8">
