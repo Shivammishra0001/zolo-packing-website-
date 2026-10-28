@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import heroVideo from "../../../images/banner-video .mp4";
-import heroBg3 from "../../../images/banner1-2.png";
 
 // ============================================================
 // HomeHero — the video carousel.
@@ -22,7 +21,6 @@ import heroBg3 from "../../../images/banner1-2.png";
 
 const heroSlides = [
   { type: "video" as const, src: heroVideo, showContent: true },
-  { type: "image" as const, src: heroBg3, showContent: false },
 ];
 
 /**
@@ -40,7 +38,8 @@ export function HomeHero() {
 
   const nextSlide = () => setCurrentSlide((prev) => (prev === heroSlides.length - 1 ? 0 : prev + 1));
 
-  // Only the image slide is on a timer. The video hands over in onEnded below.
+  // Only a non-video slide is on a timer. A video advances on its own end
+  // (or loops, when it is the only slide).
   useEffect(() => {
     if (heroSlides[currentSlide].type === "video") return;
     const timer = setTimeout(nextSlide, IMAGE_MS);
@@ -65,8 +64,13 @@ export function HomeHero() {
     const clearFallback = () => { if (fallback) window.clearTimeout(fallback); fallback = undefined; };
     v.addEventListener("playing", clearFallback, { once: true });
 
+    // Without this the clip never starts: autoPlay alone is unreliable once
+    // the element has already been mounted and rewound.
     v.play().catch(() => {
-      fallback = window.setTimeout(nextSlide, IMAGE_MS);
+      // Autoplay refused. With more than one slide, move on so the hero is
+      // not stuck on a frozen frame; with a single looping slide there is
+      // nowhere to go, and the poster frame stays.
+      if (heroSlides.length > 1) fallback = window.setTimeout(nextSlide, IMAGE_MS);
     });
 
     return () => {
@@ -98,9 +102,13 @@ export function HomeHero() {
                 autoPlay
                 muted
                 playsInline
-                // Plays through, then hands over to the banner. `loop` would
-                // mean the clip never ends and the carousel never advances.
-                onEnded={nextSlide}
+                // The still banner was removed, so the video is the only
+                // slide: it loops rather than ending. With onEnded ->
+                // nextSlide and a single slide, the carousel wrapped to
+                // itself, restarted the clip and never played it again — the
+                // video stopped after one run.
+                loop={heroSlides.length === 1}
+                onEnded={heroSlides.length > 1 ? nextSlide : undefined}
                 preload="auto"
                 controls={false}
                 disablePictureInPicture
@@ -145,7 +153,7 @@ export function HomeHero() {
       {showHeroCopy && (
         // The benefit strip below overlaps the hero's foot, so the padding
         // clears it rather than letting the buttons sit behind it.
-        <div className="absolute inset-x-0 bottom-0 z-20 flex justify-center pb-20 sm:pb-24 lg:pb-28">
+        <div className="absolute inset-x-0 bottom-0.5 z-40 flex justify-center pb-20 sm:pb-24 lg:pb-28">
           <div className="shell">
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -157,7 +165,7 @@ export function HomeHero() {
                 Get Custom Quote <ArrowRight className="h-4 w-4" aria-hidden />
               </Link>
               <Link to="/products" className="btn btn-white btn-lg">
-                Explore Packaging
+                Order Now 
               </Link>
             </motion.div>
           </div>
@@ -165,7 +173,8 @@ export function HomeHero() {
       )}
 
 
-      {/* Slide dots */}
+      {/* Slide dots — pointless with a single slide, so hidden. */}
+      {heroSlides.length > 1 && (
       <div className="absolute bottom-4 right-4 z-30 flex gap-2 sm:bottom-6 sm:right-8">
         {heroSlides.map((_, index) => (
           <button
@@ -180,6 +189,7 @@ export function HomeHero() {
           />
         ))}
       </div>
+      )}
     </section>
   );
 }
