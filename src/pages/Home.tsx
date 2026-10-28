@@ -12,6 +12,7 @@ import TrustedCustomers from "../components/TrustedCustomers";
 import { HomeHero } from "../components/home/HomeHero";
 import { BenefitStrip } from "../components/home/BenefitStrip";
 import { FeaturedProducts } from "../components/home/FeaturedProducts";
+import { DealsRail } from "../components/home/DealsRail";
 import { PromoPanels } from "../components/home/PromoPanels";
 import { FinalCta } from "../components/home/FinalCta";
 import { SectionHeader, SkeletonGrid } from "../components/UI";
@@ -99,6 +100,9 @@ export default function Home() {
       <PromotionCards />
 
       {/* CATEGORIES — circular quick-nav + visual cards, parent categories only. */}
+      {/* Real discounts only — renders nothing when no product is on offer. */}
+      <DealsRail products={source} />
+
       <PackagingCategorySection />
 
       {/* FEATURED — admin-curated, with dynamic category tabs. */}
