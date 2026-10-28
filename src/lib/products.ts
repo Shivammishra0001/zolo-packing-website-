@@ -53,6 +53,12 @@ export function toStoreProduct(p: CatalogProduct): Product & {
   sku: string;
   stockStatus: CatalogProduct["stockStatus"];
   priceMinor: number;
+  /**
+   * Real promotional price in paise, or undefined when the product is not on
+   * offer. Only set when a sale price exists AND is below the base price, so
+   * a discount badge can never be shown without a genuine discount behind it.
+   */
+  salePriceMinor?: number;
   /** ALL real gallery images (deduped), not just the first. */
   images: string[];
   /** Admin-controlled homepage rails (PostgreSQL is the source of truth). */
@@ -124,6 +130,13 @@ export function toStoreProduct(p: CatalogProduct): Product & {
     sku: p.sku,
     stockStatus: p.stockStatus,
     priceMinor: Math.round(p.basePrice * 100),
+    // Real promotional price, when the admin set one AND it is genuinely
+    // below the base. A "sale" at or above list price is a data error, not an
+    // offer, so it is ignored rather than rendered as a 0% discount.
+    salePriceMinor:
+      p.salePrice != null && p.salePrice > 0 && p.salePrice < p.basePrice
+        ? Math.round(p.salePrice * 100)
+        : undefined,
     images: realImages, // empty when the product has no real image → mockup fallback
   };
 }

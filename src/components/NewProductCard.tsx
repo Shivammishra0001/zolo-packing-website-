@@ -40,8 +40,15 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
   // A product with no fixed price is quotation-based — Zolo never sells those
   // through the cart, so the card offers "Request Quote" instead of a button
   // that would fail server-side.
-  const priceMinor = (product as { priceMinor?: number }).priceMinor ?? 0;
-  const quoteOnly = priceMinor <= 0;
+  const listMinor = (product as { priceMinor?: number }).priceMinor ?? 0;
+  // A real promotional price, set by the admin and already validated to be
+  // below list (see lib/products.ts). Undefined = not on offer, so there is
+  // no badge and no strikethrough — never a fabricated "was" price.
+  const saleMinor = (product as { salePriceMinor?: number }).salePriceMinor;
+  const onOffer = saleMinor != null && saleMinor > 0 && saleMinor < listMinor;
+  const priceMinor = onOffer ? saleMinor : listMinor;
+  const offPercent = onOffer ? Math.round(((listMinor - saleMinor) / listMinor) * 100) : 0;
+  const quoteOnly = listMinor <= 0;
   const sizesSummary = summarizeOptions(product.sizes ?? [], 3);
   const colorsSummary = summarizeOptions(product.colors ?? [], 3);
   const inStock = product.inStock !== false;
@@ -104,6 +111,9 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
           {product.bestseller && <span className="badge bg-primary-500 text-white shadow-sm"><Zap className="h-2.5 w-2.5" aria-hidden /> Bestseller</span>}
           {product.newArrival && <span className="badge bg-green-500 text-white shadow-sm">New</span>}
           {quoteOnly && <span className="badge bg-white/90 text-green-700 shadow-sm">Quote based</span>}
+          {onOffer && offPercent > 0 && (
+            <span className="badge bg-red-600 text-white shadow-sm">-{offPercent}%</span>
+          )}
         </div>
 
         <button
@@ -159,9 +169,19 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
               <div className="font-display text-base font-bold leading-none text-dark-900">
                 {/* `unit` is already plural ("pcs"); appending "s" printed
                     "500 pcss". Only pluralise a unit that is not already. */}
-                {quoteOnly
-                  ? `${product.moq.toLocaleString("en-IN")} ${product.unit}`
-                  : <>{product.sizes.length > 1 && <span className="text-xs font-semibold text-dark-500">From </span>}₹{(priceMinor / 100).toLocaleString("en-IN")}</>}
+                {quoteOnly ? (
+                  `${product.moq.toLocaleString("en-IN")} ${product.unit}`
+                ) : (
+                  <>
+                    {product.sizes.length > 1 && <span className="text-xs font-semibold text-dark-500">From </span>}
+                    ₹{(priceMinor / 100).toLocaleString("en-IN")}
+                    {onOffer && (
+                      <span className="ml-1.5 text-xs font-semibold text-dark-400 line-through">
+                        ₹{(listMinor / 100).toLocaleString("en-IN")}
+                      </span>
+                    )}
+                  </>
+                )}
               </div>
             </div>
             {!quoteOnly && inStock && (

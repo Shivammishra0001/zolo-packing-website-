@@ -38,6 +38,8 @@ interface DbProduct {
   thickness?: string | null;
   sizeLabel?: string | null;
   basePriceMinor: number;
+  /** Promotional price when the admin has set one. Null = not on offer. */
+  salePriceMinor?: number | null;
   moq: number;
   stock: number;
   lowStockLevel: number | null;
@@ -75,6 +77,10 @@ export function fromDb(row: DbProduct): CatalogProduct {
     thickness: row.thickness ?? undefined,
     sizeLabel: row.sizeLabel ?? undefined,
     basePrice: row.basePriceMinor / 100,
+    // Carried through so the storefront can show a REAL was/now price. It was
+    // dropped here, so every discount badge would have had to be invented —
+    // which is why there were none.
+    salePrice: row.salePriceMinor != null && row.salePriceMinor > 0 ? row.salePriceMinor / 100 : undefined,
     moq: row.moq,
     stock: row.stock,
     lowStockLevel: row.lowStockLevel ?? undefined,

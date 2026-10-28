@@ -270,6 +270,14 @@ export interface CatalogProduct {
   subcategory: string;
   status: ProductStatus;
   basePrice: number;
+  /**
+   * Promotional price in rupees when the admin set one, else undefined.
+   *
+   * Undefined means "not on offer" — never 0, which would read as free. The
+   * storefront shows a was/now price and a discount badge ONLY when this is
+   * present and genuinely below basePrice, so no offer is ever invented.
+   */
+  salePrice?: number;
   moq: number;
   variants: ProductVariant[];
   /** Emoji stand-in used as the primary thumbnail (no real image backend yet). */
