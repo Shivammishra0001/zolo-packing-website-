@@ -83,19 +83,28 @@ export function HomeHero() {
 
   return (
     <section
-      // 16:9 (the source video is 1280x720), capped so the hero plus the
-      // benefit strip below it fit one screen.
+      // 16:9, matching the 1280x720 source exactly, with NO height cap.
       //
-      // The frame used to be 4:3 on phones and 16:7 on desktop. Neither
-      // matched the clip, so object-cover cropped it vertically and sliced the
-      // "ZOLO" wordmark off the top — the bug this fixes.
+      // A cap seems like the way to keep the hero and the benefit strip on one
+      // screen, but it is the thing that crops the wordmark. Capping the
+      // height of an aspect-video box makes the FRAME wider than the clip, and
+      // object-cover then fills that width by scaling the video up and
+      // spilling the excess off the top and bottom. Measured at 1366x768 with
+      // a 62vh cap: only 66% of the clip's height was visible. The "ZOLO"
+      // wordmark sits near the top, so it was the first thing lost.
       //
-      // Where the cap bites (a short laptop window), the frame becomes wider
-      // than 16:9 and the video is trimmed at the LEFT AND RIGHT edges only.
-      // The wordmark sits centred, so it survives; the clip's outer margins
-      // are empty backdrop and lose nothing that matters. Cropping sideways is
-      // the one direction this artwork tolerates.
-      className="relative aspect-video max-h-[62vh] w-full overflow-hidden bg-navy-900 sm:max-h-[66vh]"
+      // Without a cap the frame is exactly 16:9, cover has nothing to trim,
+      // and 100% of the artwork shows at every width. The benefit strip
+      // overlaps the hero's foot by design, so it stays in view anyway.
+      // The one safe cap: limit the hero by the space actually left under the
+      // header, not by a fraction of the viewport. `100svh` is the SMALL
+      // viewport height, so mobile browser chrome is already accounted for,
+      // and 8rem reserves room for the header plus the overlapping benefit
+      // strip. Because this caps HEIGHT on an aspect-video box the frame can
+      // still go wider than 16:9 — so the video below uses `contain`, which
+      // shows all of it and lets the navy backdrop fill the remainder rather
+      // than cropping the artwork.
+      className="relative aspect-video max-h-[calc(100svh-8rem)] w-full overflow-hidden bg-navy-900"
       aria-label="Zolo Packaging highlights"
     >
       {/* Background slides */}
@@ -107,14 +116,37 @@ export function HomeHero() {
             aria-hidden={currentSlide !== index}
           >
             {slide.type === "video" ? (
+              <>
+              {/* Blurred, over-scaled copy filling the pillars that `contain`
+                  leaves when the frame is wider than 16:9. Standard treatment
+                  for mismatched aspect ratios: the edges read as an extension
+                  of the footage instead of bare navy bars, while the sharp
+                  copy above stays uncropped. aria-hidden and not the ref'd
+                  element — it is decoration, and only the real video drives
+                  playback state. */}
+              <video
+                src={slide.src}
+                aria-hidden
+                tabIndex={-1}
+                className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl"
+                autoPlay
+                muted
+                playsInline
+                loop
+                preload="auto"
+                controls={false}
+                disablePictureInPicture
+              />
               <video
                 ref={videoRef}
                 src={slide.src}
-                // `cover`: fills the frame with no navy bars. The frame is
-                // 16:9 until the height cap bites, and the cap can only make
-                // it WIDER — never taller — so any trimming is horizontal and
-                // the centred wordmark is never cut.
-                className="h-full w-full object-cover"
+                // `contain`, deliberately. `cover` fills the frame but crops
+                // whatever does not fit, and when a height cap makes the frame
+                // wider than 16:9 that crop is VERTICAL — it ate 34% of the
+                // clip's height at 1366x768 and sliced the "ZOLO" wordmark off
+                // the top. `contain` shows the whole clip and lets the navy
+                // backdrop take the leftover width instead.
+                className="relative h-full w-full object-contain"
                 autoPlay
                 muted
                 playsInline
@@ -129,6 +161,7 @@ export function HomeHero() {
                 controls={false}
                 disablePictureInPicture
               />
+              </>
             ) : (
               <>
                 {/* Soft blurred fill of the same banner behind an
