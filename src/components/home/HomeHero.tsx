@@ -83,7 +83,19 @@ export function HomeHero() {
 
   return (
     <section
-      className="relative aspect-[4/3] max-h-[520px] min-h-[460px] w-full overflow-hidden bg-navy-900 sm:aspect-[16/9] sm:min-h-0 lg:aspect-[16/7]"
+      // 16:9 (the source video is 1280x720), capped so the hero plus the
+      // benefit strip below it fit one screen.
+      //
+      // The frame used to be 4:3 on phones and 16:7 on desktop. Neither
+      // matched the clip, so object-cover cropped it vertically and sliced the
+      // "ZOLO" wordmark off the top — the bug this fixes.
+      //
+      // Where the cap bites (a short laptop window), the frame becomes wider
+      // than 16:9 and the video is trimmed at the LEFT AND RIGHT edges only.
+      // The wordmark sits centred, so it survives; the clip's outer margins
+      // are empty backdrop and lose nothing that matters. Cropping sideways is
+      // the one direction this artwork tolerates.
+      className="relative aspect-video max-h-[62vh] w-full overflow-hidden bg-navy-900 sm:max-h-[66vh]"
       aria-label="Zolo Packaging highlights"
     >
       {/* Background slides */}
@@ -98,6 +110,10 @@ export function HomeHero() {
               <video
                 ref={videoRef}
                 src={slide.src}
+                // `cover`: fills the frame with no navy bars. The frame is
+                // 16:9 until the height cap bites, and the cap can only make
+                // it WIDER — never taller — so any trimming is horizontal and
+                // the centred wordmark is never cut.
                 className="h-full w-full object-cover"
                 autoPlay
                 muted
@@ -153,7 +169,10 @@ export function HomeHero() {
       {showHeroCopy && (
         // The benefit strip below overlaps the hero's foot, so the padding
         // clears it rather than letting the buttons sit behind it.
-        <div className="absolute inset-x-0 bottom-0.5 z-40 flex justify-center pb-20 sm:pb-24 lg:pb-28">
+        // Padding scales with the hero's own height rather than a fixed pixel
+        // ladder: a 16:9 frame is much shorter on a phone than on a desktop,
+        // and pb-28 there pushed the buttons off the bottom entirely.
+        <div className="absolute inset-x-0 bottom-0 z-40 flex justify-center pb-[12%] sm:pb-[10%]">
           <div className="shell">
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -161,10 +180,10 @@ export function HomeHero() {
               transition={{ duration: 0.35 }}
               className="flex flex-wrap items-center justify-center gap-3"
             >
-              <Link to="/rfq" className="btn btn-primary btn-lg">
+              <Link to="/rfq" className="btn btn-primary btn-sm sm:btn-lg">
                 Get Custom Quote <ArrowRight className="h-4 w-4" aria-hidden />
               </Link>
-              <Link to="/products" className="btn btn-white btn-lg">
+              <Link to="/products" className="btn btn-white btn-sm sm:btn-lg">
                 Order Now 
               </Link>
             </motion.div>
