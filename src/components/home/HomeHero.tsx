@@ -1,151 +1,181 @@
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, BadgeCheck, Headphones, Leaf, Truck } from "lucide-react";
-import heroBox from "../../../images/corrugated box.png";
-import heroBag from "../../../images/paper-bag.png";
-import heroTape from "../../../images/brown kraft tape.png";
-import heroPouch from "../../../images/pouch.png";
+import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import heroVideo from "../../../images/banner-video .mp4";
+import heroBg3 from "../../../images/banner1-2.png";
 
 // ============================================================
-// HomeHero — the 5-second answer to "what is Zolo Packing?".
+// HomeHero — the video carousel.
 //
-// Replaces the old full-bleed video carousel, which showed marketing artwork
-// with "ZOLO PACKAGING" already burned into it behind a dark scrim and a
-// competing headline: two brand statements fighting, and zero information
-// about what a visitor can actually buy.
+// Slide 1 is a looping, muted video that carries the headline and CTAs.
+// Slide 2 is a clean full-bleed banner with no text. Arrows and dots give
+// manual control; both slides auto-advance.
 //
-// This is a bounded split composition (§6):
-//   LEFT   eyebrow → headline → one sentence → 2 CTAs → 4 trust indicators
-//   RIGHT  a product composition built from the real packaging PNGs in
-//          /images — boxes, kraft bags, tape, pouches — so the visual says
-//          "packaging" instead of "generic e-commerce".
+// Restored from the pre-471b191 design at the owner's request. It lives in
+// this component rather than inline in Home.tsx so the page keeps its current
+// section composition and the hero stays independently editable.
 //
-// Height is deliberately capped (~460–520px desktop) and the whole thing sits
-// on the `.shell` grid, so the header, hero and every section below align.
+// Height is bounded (4:3 on phones → 16:7 on desktop, capped at 520px) so the
+// hero never pushes the rest of the page below the fold.
 // ============================================================
 
-const TRUST = [
-  { icon: Leaf, label: "Sustainable options" },
-  { icon: BadgeCheck, label: "Business-grade quality" },
-  { icon: Truck, label: "Pan-India delivery" },
-  { icon: Headphones, label: "Dedicated support" },
+const heroSlides = [
+  { type: "video" as const, src: heroVideo, showContent: true },
+  { type: "image" as const, src: heroBg3, showContent: false },
 ];
 
-/** One floating product tile in the hero composition. */
-function ProductTile({
-  src,
-  alt,
-  className,
-  delay,
-  tone = "mint",
-}: {
-  src: string;
-  alt: string;
-  className: string;
-  delay: number;
-  tone?: "mint" | "cream" | "white";
-}) {
-  // All tiles are white: the packaging renders carry baked studio backgrounds,
-  // so a tinted tile shows a grey/white rectangle floating inside it. The
-  // tones differ only in the surrounding border tint, which is enough
-  // separation against the mint hero without fighting the photography.
-  const tones = {
-    mint: "bg-white border-green-200",
-    cream: "bg-white border-cream-200",
-    white: "bg-white border-dark-200",
-  };
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay, ease: "easeOut" }}
-      className={`absolute flex items-center justify-center overflow-hidden rounded-[16px] border shadow-[0_10px_30px_rgba(15,23,42,0.10)] ${tones[tone]} ${className}`}
-    >
-      <img src={src} alt={alt} loading="eager" decoding="async" className="h-full w-full object-contain p-3" />
-    </motion.div>
-  );
-}
+/** Dwell per slide. The video loops, so it gets longer before advancing. */
+const VIDEO_MS = 9000;
+const IMAGE_MS = 4500;
 
 export function HomeHero() {
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const nextSlide = () => setCurrentSlide((prev) => (prev === heroSlides.length - 1 ? 0 : prev + 1));
+  const prevSlide = () => setCurrentSlide((prev) => (prev === 0 ? heroSlides.length - 1 : prev - 1));
+
+  useEffect(() => {
+    const isVideo = heroSlides[currentSlide].type === "video";
+    const timer = setTimeout(nextSlide, isVideo ? VIDEO_MS : IMAGE_MS);
+    return () => clearTimeout(timer);
+  }, [currentSlide]);
+
+  // Kick the muted, looping clip into playback whenever we land on it, so
+  // autoplay still happens (and no browser play-button overlay appears) even
+  // if the first attempt was deferred while the slide was hidden.
+  useEffect(() => {
+    if (heroSlides[currentSlide].type !== "video") return;
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = 0;
+    v.play().catch(() => {
+      // Autoplay refused (e.g. a data-saver setting). The poster frame stays,
+      // the copy and CTAs are unaffected, and the carousel keeps advancing.
+    });
+  }, [currentSlide]);
+
+  const showHeroCopy = heroSlides[currentSlide].showContent;
+
   return (
-    <section className="relative overflow-hidden bg-green-50" aria-label="Packaging for every business">
-      {/* Soft brand wash — flat tints, no gradient-on-text, no glassmorphism. */}
-      <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-green-100/70 blur-[90px]" />
-      <div aria-hidden className="pointer-events-none absolute -bottom-32 left-1/3 h-72 w-72 rounded-full bg-cream-100/80 blur-[90px]" />
-
-      <div className="shell relative">
-        <div className="grid items-center gap-8 py-10 lg:grid-cols-[1.05fr_1fr] lg:gap-10 lg:py-14">
-          {/* ---------- Copy ---------- */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-            className="max-w-xl"
+    <section
+      className="relative aspect-[4/3] max-h-[520px] min-h-[460px] w-full overflow-hidden bg-navy-900 sm:aspect-[16/9] sm:min-h-0 lg:aspect-[16/7]"
+      aria-label="Zolo Packaging highlights"
+    >
+      {/* Background slides */}
+      <div className="absolute inset-0">
+        {heroSlides.map((slide, index) => (
+          <div
+            key={index}
+            className={`absolute inset-0 transition-opacity duration-500 ${currentSlide === index ? "opacity-100" : "opacity-0"}`}
+            aria-hidden={currentSlide !== index}
           >
-            <p className="eyebrow">Packaging made simple</p>
-            <h1 className="h1 mt-3 text-dark-900">
-              Packaging for a{" "}
-              <span className="text-green-500">brighter tomorrow</span>
-            </h1>
-            <p className="lead mt-4 max-w-md">
-              Boxes, bags, tapes and custom-printed packaging for businesses, brands and e-commerce sellers — ordered online or quoted to your spec.
-            </p>
+            {slide.type === "video" ? (
+              <video
+                ref={videoRef}
+                src={slide.src}
+                className="h-full w-full object-cover"
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="auto"
+                controls={false}
+                disablePictureInPicture
+              />
+            ) : (
+              <>
+                {/* Soft blurred fill of the same banner behind an
+                    object-contain copy, so the full artwork shows without
+                    letterbox bars (the banners differ in aspect ratio). */}
+                <img
+                  src={slide.src}
+                  alt=""
+                  aria-hidden
+                  className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl"
+                />
+                <img
+                  src={slide.src}
+                  alt={`Zolo Packaging hero ${index + 1}`}
+                  className="absolute inset-0 h-full w-full object-contain"
+                />
+              </>
+            )}
+          </div>
+        ))}
+      </div>
 
-            {/* Both CTAs share one row even at 320px — stacking two full-width
-                buttons pushed the trust indicators and the category strip
-                below the fold on a phone. */}
-            {/* Both CTAs share one row from 360px up (`btn` at 44px until
-                `sm`, `btn-lg` beyond). Two stacked full-width buttons pushed
-                the trust indicators and the category strip below the fold. */}
-            <div className="mt-6 flex flex-wrap items-center gap-2 sm:gap-3">
-              <Link to="/products" className="btn btn-primary sm:btn-lg">
-                Shop all products <ArrowRight className="h-4 w-4" aria-hidden />
-              </Link>
-              <Link to="/rfq" className="btn btn-secondary sm:btn-lg">
-                Get a quote
-              </Link>
+      {/* Readability scrim, only while copy is shown. */}
+      <div
+        className={`pointer-events-none absolute inset-0 z-10 bg-navy-950/45 transition-opacity duration-500 lg:bg-gradient-to-r lg:from-navy-950/75 lg:via-navy-950/40 lg:to-navy-950/5 ${showHeroCopy ? "opacity-100" : "opacity-0"}`}
+        aria-hidden
+      />
+
+      {/* Hero message */}
+      {showHeroCopy && (
+        <div className="absolute inset-0 z-20 flex items-center">
+          <div className="shell">
+            <div className="grid items-center gap-6 lg:grid-cols-2">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35 }}
+                className="max-w-xl"
+              >
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-cream-100">
+                  Premium packaging, made in India
+                </p>
+                <h1 className="h1 mt-2 text-white">Packaging that sells your brand</h1>
+                <p className="mt-3 max-w-md text-[15px] leading-relaxed text-white/85 sm:text-[17px]">
+                  Custom boxes, pouches and sustainable packaging — designed, printed and delivered.
+                </p>
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <Link to="/rfq" className="btn btn-primary btn-lg">
+                    Get Custom Quote <ArrowRight className="h-4 w-4" aria-hidden />
+                  </Link>
+                  <Link to="/products" className="btn btn-white btn-lg">
+                    Explore Packaging
+                  </Link>
+                </div>
+              </motion.div>
             </div>
-
-            {/* Trust indicators — subtle, not a second CTA row. */}
-            <ul className="mt-7 grid grid-cols-2 gap-x-4 gap-y-2.5 sm:max-w-md">
-              {TRUST.map((t) => (
-                <li key={t.label} className="flex items-center gap-2 text-[13px] font-medium text-dark-600">
-                  <t.icon className="h-4 w-4 shrink-0 text-green-500" aria-hidden />
-                  {t.label}
-                </li>
-              ))}
-            </ul>
-          </motion.div>
-
-          {/* ---------- Product composition ----------
-              Hidden below `sm` (mobile gets copy + CTAs without a 300px
-              decorative block pushing the categories off-screen). */}
-          <div className="relative hidden h-[300px] sm:block lg:h-[380px]" aria-hidden>
-            {/* Anchor tile: the hero product. */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.97 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.45, ease: "easeOut" }}
-              className="absolute left-1/2 top-1/2 flex h-[72%] w-[64%] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[20px] border border-white bg-white shadow-[0_18px_44px_rgba(15,23,42,0.12)]"
-            >
-              <img src={heroBox} alt="" className="h-full w-full object-contain p-6" />
-            </motion.div>
-
-            <ProductTile src={heroBag} alt="" delay={0.12} tone="cream" className="left-0 top-2 h-[38%] w-[34%]" />
-            <ProductTile src={heroTape} alt="" delay={0.18} tone="mint" className="bottom-2 left-[6%] h-[34%] w-[30%]" />
-            <ProductTile src={heroPouch} alt="" delay={0.24} tone="white" className="bottom-6 right-0 h-[36%] w-[32%]" />
-
-            {/* Custom-packaging cue, tied to the quote flow the CTA opens. */}
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.3 }}
-              className="absolute right-2 top-4 rounded-full border border-green-200 bg-white px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-green-600 shadow-sm"
-            >
-              Custom printing
-            </motion.div>
           </div>
         </div>
+      )}
+
+      {/* Prev / Next */}
+      <button
+        type="button"
+        onClick={prevSlide}
+        aria-label="Previous slide"
+        className="absolute right-16 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/90 text-dark-900 transition-colors hover:bg-white sm:left-4 sm:right-auto sm:top-1/2 sm:-translate-y-1/2"
+      >
+        <ChevronLeft className="h-5 w-5" aria-hidden />
+      </button>
+      <button
+        type="button"
+        onClick={nextSlide}
+        aria-label="Next slide"
+        className="absolute right-4 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/90 text-dark-900 transition-colors hover:bg-white sm:top-1/2 sm:-translate-y-1/2"
+      >
+        <ChevronRight className="h-5 w-5" aria-hidden />
+      </button>
+
+      {/* Slide dots */}
+      <div className="absolute bottom-4 right-4 z-30 flex gap-2 sm:bottom-6 sm:right-8">
+        {heroSlides.map((_, index) => (
+          <button
+            key={index}
+            type="button"
+            onClick={() => setCurrentSlide(index)}
+            aria-label={`Go to slide ${index + 1}`}
+            aria-current={currentSlide === index}
+            className={`h-2 rounded-full transition-all duration-300 ${
+              currentSlide === index ? "w-8 bg-white" : "w-2 bg-white/50 hover:bg-white/80"
+            }`}
+          />
+        ))}
       </div>
     </section>
   );
