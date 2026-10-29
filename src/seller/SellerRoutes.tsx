@@ -23,7 +23,15 @@ function SellerShell({ children }: { children: React.ReactNode }) {
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm text-slate-500">
-            <span className="hidden sm:inline">{user?.email}</span>
+            {/* A supplier who signed up by phone has a generated .invalid
+                address they never typed and cannot use. Showing it is noise at
+                best and alarming at worst, so prefer the name, then the phone,
+                and fall back to a real email only when there is one. */}
+            <span className="hidden sm:inline">
+              {user?.firstName ||
+                user?.phone ||
+                (user?.email && !user.email.endsWith(".invalid") ? user.email : "Supplier")}
+            </span>
             <button onClick={async () => { await logout(); navigate("/seller/login"); }} className="rounded-lg px-3 py-1.5 text-slate-600 hover:bg-slate-100">Sign out</button>
           </div>
         </div>
