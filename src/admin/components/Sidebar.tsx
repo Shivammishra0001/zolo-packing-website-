@@ -1,5 +1,6 @@
 import {
   Building2,
+  Factory,
   FileText,
   LayoutDashboard,
   Megaphone,
@@ -53,6 +54,10 @@ const NAV_GROUPS: NavGroup[] = [
       // own entries rather than hiding behind a tab in Users.
       { to: "/admin/customers", label: "Customers", icon: Building2 },
       { to: "/admin/sales-team", label: "Sales Team", icon: TrendingUp },
+      // /admin/sellers has existed and worked all along, but the only way in
+      // was a hardcoded <a href> buried in a sub-flow of the Users page — so
+      // supplier review felt like a separate system you had to go and find.
+      { to: "/admin/sellers", label: "Suppliers", icon: Factory },
       { to: "/admin/orders", label: "Orders", icon: ShoppingCart },
       // "Quotations (RFQ)" was jargon; negotiations live inside the same page
       // as a tab, since a negotiation is only ever about a quote.

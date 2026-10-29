@@ -22,6 +22,25 @@ export function AdminGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+
+    // An admin reaching /admin/sellers is ALREADY signed in — through the
+    // storefront session (zolo.store.*), which AdminGuard checked before
+    // rendering this route. This gate only looked at the seller session
+    // (zolo.seller.*), found nothing, and demanded a second login on a
+    // dashboard the admin was already inside.
+    //
+    // Adopt the storefront token when the seller store is empty. authApi.me()
+    // below still verifies the role server-side, so this changes WHERE the
+    // token comes from, never WHETHER it is checked.
+    if (!tokenStore.get()) {
+      const storeToken = localStorage.getItem("zolo.store.accessToken");
+      const storeRefresh = localStorage.getItem("zolo.store.refreshToken");
+      if (storeToken) {
+        tokenStore.setAccess(storeToken);
+        if (storeRefresh) tokenStore.setRefresh(storeRefresh);
+      }
+    }
+
     if (!tokenStore.get()) { setChecking(false); return; }
     authApi
       .me()

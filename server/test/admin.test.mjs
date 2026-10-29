@@ -91,3 +91,50 @@ test("audit log accumulates events for the seller lifecycle", async () => {
   assert.ok(toStatuses.includes("SUBMITTED"));
   assert.ok(toStatuses.includes("APPROVED"));
 });
+
+test("suspending a supplier actually revokes their write access", async () => {
+  // The bug this pins: requireSeller checked the ROLE only, so suspension
+  // flipped a database field and nothing else. A suspended supplier carried on
+  // editing their profile and — the part that matters — swapping their bank
+  // account, while the only real effect of suspension was exclusion from RFQ
+  // matching. Deactivating the USER did cut access; suspending the SUPPLIER
+  // did not, so the two "off switches" behaved differently.
+  const s = await registerSeller();
+  const adminTok = await adminToken();
+
+  // Writes work while the application is still a draft. (The onboarding
+  // service separately restricts profile edits to DRAFT/CHANGES_REQUESTED, so
+  // this has to happen before submission.)
+  const before = await api("/sellers/me/onboarding", {
+    method: "PATCH", token: s.token, body: { legalName: "Before Suspension Ltd" },
+  });
+  assert.equal(before.status, 200, "a draft supplier can edit their profile");
+
+  await completeMinimum(s.token);
+  await api("/sellers/me/onboarding/submit", { method: "POST", token: s.token });
+  await api(`/admin/sellers/${s.supplierId}/approve`, { method: "POST", token: adminTok });
+  const susp = await api(`/admin/sellers/${s.supplierId}/suspend`, {
+    method: "POST", token: adminTok, body: { reason: "Repeated quality failures" },
+  });
+  assert.equal(susp.status, 200, JSON.stringify(susp.body).slice(0, 160));
+
+  // The write that actually costs money if it gets through.
+  const bank = await api("/sellers/me/bank-accounts", {
+    method: "POST", token: s.token,
+    body: { accountHolderName: "Attacker", bankName: "X", accountNumber: "99999999", ifsc: "XXXX0000001" },
+  });
+  assert.equal(bank.status, 403, "a suspended supplier cannot change bank details");
+
+  // Reads stay open on purpose: a suspended supplier must be able to sign in
+  // and see WHY, otherwise the status is invisible to them.
+  const read = await api("/sellers/me/onboarding", { token: s.token });
+  assert.equal(read.status, 200, "a suspended supplier can still read their own record");
+  assert.equal(read.body.data.status, "SUSPENDED", "and can see why they are blocked");
+
+  // The refused bank write left no row behind.
+  const banks = read.body.data.bankAccounts ?? [];
+  assert.ok(
+    !banks.some((b) => b.accountHolderName === "Attacker"),
+    "the refused bank account was not created",
+  );
+});

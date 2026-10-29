@@ -71,6 +71,54 @@ export const loadSupplierOrg = wrap(async (req, _res, next) => {
   next();
 });
 
+/**
+ * Statuses that may still WRITE to their own supplier record.
+ *
+ * A supplier in DRAFT or CHANGES_REQUESTED is mid-application and must be able
+ * to edit it. APPROVED is a live supplier. Everything else — REJECTED,
+ * SUSPENDED, INACTIVE — is a closed door.
+ */
+const WRITABLE_SUPPLIER_STATUSES = new Set(["DRAFT", "SUBMITTED", "UNDER_REVIEW", "CHANGES_REQUESTED", "APPROVED"]);
+
+/**
+ * Refuse writes from a supplier whose account is not in good standing.
+ *
+ * requireSeller checks the ROLE only, so suspending or rejecting a supplier
+ * did not actually stop them doing anything: the status flipped in the
+ * database while they carried on editing their profile, swapping their bank
+ * account and re-uploading documents. Suspension's only real effect was
+ * exclusion from RFQ matching.
+ *
+ * Deactivating the USER does cut access (authenticate checks isActive), but
+ * suspending the SUPPLIER did not — two "off switches" that behaved
+ * differently, which is a trap for whoever operates this.
+ *
+ * Reads are deliberately still allowed: a rejected supplier should be able to
+ * sign in and SEE why. This blocks mutations only, and is mounted after
+ * loadSupplierOrg so req.supplierProfile is populated.
+ */
+export const requireWritableSupplier = (req, _res, next) => {
+  // Safe methods never mutate; let a suspended supplier read their own record.
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+
+  const status = req.supplierProfile?.status;
+  // No profile yet is a legitimate state — a freshly registered supplier has
+  // not applied. The onboarding handlers create it.
+  if (!status) return next();
+
+  if (!WRITABLE_SUPPLIER_STATUSES.has(status)) {
+    // forbidden() takes a message only; its code is always FORBIDDEN.
+    return next(
+      forbidden(
+        status === "SUSPENDED"
+          ? "Your supplier account is suspended. Contact Zolo to restore access."
+          : "Your supplier account is not active. Contact Zolo for details.",
+      ),
+    );
+  }
+  next();
+};
+
 // Role guard factory.
 export function requireRole(...roles) {
   return (req, _res, next) => {

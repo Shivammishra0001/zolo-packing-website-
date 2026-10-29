@@ -7,7 +7,7 @@ import { prisma } from "./lib/prisma.mjs";
 import { env, isAllowedOrigin } from "./lib/env.mjs";
 import { ok, wrap, errorHandler } from "./lib/http.mjs";
 import { UPLOADS_PATH } from "./lib/storage.mjs";
-import { authenticate, requireAdmin, requireSeller, requireBuyer, requireSalesperson, loadSupplierOrg } from "./middleware/auth.mjs";
+import { authenticate, requireAdmin, requireSeller, requireBuyer, requireSalesperson, loadSupplierOrg, requireWritableSupplier } from "./middleware/auth.mjs";
 import { authRouter } from "./routes/auth.mjs";
 import { productsRouter } from "./routes/products.mjs";
 import { categoriesRouter } from "./routes/categories.mjs";
@@ -176,8 +176,12 @@ export function createApp() {
   app.use(`${API}/recycling`, authenticate, requireBuyer, recyclingRouter);
   app.use(`${API}/eco-credits`, authenticate, requireBuyer, ecoCreditsRouter);
   app.use(API, authenticate, requireBuyer, orderRouter); // /checkout/*, /orders/*
-  app.use(`${API}/sellers/rfqs`, authenticate, requireSeller, loadSupplierOrg, sellerRfqRouter);
-  app.use(`${API}/sellers`, authenticate, requireSeller, loadSupplierOrg, sellerRouter);
+  // requireWritableSupplier runs AFTER loadSupplierOrg (it reads the profile it
+  // attaches) and blocks writes from a SUSPENDED/REJECTED/INACTIVE supplier.
+  // Without it, suspending a supplier changed a database field and nothing
+  // else — they kept editing their profile and bank details.
+  app.use(`${API}/sellers/rfqs`, authenticate, requireSeller, loadSupplierOrg, requireWritableSupplier, sellerRfqRouter);
+  app.use(`${API}/sellers`, authenticate, requireSeller, loadSupplierOrg, requireWritableSupplier, sellerRouter);
   // RFQ -> Quotation -> Order. These routers authenticate internally (and the
   // admin one also requires the admin role), so they mount without a guard here.
   app.use(`${API}/rfqs`, rfqRouter);
