@@ -8,15 +8,24 @@ const password = z
   .regex(/[A-Za-z]/, "Password must contain a letter")
   .regex(/[0-9]/, "Password must contain a digit");
 
-export const registerSchema = z.object({
-  email: z.string().email(),
-  password,
-  firstName: z.string().min(1).max(80),
-  lastName: z.string().max(80).optional(),
-  phone: z.string().max(20).optional(),
-  accountType: z.enum(["buyer", "seller"]).default("buyer"),
-  companyName: z.string().max(160).optional(),
-});
+// Email OR phone is required, not both. A supplier signing up from their
+// phone often has no work email; the service generates a non-deliverable
+// placeholder from the number in that case. Refusing here instead would make
+// the phone-only path impossible before it reached the service rule.
+export const registerSchema = z
+  .object({
+    email: z.string().email().optional(),
+    password,
+    firstName: z.string().min(1).max(80),
+    lastName: z.string().max(80).optional(),
+    phone: z.string().max(20).optional(),
+    accountType: z.enum(["buyer", "seller"]).default("buyer"),
+    companyName: z.string().max(160).optional(),
+  })
+  .refine(
+    (v) => Boolean(v.email) || (v.phone ?? "").replace(/\D/g, "").length >= 10,
+    { message: "Enter an email address or a 10-digit phone number", path: ["email"] },
+  );
 
 // Login accepts an email OR a phone number in a single `identifier` field.
 // (Legacy `email` is still accepted for backward compatibility.)

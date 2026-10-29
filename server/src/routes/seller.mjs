@@ -44,6 +44,14 @@ sellerRouter.patch("/me/onboarding", write(200, (req) =>
 sellerRouter.post("/me/onboarding/submit", write(200, (req) =>
   onboarding.submit(profileOf(req), req.user.id)));
 
+/**
+ * The whole application in one request: contact, company, address, categories
+ * and optional bank details, then straight to SUBMITTED. Replaces walking the
+ * eleven step endpoints above, which most suppliers never finished.
+ */
+sellerRouter.post("/me/onboarding/apply", write(200, (req) =>
+  onboarding.submitSingleForm(profileOf(req), req.body ?? {}, req.user.id)));
+
 // ---- Child collections ----
 sellerRouter.post("/me/locations", write(201, (req) => onboarding.addLocation(profileOf(req), locationSchema.parse(req.body), req.user.id)));
 sellerRouter.delete("/me/locations/:id", write(200, (req) => onboarding.removeLocation(profileOf(req), req.params.id, req.user.id).then(removed)));

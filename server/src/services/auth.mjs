@@ -8,7 +8,7 @@ import {
   hashToken,
 } from "../lib/crypto.mjs";
 import { env } from "../lib/env.mjs";
-import { conflict, unauthorized } from "../lib/http.mjs";
+import { badRequest, conflict, unauthorized } from "../lib/http.mjs";
 import { recordEvent, notifyRoles } from "./events.mjs";
 
 const slugify = (s) =>
@@ -83,10 +83,25 @@ const publicUser = (u) => ({
  * SupplierProfile(DRAFT) — atomically, so onboarding can start immediately.
  */
 export async function register({ email, password, firstName, lastName, phone, accountType, companyName }, meta) {
-  const normEmail = email.trim().toLowerCase();
   const normPhone = phone ? normalizePhone(phone) : null;
+
+  // Email is OPTIONAL when a phone number is given. A supplier signing up on
+  // their phone often has no work email, and User.email is a required unique
+  // column, so the placeholder is generated HERE rather than invented by each
+  // form. `.invalid` is reserved by RFC 2606 and can never resolve, so no mail
+  // is ever attempted — see crm.hasEmail and the filter in email.sendMail,
+  // which already skip these addresses.
+  const given = String(email ?? "").trim().toLowerCase();
+  if (!given && !normPhone) throw badRequest("Enter an email address or a phone number", "IDENTIFIER_REQUIRED");
+  const normEmail = given || `${normPhone}@no-email.zolopacking.invalid`;
+
   const existing = await prisma.user.findUnique({ where: { email: normEmail } });
-  if (existing) throw conflict("An account with this email already exists", "EMAIL_TAKEN");
+  if (existing) {
+    throw conflict(
+      given ? "An account with this email already exists" : "An account with this phone already exists",
+      given ? "EMAIL_TAKEN" : "PHONE_TAKEN",
+    );
+  }
   // Phone is a unique login identifier — reject if already registered.
   if (normPhone) {
     const phoneTaken = await prisma.user.findUnique({ where: { phone: normPhone } });

@@ -40,7 +40,7 @@ export function AdminGate({ children }: { children: ReactNode }) {
     setError(null);
     setBusy(true);
     try {
-      const res = await authApi.login({ email, password });
+      const res = await authApi.login({ identifier: email, password });
       if (!isAdmin(res.user.role)) {
         setError("This account is not an admin. Use an admin account to review sellers.");
         return;

@@ -131,9 +131,11 @@ export async function requestBlob(path: string): Promise<Blob> {
 
 // ---- Auth ----
 export const authApi = {
-  register: (input: { email: string; password: string; firstName: string; lastName?: string; phone?: string; accountType: "buyer" | "seller"; companyName?: string }) =>
+  register: (input: { email?: string; password: string; firstName: string; lastName?: string; phone?: string; accountType: "buyer" | "seller"; companyName?: string }) =>
     request<{ user: SessionUser; accessToken: string; refreshToken: string; organizationId: string | null }>("/auth/register", { method: "POST", body: input, auth: false }),
-  login: (input: { email: string; password: string }) =>
+  // `identifier` is an email OR a phone number — suppliers sign in with their
+  // phone, which is the only credential the short application form collects.
+  login: (input: { identifier: string; password: string }) =>
     request<{ user: SessionUser; accessToken: string; refreshToken: string }>("/auth/login", { method: "POST", body: input, auth: false }),
   me: () => request<{ user: SessionUser; organizationId: string | null; supplier: { id: string; status: string; verificationStatus: string; onboardingStep: number } | null }>("/auth/me"),
   logout: (refreshToken: string | null) => request<{ loggedOut: boolean }>("/auth/logout", { method: "POST", body: { refreshToken }, auth: false }),

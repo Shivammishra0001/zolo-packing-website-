@@ -52,27 +52,23 @@ export const onboardingApi = {
   patch: (data: Record<string, unknown>) => request<OnboardingProfile>("/sellers/me/onboarding", { method: "PATCH", body: data }),
   submit: () => request<{ status: SupplierStatus }>("/sellers/me/onboarding/submit", { method: "POST" }),
 
-  addLocation: (d: Record<string, unknown>) => request<any>("/sellers/me/locations", { method: "POST", body: d }),
-  removeLocation: (id: string) => request<any>(`/sellers/me/locations/${id}`, { method: "DELETE" }),
-  addCapability: (d: Record<string, unknown>) => request<any>("/sellers/me/capabilities", { method: "POST", body: d }),
-  removeCapability: (id: string) => request<any>(`/sellers/me/capabilities/${id}`, { method: "DELETE" }),
-  addMachine: (d: Record<string, unknown>) => request<any>("/sellers/me/machinery", { method: "POST", body: d }),
-  removeMachine: (id: string) => request<any>(`/sellers/me/machinery/${id}`, { method: "DELETE" }),
-  addMaterial: (d: Record<string, unknown>) => request<any>("/sellers/me/materials", { method: "POST", body: d }),
-  removeMaterial: (id: string) => request<any>(`/sellers/me/materials/${id}`, { method: "DELETE" }),
-  addCertification: (d: Record<string, unknown>) => request<any>("/sellers/me/certifications", { method: "POST", body: d }),
-  removeCertification: (id: string) => request<any>(`/sellers/me/certifications/${id}`, { method: "DELETE" }),
-  addBankAccount: (d: Record<string, unknown>) => request<any>("/sellers/me/bank-accounts", { method: "POST", body: d }),
-  removeBankAccount: (id: string) => request<any>(`/sellers/me/bank-accounts/${id}`, { method: "DELETE" }),
-
-  saveCapacity: (d: Record<string, unknown>) => request<any>("/sellers/me/capacity", { method: "PUT", body: d }),
-  saveQuality: (d: Record<string, unknown>) => request<any>("/sellers/me/quality", { method: "PUT", body: d }),
-  saveLogistics: (d: Record<string, unknown>) => request<any>("/sellers/me/logistics", { method: "PUT", body: d }),
-
-  listDocuments: () => request<any[]>("/sellers/me/documents"),
-  uploadDocument: (d: { type: string; fileName: string; mime: string; dataBase64: string; expiresAt?: string | null }) =>
-    request<any>("/sellers/me/documents", { method: "POST", body: d }),
-  removeDocument: (id: string) => request<any>(`/sellers/me/documents/${id}`, { method: "DELETE" }),
+  /**
+   * The whole application in one request. Replaces walking a dozen child
+   * endpoints (locations, capabilities, bank, documents, machinery, …), which
+   * is what the eleven-step wizard did and most suppliers never finished.
+   */
+  apply: (d: {
+    contactName: string;
+    companyName: string;
+    website?: string;
+    contactPhone: string;
+    addressLine: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    categories: string[];
+    bank?: { accountHolderName?: string; bankName?: string; accountNumber?: string; ifsc?: string };
+  }) => request<{ status: SupplierStatus }>("/sellers/me/onboarding/apply", { method: "POST", body: d }),
 
   dashboard: () => request<any>("/sellers/me/dashboard"),
   suggestedCategories: () => request<{ categories: string[] }>("/sellers/me/ai/suggested-categories"),

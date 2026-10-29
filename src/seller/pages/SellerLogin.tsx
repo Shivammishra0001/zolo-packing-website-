@@ -12,7 +12,9 @@ export default function SellerLogin() {
   const [tab, setTab] = useState<"login" | "register">(
     searchParams.get("tab") === "register" ? "register" : "login",
   );
-  const [form, setForm] = useState({ email: "", password: "", firstName: "", companyName: "", phone: "" });
+  // `phone` is the credential for both tabs; signing in sends it as the
+  // identifier, which the API already accepts as an alternative to an email.
+  const [form, setForm] = useState({ password: "", firstName: "", companyName: "", phone: "" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -23,8 +25,23 @@ export default function SellerLogin() {
     setError(null);
     setBusy(true);
     try {
-      if (tab === "login") await login(form.email, form.password);
-      else await registerSeller({ email: form.email, password: form.password, firstName: form.firstName, companyName: form.companyName, phone: form.phone });
+      if (tab === "login") await login(form.phone, form.password);
+      else {
+        // No email asked for: the API generates a non-deliverable placeholder
+        // from the phone number, so a supplier without a work email is not
+        // blocked at the first screen.
+        await registerSeller({
+          password: form.password,
+          firstName: form.firstName,
+          companyName: form.companyName,
+          phone: form.phone,
+        });
+        // Straight to the application form — registering is not the finish
+        // line, and a new supplier landing on an empty dashboard had no idea
+        // what to do next.
+        navigate("/seller/onboarding");
+        return;
+      }
       navigate("/seller/dashboard");
     } catch (err) {
       const msg = err instanceof ApiError ? (err.issues?.[0]?.message ?? err.message) : "Something went wrong";
@@ -62,14 +79,23 @@ export default function SellerLogin() {
                 <Field label="Company name" hint="Used as your organization name; you can refine it later.">
                   <Input value={form.companyName} onChange={set("companyName")} placeholder="Acme Packaging Pvt Ltd" />
                 </Field>
-                <Field label="Phone">
-                  <Input value={form.phone} onChange={set("phone")} placeholder="98765 43210" autoComplete="tel" />
-                </Field>
               </>
             )}
-            <Field label="Work email" required>
-              <Input type="email" value={form.email} onChange={set("email")} required placeholder="you@company.com" autoComplete="email" />
+            <Field
+              label="Phone number"
+              required
+              hint={tab === "register" ? "This is how you'll sign in." : undefined}
+            >
+              <Input
+                value={form.phone}
+                onChange={set("phone")}
+                required
+                inputMode="tel"
+                placeholder="98765 43210"
+                autoComplete={tab === "login" ? "username" : "tel"}
+              />
             </Field>
+
             <Field label="Password" required hint={tab === "register" ? "At least 8 characters, with a letter and a number." : undefined}>
               <Input type="password" value={form.password} onChange={set("password")} required autoComplete={tab === "login" ? "current-password" : "new-password"} />
             </Field>

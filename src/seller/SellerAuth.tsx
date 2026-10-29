@@ -13,8 +13,8 @@ export const isSeller = (role?: string) => !!role && SELLER_ROLES.includes(role)
 interface SellerAuthValue {
   user: SessionUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<SessionUser>;
-  registerSeller: (input: { email: string; password: string; firstName: string; lastName?: string; phone?: string; companyName?: string }) => Promise<SessionUser>;
+  login: (identifier: string, password: string) => Promise<SessionUser>;
+  registerSeller: (input: { email?: string; password: string; firstName: string; lastName?: string; phone?: string; companyName?: string }) => Promise<SessionUser>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -51,14 +51,15 @@ export function SellerAuthProvider({ children }: { children: ReactNode }) {
     refreshUser().finally(() => setLoading(false));
   }, [refreshUser]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const res = await authApi.login({ email, password });
+  /** `identifier` is a phone number or an email — the API accepts either. */
+  const login = useCallback(async (identifier: string, password: string) => {
+    const res = await authApi.login({ identifier, password });
     tokenStore.set(res.accessToken, res.refreshToken, res.user);
     setUser(res.user);
     return res.user;
   }, []);
 
-  const registerSeller = useCallback(async (input: { email: string; password: string; firstName: string; lastName?: string; phone?: string; companyName?: string }) => {
+  const registerSeller = useCallback(async (input: { email?: string; password: string; firstName: string; lastName?: string; phone?: string; companyName?: string }) => {
     const res = await authApi.register({ ...input, accountType: "seller" });
     tokenStore.set(res.accessToken, res.refreshToken, res.user);
     setUser(res.user);

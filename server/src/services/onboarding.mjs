@@ -149,7 +149,11 @@ export const removeBankAccount = (p, id, a) => removeChild(p, "supplierBankAccou
 export function computeCompleteness(profile) {
   const has = (v) => v !== null && v !== undefined && v !== "";
   const sections = {
-    business: has(profile.legalName) && has(profile.displayName) && has(profile.businessType) && has(profile.contactName) && has(profile.contactEmail) && has(profile.contactPhone),
+    // Matches the single registration form: supplier name, company name and
+    // a contact number. businessType and contactEmail stay on the model (the
+    // admin can set them) but are not gates — the form does not ask for them,
+    // so requiring them would make submission impossible.
+    business: has(profile.displayName) && has(profile.contactName) && has(profile.contactPhone),
     legal: has(profile.gstNumber) && has(profile.panNumber),
     locations: (profile.locations?.length ?? 0) >= 1,
     capabilities: (profile.capabilities?.length ?? 0) >= 1,
@@ -157,7 +161,14 @@ export function computeCompleteness(profile) {
     documents: (profile.documents?.length ?? 0) >= 1,
     bank: (profile.bankAccounts?.length ?? 0) >= 1,
   };
-  const required = ["business", "legal", "locations", "capabilities", "bank"];
+  // Onboarding is ONE short form: contact, address, categories, bank.
+  //
+  // `legal` (GST + PAN) is no longer required to submit. Many small packaging
+  // suppliers are not GST-registered, and blocking registration on a number
+  // they do not have lost real suppliers at the first screen. The fields
+  // remain on the model and in the admin view, so they can still be recorded
+  // later for anyone who has them.
+  const required = ["business", "locations", "capabilities", "bank"];
   const missing = required.filter((s) => !sections[s]);
   return { sections, required, missing, canSubmit: missing.length === 0 };
 }
@@ -193,6 +204,152 @@ export async function submit(profile, actorId) {
     await recordEvent({ eventType, actorId, organizationId: profile.organizationId, entityType: "SupplierProfile", entityId: profile.id, metadata: {} }, tx);
     await notify({ userId: actorId, type: "onboarding.submitted", title: "Application submitted", body: "Your seller application is under review.", entityType: "SupplierProfile", entityId: profile.id }, tx);
     await notifyRoles(["admin", "verification_admin"], { type: "seller.submitted", title: "New seller application", body: `${updated.displayName || "A supplier"} submitted their application for review.`, entityType: "SupplierProfile", entityId: profile.id }, tx);
+    return updated;
+  });
+}
+
+/**
+ * Create the whole supplier profile from ONE form, then submit it for review.
+ *
+ * Replaces an eleven-step wizard. The steps were a real cost: a supplier had
+ * to complete business, legal, locations, capabilities, capacity,
+ * certifications, documents, bank, quality and logistics before anything
+ * reached an admin, and most never finished.
+ *
+ * Everything lands in a SINGLE transaction. A half-written supplier — contact
+ * saved, address missing, no bank — is exactly the state the wizard produced
+ * and is useless to review, so either the whole application exists or none of
+ * it does.
+ *
+ * The caller is an authenticated seller; `profile` is their existing DRAFT.
+ */
+export async function submitSingleForm(profile, input = {}, actorId) {
+  assertEditable(profile);
+
+  const text = (v) => String(v ?? "").trim();
+  const contactName = text(input.contactName);
+  const companyName = text(input.companyName);
+  const contactPhone = text(input.contactPhone);
+  const addressLine = text(input.addressLine);
+
+  // Validated here rather than trusted from the client: this endpoint writes
+  // the record the admin approves, so it is the last place to check.
+  const missing = [];
+  if (!contactName) missing.push("supplier name");
+  if (!companyName) missing.push("company name");
+  if (contactPhone.replace(/\D/g, "").length < 10) missing.push("a 10-digit contact number");
+  if (!addressLine) missing.push("address");
+  if (!Array.isArray(input.categories) || input.categories.length === 0) missing.push("at least one product category");
+  if (missing.length) throw badRequest(`Please provide ${missing.join(", ")}`, "INCOMPLETE");
+
+  const bank = input.bank ?? {};
+  const accountNumber = text(bank.accountNumber);
+  // Bank details are optional — a supplier can be approved and start quoting
+  // before payment details exist. When ANY field is given they must all be,
+  // because a half-filled bank record cannot be paid to.
+  const wantsBank = Boolean(accountNumber || text(bank.ifsc) || text(bank.bankName));
+  if (wantsBank) {
+    const bankMissing = [];
+    if (!text(bank.accountHolderName)) bankMissing.push("account holder name");
+    if (!text(bank.bankName)) bankMissing.push("bank name");
+    if (accountNumber.length < 6) bankMissing.push("a valid account number");
+    if (!text(bank.ifsc)) bankMissing.push("IFSC code");
+    if (bankMissing.length) throw badRequest(`Bank details need ${bankMissing.join(", ")}`, "BANK_INCOMPLETE");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.supplierProfile.update({
+      where: { id: profile.id },
+      data: {
+        contactName,
+        displayName: companyName,
+        legalName: companyName,
+        contactPhone,
+        website: text(input.website) || null,
+      },
+    });
+
+    // Replace rather than append, so re-submitting after a change request does
+    // not leave the previous address and categories behind.
+    await tx.supplierLocation.deleteMany({ where: { supplierId: profile.id } });
+    await tx.supplierLocation.create({
+      data: {
+        supplierId: profile.id,
+        // The form asks for one address; HEAD_OFFICE is the neutral default.
+        // A supplier can add factory/warehouse addresses later.
+        locationType: "HEAD_OFFICE",
+        addressLine1: addressLine,
+        city: text(input.city) || "—",
+        state: text(input.state) || "—",
+        postalCode: text(input.postalCode) || "—",
+        country: text(input.country) || "India",
+        isPrimary: true,
+      },
+    });
+
+    await tx.supplierCapability.deleteMany({ where: { supplierId: profile.id } });
+    for (const raw of input.categories) {
+      const category = text(raw);
+      if (category) await tx.supplierCapability.create({ data: { supplierId: profile.id, category } });
+    }
+
+    if (wantsBank) {
+      await tx.supplierBankAccount.deleteMany({ where: { supplierId: profile.id } });
+      await tx.supplierBankAccount.create({
+        data: {
+          supplierId: profile.id,
+          accountHolderName: text(bank.accountHolderName),
+          bankName: text(bank.bankName),
+          accountNumberEnc: encryptField(accountNumber),
+          accountLast4: accountNumber.slice(-4),
+          ifsc: text(bank.ifsc).toUpperCase(),
+          isPrimary: true,
+        },
+      });
+    }
+
+    const updated = await tx.supplierProfile.update({
+      where: { id: profile.id },
+      data: { status: "SUBMITTED", submittedAt: new Date(), onboardingStep: 1 },
+    });
+    await tx.supplierStatusHistory.create({
+      data: {
+        supplierId: profile.id,
+        fromStatus: profile.status,
+        toStatus: "SUBMITTED",
+        actorId,
+        reason: profile.status === "CHANGES_REQUESTED" ? "Resubmitted after changes" : "Initial submission",
+      },
+    });
+    await tx.supplierChangeRequest.updateMany({
+      where: { supplierId: profile.id, resolved: false },
+      data: { resolved: true, resolvedAt: new Date() },
+    });
+
+    await recordEvent({
+      eventType: profile.status === "CHANGES_REQUESTED" ? "seller.onboarding.resubmitted" : "seller.onboarding.submitted",
+      actorId,
+      organizationId: profile.organizationId,
+      entityType: "SupplierProfile",
+      entityId: profile.id,
+      metadata: { categories: input.categories.length, hasBank: wantsBank },
+    }, tx);
+    await notify({
+      userId: actorId,
+      type: "onboarding.submitted",
+      title: "Application submitted",
+      body: "Your supplier application is under review.",
+      entityType: "SupplierProfile",
+      entityId: profile.id,
+    }, tx);
+    await notifyRoles(["admin", "verification_admin"], {
+      type: "seller.submitted",
+      title: "New supplier application",
+      body: `${companyName} submitted their application for review.`,
+      entityType: "SupplierProfile",
+      entityId: profile.id,
+    }, tx);
+
     return updated;
   });
 }

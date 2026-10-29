@@ -1,183 +1,306 @@
-// Seller onboarding wizard. Multi-step, autosaving, resumable. The server's
-// completeness check is authoritative — the review step + submit gate mirror it.
-import { useState } from "react";
+// Supplier application — ONE form.
+//
+// This replaced an eleven-step wizard (business, legal, locations,
+// capabilities, capacity, certifications, documents, bank, quality,
+// logistics). Nothing reached an admin until every required step was done, so
+// most applications were abandoned part-way and sat as unreviewable drafts.
+//
+// Everything here is submitted in a single request and a single transaction,
+// so an application either exists in full or not at all.
+//
+// Not asked for, deliberately: GST and PAN (many small packaging suppliers are
+// not registered, and blocking signup on a number they do not have loses real
+// suppliers), and email (the account is keyed on the phone number used to log
+// in). Both still exist on the model for an admin to fill in later.
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useOnboarding } from "../useOnboarding";
-import { Card, Button, StatusPill, Alert } from "../ui";
-import {
-  BusinessStep, LegalStep, LocationsStep, CapabilitiesStep, CapacityStep,
-  CertificationsStep, DocumentsStep, BankStep, QualityStep, LogisticsStep,
-} from "../steps";
-import type { OnboardingProfile } from "../onboarding-api";
+import { onboardingApi } from "../onboarding-api";
+import { ApiError } from "../api";
+import { Card, Button, Field, Input, Alert, StatusPill } from "../ui";
 
-// Step definitions. `section` maps to the server completeness key (for the
-// required badge); steps without a required section are optional.
-const STEPS: { key: string; title: string; section?: string; Component: any }[] = [
-  { key: "business", title: "Business Details", section: "business", Component: BusinessStep },
-  { key: "legal", title: "Legal & Tax", section: "legal", Component: LegalStep },
-  { key: "locations", title: "Locations", section: "locations", Component: LocationsStep },
-  { key: "capabilities", title: "Capabilities", section: "capabilities", Component: CapabilitiesStep },
-  { key: "capacity", title: "Capacity", section: "capacity", Component: CapacityStep },
-  { key: "certifications", title: "Certifications", Component: CertificationsStep },
-  { key: "documents", title: "Documents", section: "documents", Component: DocumentsStep },
-  { key: "bank", title: "Bank Details", section: "bank", Component: BankStep },
-  { key: "quality", title: "Quality", Component: QualityStep },
-  { key: "logistics", title: "Logistics", Component: LogisticsStep },
+/** Shown as chips; a supplier can also type their own. */
+const SUGGESTED_CATEGORIES = [
+  "Corrugated Boxes",
+  "Kraft Boxes",
+  "Paper Bags",
+  "Food Packaging",
+  "Bottles & Containers",
+  "Labels & Stickers",
+  "Protective Packaging",
+  "Gift Packaging",
+  "Flexible Packaging",
+  "Tapes",
 ];
 
-const SaveIndicator = ({ state }: { state: string }) => {
-  const map: Record<string, { t: string; c: string }> = {
-    idle: { t: "", c: "" },
-    saving: { t: "Saving…", c: "text-slate-400" },
-    saved: { t: "✓ Saved", c: "text-emerald-600" },
-    error: { t: "⚠ Save failed", c: "text-red-600" },
-  };
-  const s = map[state] ?? map.idle;
-  return <span className={`text-xs ${s.c}`}>{s.t}</span>;
+const EMPTY = {
+  contactName: "",
+  companyName: "",
+  website: "",
+  contactPhone: "",
+  addressLine: "",
+  city: "",
+  state: "",
+  postalCode: "",
+  accountHolderName: "",
+  bankName: "",
+  accountNumber: "",
+  ifsc: "",
 };
 
 export default function Onboarding() {
-  const { profile, loading, error, saveState, updateField, mutate, flush, submit, setError } = useOnboarding();
-  const [stepIndex, setStepIndex] = useState(0);
-  const [showReview, setShowReview] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
+  const [form, setForm] = useState(EMPTY);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [customCategory, setCustomCategory] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  if (loading) return <div className="grid min-h-[60vh] place-items-center text-slate-400">Loading your application…</div>;
-  if (!profile) return <div className="p-8"><Alert tone="error">{error ?? "No supplier profile found."}</Alert></div>;
+  const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const readOnly = !["DRAFT", "CHANGES_REQUESTED"].includes(profile.status);
-  const completeness = profile.completeness;
-  const openCR = profile.changeRequests?.[0];
+  // Prefill from whatever the account already has, so a supplier returning
+  // after a change request is not retyping their own name.
+  useEffect(() => {
+    let cancelled = false;
+    onboardingApi
+      .get()
+      .then((p) => {
+        if (cancelled) return;
+        setStatus(p.status);
+        setForm((f) => ({
+          ...f,
+          contactName: p.contactName ?? "",
+          companyName: p.displayName ?? "",
+          website: p.website ?? "",
+          contactPhone: p.contactPhone ?? "",
+        }));
+      })
+      .catch(() => {
+        // A missing profile is not fatal — the form still submits and the
+        // server creates what it needs.
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
-  async function goto(i: number) { await flush(); setStepIndex(i); setShowReview(false); }
+  const toggleCategory = (c: string) =>
+    setCategories((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
 
-  async function onSubmit() {
-    setSubmitting(true);
+  function addCustomCategory() {
+    const v = customCategory.trim();
+    if (!v || categories.includes(v)) return;
+    setCategories((prev) => [...prev, v]);
+    setCustomCategory("");
+  }
+
+  // Mirrors the server's rule. The server is still the authority — this just
+  // avoids a round trip to learn something the form already knows.
+  const canSubmit = useMemo(
+    () =>
+      form.contactName.trim() !== "" &&
+      form.companyName.trim() !== "" &&
+      form.contactPhone.replace(/\D/g, "").length >= 10 &&
+      form.addressLine.trim() !== "" &&
+      categories.length > 0 &&
+      !busy,
+    [form, categories, busy],
+  );
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
     setError(null);
+    setBusy(true);
     try {
-      await submit();
+      const bankTouched = form.accountNumber.trim() || form.ifsc.trim() || form.bankName.trim();
+      await onboardingApi.apply({
+        contactName: form.contactName.trim(),
+        companyName: form.companyName.trim(),
+        website: form.website.trim() || undefined,
+        contactPhone: form.contactPhone.trim(),
+        addressLine: form.addressLine.trim(),
+        city: form.city.trim() || undefined,
+        state: form.state.trim() || undefined,
+        postalCode: form.postalCode.trim() || undefined,
+        categories,
+        bank: bankTouched
+          ? {
+              accountHolderName: form.accountHolderName.trim(),
+              bankName: form.bankName.trim(),
+              accountNumber: form.accountNumber.trim(),
+              ifsc: form.ifsc.trim(),
+            }
+          : undefined,
+      });
       navigate("/seller/dashboard");
-    } catch { /* error surfaced by hook */ } finally {
-      setSubmitting(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? (err.issues?.[0]?.message ?? err.message) : "Something went wrong");
+    } finally {
+      setBusy(false);
     }
   }
 
-  const Step = STEPS[stepIndex].Component;
-
-  return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Supplier onboarding</h1>
-          <p className="text-sm text-slate-500">{profile.displayName || "Your company"} · <StatusPill status={profile.status} /></p>
-        </div>
-        <SaveIndicator state={saveState} />
-      </header>
-
-      {readOnly && (
-        <div className="mb-5"><Alert tone="info" title="Read-only">
-          Your application is <b>{profile.status.replace(/_/g, " ").toLowerCase()}</b> and can't be edited right now.
-        </Alert></div>
-      )}
-      {profile.status === "CHANGES_REQUESTED" && openCR && (
-        <div className="mb-5"><Alert tone="warn" title="Changes requested by our team">
-          <ul className="mt-1 list-disc pl-5">
-            {openCR.issues.map((it, i) => <li key={i}><b>{it.section}:</b> {it.message}</li>)}
-          </ul>
-          <p className="mt-2">Update the relevant sections and resubmit.</p>
-        </Alert></div>
-      )}
-      {error && <div className="mb-5"><Alert tone="error">{error}</Alert></div>}
-
-      <div className="grid gap-6 md:grid-cols-[220px_1fr]">
-        {/* Step nav */}
-        <nav className="space-y-1">
-          {STEPS.map((s, i) => {
-            const done = s.section ? completeness.sections[s.section] : undefined;
-            return (
-              <button key={s.key} onClick={() => goto(i)}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${i === stepIndex && !showReview ? "bg-orange-50 font-semibold text-orange-700" : "text-slate-600 hover:bg-slate-100"}`}>
-                <span>{i + 1}. {s.title}{s.section && completeness.required.includes(s.section) && <span className="text-orange-500"> *</span>}</span>
-                {done === true && <span className="text-emerald-500">✓</span>}
-                {done === false && s.section && completeness.required.includes(s.section) && <span className="text-amber-500">!</span>}
-              </button>
-            );
-          })}
-          <button onClick={async () => { await flush(); setShowReview(true); }}
-            className={`mt-2 flex w-full rounded-lg px-3 py-2 text-left text-sm font-semibold transition ${showReview ? "bg-orange-50 text-orange-700" : "text-slate-700 hover:bg-slate-100"}`}>
-            Review &amp; Submit
-          </button>
-        </nav>
-
-        {/* Step content */}
-        <div>
-          {showReview ? (
-            <ReviewStep profile={profile} onEdit={(section) => {
-              const idx = STEPS.findIndex((s) => s.section === section || s.key === section);
-              if (idx >= 0) goto(idx);
-            }} onSubmit={onSubmit} submitting={submitting} readOnly={readOnly} />
-          ) : (
-            <Card>
-              <h2 className="mb-4 text-lg font-semibold text-slate-900">{STEPS[stepIndex].title}</h2>
-              <Step profile={profile} updateField={updateField} mutate={mutate} readOnly={readOnly} />
-              <div className="mt-6 flex justify-between border-t border-slate-100 pt-4">
-                <Button variant="secondary" disabled={stepIndex === 0} onClick={() => goto(stepIndex - 1)}>Back</Button>
-                {stepIndex < STEPS.length - 1
-                  ? <Button onClick={() => goto(stepIndex + 1)}>Save &amp; continue</Button>
-                  : <Button onClick={async () => { await flush(); setShowReview(true); }}>Go to review</Button>}
-              </div>
-            </Card>
-          )}
-        </div>
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-12">
+        <Card><p className="py-8 text-center text-sm text-slate-500">Loading…</p></Card>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-function ReviewStep({ profile, onEdit, onSubmit, submitting, readOnly }: {
-  profile: OnboardingProfile; onEdit: (section: string) => void; onSubmit: () => void; submitting: boolean; readOnly: boolean;
-}) {
-  const c = profile.completeness;
-  const rows: { section: string; label: string; ok: boolean; required: boolean }[] = [
-    { section: "business", label: "Business details", ok: c.sections.business, required: true },
-    { section: "legal", label: "Legal & tax", ok: c.sections.legal, required: true },
-    { section: "locations", label: "Locations", ok: c.sections.locations, required: true },
-    { section: "capabilities", label: "Capabilities", ok: c.sections.capabilities, required: true },
-    { section: "capacity", label: "Capacity", ok: c.sections.capacity, required: false },
-    { section: "documents", label: "Documents", ok: c.sections.documents, required: false },
-    { section: "bank", label: "Bank details", ok: c.sections.bank, required: true },
-  ];
+  // Already with the admin: show where it stands rather than a form that would
+  // overwrite what is being reviewed.
+  if (status === "SUBMITTED" || status === "UNDER_REVIEW" || status === "APPROVED") {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-12">
+        <Card>
+          <div className="py-6 text-center">
+            <StatusPill status={status} />
+            <h1 className="mt-4 text-xl font-bold text-slate-900">
+              {status === "APPROVED" ? "You're approved" : "Application under review"}
+            </h1>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">
+              {status === "APPROVED"
+                ? "Your supplier account is active. Head to your dashboard to start receiving enquiries."
+                : "Our team is reviewing your details. You'll be notified as soon as a decision is made."}
+            </p>
+            <div className="mt-5">
+              <Button onClick={() => navigate("/seller/dashboard")}>Go to dashboard</Button>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
-    <Card>
-      <h2 className="mb-4 text-lg font-semibold text-slate-900">Review &amp; submit</h2>
-      <ul className="divide-y divide-slate-100">
-        {rows.map((r) => (
-          <li key={r.section} className="flex items-center justify-between py-3">
-            <span className="text-sm text-slate-700">{r.label}{r.required && <span className="text-orange-500"> *</span>}</span>
-            <span className="flex items-center gap-3">
-              <span className={`text-xs font-semibold ${r.ok ? "text-emerald-600" : r.required ? "text-amber-600" : "text-slate-400"}`}>
-                {r.ok ? "Complete" : r.required ? "Incomplete" : "Optional"}
-              </span>
-              <Button size="sm" variant="ghost" onClick={() => onEdit(r.section)}>Edit</Button>
-            </span>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-6 border-t border-slate-100 pt-4">
-        {c.canSubmit ? (
-          <Alert tone="success">All required sections are complete. You're ready to submit for review.</Alert>
-        ) : (
-          <Alert tone="warn">Complete these required sections to submit: <b>{c.missing.join(", ")}</b></Alert>
-        )}
-        {!readOnly && (
-          <div className="mt-4">
-            <Button onClick={onSubmit} loading={submitting} disabled={!c.canSubmit} variant="success">
-              {profile.status === "CHANGES_REQUESTED" ? "Resubmit application" : "Submit application"}
+    <div className="mx-auto max-w-2xl px-4 py-10">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">Become a Zolo supplier</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          One short form. We review it and get back to you — no documents needed to apply.
+        </p>
+      </div>
+
+      {status === "CHANGES_REQUESTED" && (
+        <div className="mb-4">
+          <Alert tone="warn" title="Changes requested">
+            Update your details below and submit again.
+          </Alert>
+        </div>
+      )}
+      {error && <div className="mb-4"><Alert tone="error">{error}</Alert></div>}
+
+      <form onSubmit={submit} className="space-y-5">
+        <Card>
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-500">Your details</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Supplier name" required>
+              <Input value={form.contactName} onChange={set("contactName")} required placeholder="Ravi Kumar" autoComplete="name" />
+            </Field>
+            <Field label="Company name" required>
+              <Input value={form.companyName} onChange={set("companyName")} required placeholder="Kumar Packaging Pvt Ltd" autoComplete="organization" />
+            </Field>
+            <Field label="Contact number" required hint="You'll use this number to sign in">
+              <Input value={form.contactPhone} onChange={set("contactPhone")} required inputMode="tel" placeholder="98765 43210" autoComplete="tel" />
+            </Field>
+            <Field label="Website">
+              <Input value={form.website} onChange={set("website")} inputMode="url" placeholder="https://example.com" autoComplete="url" />
+            </Field>
+          </div>
+        </Card>
+
+        <Card>
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-500">Address</h2>
+          <div className="space-y-4">
+            <Field label="Address" required>
+              <Input value={form.addressLine} onChange={set("addressLine")} required placeholder="12 Industrial Estate" autoComplete="street-address" />
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="City"><Input value={form.city} onChange={set("city")} placeholder="Pune" /></Field>
+              <Field label="State"><Input value={form.state} onChange={set("state")} placeholder="Maharashtra" /></Field>
+              <Field label="PIN code"><Input value={form.postalCode} onChange={set("postalCode")} inputMode="numeric" placeholder="411001" /></Field>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-slate-500">
+            Product categories <span className="text-red-500">*</span>
+          </h2>
+          <p className="mb-3 text-xs text-slate-500">What do you manufacture? Pick all that apply.</p>
+          <div className="flex flex-wrap gap-2">
+            {SUGGESTED_CATEGORIES.map((c) => {
+              const on = categories.includes(c);
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => toggleCategory(c)}
+                  aria-pressed={on}
+                  className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                    on
+                      ? "border-orange-500 bg-orange-50 text-orange-700"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  {c}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* A supplier's own words matter more than our taxonomy. */}
+          <div className="mt-4 flex gap-2">
+            <Input
+              value={customCategory}
+              onChange={(e) => setCustomCategory(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomCategory(); } }}
+              placeholder="Something else? Type it here"
+            />
+            <Button type="button" variant="secondary" onClick={addCustomCategory} disabled={!customCategory.trim()}>
+              Add
             </Button>
           </div>
-        )}
-      </div>
-    </Card>
+
+          {categories.length > 0 && (
+            <p className="mt-3 text-xs text-slate-500">
+              Selected: <span className="font-semibold text-slate-700">{categories.join(", ")}</span>
+            </p>
+          )}
+        </Card>
+
+        <Card>
+          <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-slate-500">Account details</h2>
+          <p className="mb-4 text-xs text-slate-500">
+            Optional — you can add these later. We need them before we can pay you.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Account holder name">
+              <Input value={form.accountHolderName} onChange={set("accountHolderName")} placeholder="Kumar Packaging Pvt Ltd" />
+            </Field>
+            <Field label="Bank name">
+              <Input value={form.bankName} onChange={set("bankName")} placeholder="HDFC Bank" />
+            </Field>
+            <Field label="Account number">
+              <Input value={form.accountNumber} onChange={set("accountNumber")} inputMode="numeric" autoComplete="off" placeholder="XXXXXXXXXXXX" />
+            </Field>
+            <Field label="IFSC code">
+              <Input value={form.ifsc} onChange={set("ifsc")} autoComplete="off" placeholder="HDFC0001234" />
+            </Field>
+          </div>
+        </Card>
+
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-xs text-slate-500">
+            We'll review your application and let you know by phone.
+          </p>
+          <Button type="submit" disabled={!canSubmit}>
+            {busy ? "Submitting…" : "Submit application"}
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 }
