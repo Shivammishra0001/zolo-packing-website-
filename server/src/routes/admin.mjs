@@ -10,6 +10,7 @@ import * as crmNotify from "../services/crm-notifications.mjs";
 import * as aiGen from "../services/ai-generate.mjs";
 import * as dashboards from "../services/dashboards.mjs";
 import * as financialReport from "../services/financial-report.mjs";
+import * as procurement from "../services/procurement.mjs";
 import * as inventory from "../services/inventory.mjs";
 import * as pricing from "../services/pricing.mjs";
 import * as payouts from "../services/payouts.mjs";
@@ -308,6 +309,42 @@ adminRouter.post("/payments/:id/refund", wrap(async (req, res) => {
 
 adminRouter.get("/orders/:id/invoice", wrap(async (req, res) => {
   ok(res, await orders.getInvoice(req.params.id, { isAdmin: true }));
+}));
+
+// ---- Procurement: Zolo buying FROM suppliers -------------------------------
+// The whole router sits behind authenticate + requireAdmin, so a supplier or
+// customer token cannot reach any of this regardless of what the UI shows.
+
+adminRouter.get("/procurement/orders", wrap(async (req, res) => {
+  ok(res, await procurement.listPurchaseOrders(req.query));
+}));
+
+adminRouter.get("/procurement/orders/:id", wrap(async (req, res) => {
+  const po = await procurement.getPurchaseOrder(req.params.id);
+  if (!po) throw notFound("Purchase order not found");
+  ok(res, po);
+}));
+
+adminRouter.post("/procurement/orders", wrap(async (req, res) => {
+  ok(res, await procurement.createPurchaseOrder(req.user, req.body ?? {}), 201);
+}));
+
+adminRouter.post("/procurement/orders/:id/send", wrap(async (req, res) => {
+  ok(res, await procurement.sendPurchaseOrder(req.user, req.params.id));
+}));
+
+adminRouter.post("/procurement/orders/:id/cancel", wrap(async (req, res) => {
+  ok(res, await procurement.cancelPurchaseOrder(req.user, req.params.id, req.body?.reason));
+}));
+
+/** Record a delivery. Accepted goods enter stock through the ledger. */
+adminRouter.post("/procurement/orders/:id/receipts", wrap(async (req, res) => {
+  ok(res, await procurement.receiveGoods(req.user, req.params.id, req.body ?? {}), 201);
+}));
+
+/** Pay a supplier. Separate from customer payments and seller payouts. */
+adminRouter.post("/procurement/orders/:id/payments", wrap(async (req, res) => {
+  ok(res, await procurement.recordSupplierPayment(req.user, req.params.id, req.body ?? {}), 201);
 }));
 
 adminRouter.get("/sellers", wrap(async (req, res) => {

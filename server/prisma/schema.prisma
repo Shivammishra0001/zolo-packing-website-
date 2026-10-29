@@ -81,6 +81,9 @@ model User {
   wishlist               Wishlist?
   cart                   Cart?
   sellerProducts         Product[]              @relation("ProductSeller")
+  purchaseOrdersCreated  PurchaseOrder[]        @relation("PurchaseOrderCreatedBy")
+  goodsReceiptsTaken     GoodsReceipt[]         @relation("GoodsReceiptReceivedBy")
+  supplierPaymentsMade   SupplierPayment[]      @relation("SupplierPaymentPaidBy")
   stockMovements         StockMovement[]        @relation("StockMovementActor")
   rfqs                   Rfq[]
   quotations             Quotation[]
@@ -233,6 +236,10 @@ model SupplierProfile {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Procurement: Zolo buying FROM this supplier (opposite direction to Payout).
+  purchaseOrders   PurchaseOrder[]
+  supplierPayments SupplierPayment[]
 
   locations      SupplierLocation[]
   capabilities   SupplierCapability[]
@@ -596,6 +603,9 @@ model Product {
   subcategoryRef  Category?     @relation("ProductSubcategory", fields: [subcategoryId], references: [id], onDelete: SetNull)
   sellerId        String? // owning supplier user (null = house catalog)
   seller          User?         @relation("ProductSeller", fields: [sellerId], references: [id], onDelete: SetNull)
+  // Procurement lines that ordered this product (reference only — the PO line
+  // snapshots its own name/sku, so this never restates history).
+  purchaseOrderItems PurchaseOrderItem[]
   status          ProductStatus @default(draft)
   description     String?
   // dimensions
@@ -2356,4 +2366,173 @@ model SalesOrderSample {
   createdAt    DateTime @default(now())
 
   @@index([orderId])
+}
+
+// ============================================================
+// PROCUREMENT — Zolo BUYING from suppliers.
+//
+// The opposite money direction to Payout, which settles what Zolo OWES a
+// marketplace seller for their own sales. Here Zolo is the customer: it raises
+// a purchase order, receives goods against it, and owes the supplier money.
+// Keeping the two apart matters — mixing a payable with a payout would net a
+// supplier's incoming and outgoing money into one meaningless figure.
+//
+// Money is integer minor units (paise), like everywhere else in this schema.
+// ============================================================
+
+enum PurchaseOrderStatus {
+  DRAFT // being prepared, not yet sent
+  SENT // issued to the supplier
+  PARTIALLY_RECEIVED // some lines delivered
+  RECEIVED // everything delivered
+  CANCELLED
+}
+
+/** A purchase order raised on a supplier. */
+model PurchaseOrder {
+  id         String              @id @default(cuid())
+  poNumber   String              @unique // PUR-xxxx, app-generated
+  supplierId String
+  supplier   SupplierProfile     @relation(fields: [supplierId], references: [id])
+  status     PurchaseOrderStatus @default(DRAFT)
+
+  orderedAt    DateTime  @default(now())
+  expectedAt   DateTime?
+  // Stamped when the last outstanding line is received.
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  // Order-level money, DERIVED from the lines by recomputePurchaseOrder() and
+  // never assigned by a caller — the same rule customer orders follow.
+  subtotalMinor   Int @default(0)
+  taxMinor        Int @default(0)
+  shippingMinor   Int @default(0)
+  grandTotalMinor Int @default(0)
+  // Sum of settled supplier payments against this PO.
+  paidMinor       Int @default(0)
+
+  currency  String  @default("INR")
+  notes     String?
+  reference String? // the supplier's own quote/invoice reference
+
+  createdById String?
+  createdBy   User?   @relation("PurchaseOrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items    PurchaseOrderItem[]
+  receipts GoodsReceipt[]
+  payments SupplierPayment[]
+
+  @@index([supplierId])
+  @@index([status])
+  @@index([orderedAt])
+}
+
+/**
+ * One ordered line. Product details are SNAPSHOT here, so renaming or
+ * repricing a product later never restates an old purchase order.
+ */
+model PurchaseOrderItem {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  // Reference only; the snapshot below is the source of truth.
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productName String
+  sku         String?
+  description String?
+
+  quantity       Int
+  unitCostMinor  Int
+  lineTotalMinor Int
+  // Running total of what has actually arrived, maintained by goods receipt.
+  receivedQty    Int @default(0)
+
+  receiptItems GoodsReceiptItem[]
+
+  @@index([purchaseOrderId])
+}
+
+/** A delivery against a purchase order. Several may arrive for one PO. */
+model GoodsReceipt {
+  id              String        @id @default(cuid())
+  receiptNumber   String        @unique // GRN-xxxx
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  receivedAt   DateTime @default(now())
+  receivedById String?
+  receivedBy   User?    @relation("GoodsReceiptReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+  notes        String?
+
+  items GoodsReceiptItem[]
+
+  @@index([purchaseOrderId])
+}
+
+/**
+ * What actually arrived for one ordered line.
+ *
+ * `acceptedQty` and `rejectedQty` are separate because a short or damaged
+ * delivery is a fact worth keeping: only accepted goods enter stock, while the
+ * rejection stays on the record as the discrepancy.
+ */
+model GoodsReceiptItem {
+  id                  String            @id @default(cuid())
+  goodsReceiptId      String
+  goodsReceipt        GoodsReceipt      @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  purchaseOrderItemId String
+  purchaseOrderItem   PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Cascade)
+
+  acceptedQty Int
+  rejectedQty Int     @default(0)
+  remarks     String?
+
+  @@index([goodsReceiptId])
+  @@index([purchaseOrderItemId])
+}
+
+enum SupplierPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+/**
+ * Money paid TO a supplier against a purchase order.
+ *
+ * Deliberately a separate model from Payment (customer receipts) and Payout
+ * (marketplace settlements). One table for all three would make "what do we
+ * owe" and "what are we owed" the same query, which is how those figures get
+ * netted into nonsense.
+ */
+model SupplierPayment {
+  id              String                @id @default(cuid())
+  paymentNumber   String                @unique // SPY-xxxx
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id])
+  supplierId      String
+  supplier        SupplierProfile       @relation(fields: [supplierId], references: [id])
+
+  amountMinor Int
+  method      String // bank_transfer | upi | cheque | cash | other
+  status      SupplierPaymentStatus @default(PAID)
+  reference   String? // UTR / cheque number
+  paidAt      DateTime?
+  notes       String?
+
+  paidById String?
+  paidBy   User?   @relation("SupplierPaymentPaidBy", fields: [paidById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([purchaseOrderId])
+  @@index([supplierId])
+  @@index([status])
 }
