@@ -205,6 +205,10 @@ export async function listForSupplier(supplierProfileId, { page = 1, limit = 25 
       select: {
         id: true, sku: true, name: true, status: true, basePriceMinor: true,
         moq: true, stock: true, category: true, images: true, updatedAt: true,
+        // Why it was sent back — without this the admin sees a bare "Draft"
+        // and cannot tell their own rejection from a supplier's unfinished
+        // listing.
+        rejectionNote: true,
       },
     }),
     prisma.product.groupBy({ by: ["status"], where, _count: true }),
