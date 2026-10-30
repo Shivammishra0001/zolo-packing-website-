@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { adminSellerApi } from "../onboarding-api";
+import { SupplierProductsSection } from "./SupplierProductsSection";
 import { Card, StatusPill, Button, Alert, EmptyState, Textarea, Field } from "../ui";
 import { AdminGate } from "./AdminGate";
 
@@ -91,6 +92,11 @@ function AdminSellerDetailInner() {
           </div>
         )}
       </Card>
+
+      {/* What this supplier sells, and anything waiting on moderation. */}
+      <div className="mb-4">
+        <SupplierProductsSection supplierId={s.id} />
+      </div>
 
       {/* Summary sections */}
       <div className="grid gap-4 md:grid-cols-2">

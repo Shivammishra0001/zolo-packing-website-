@@ -1,10 +1,12 @@
 // Self-contained seller portal — its own chrome, real-auth guarded.
 import { Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
 import { SellerAuthProvider, RequireSeller, useSellerAuth } from "./SellerAuth";
+import { RequireApproved } from "./RequireApproved";
 import SellerLogin from "./pages/SellerLogin";
 import Onboarding from "./pages/Onboarding";
 import SellerDashboard from "./pages/SellerDashboard";
 import SellerRfqs from "./pages/SellerRfqs";
+import SellerProducts from "./pages/SellerProducts";
 
 function SellerShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useSellerAuth();
@@ -18,6 +20,7 @@ function SellerShell({ children }: { children: React.ReactNode }) {
             <span className="font-bold text-slate-900">Zolo <span className="text-orange-600">Supplier</span></span>
             <nav className="flex gap-1">
               <NavLink to="/seller/dashboard" className={({ isActive }) => `${link} ${isActive ? "bg-orange-50 text-orange-700" : "text-slate-600 hover:bg-slate-100"}`}>Dashboard</NavLink>
+              <NavLink to="/seller/products" className={({ isActive }) => `${link} ${isActive ? "bg-orange-50 text-orange-700" : "text-slate-600 hover:bg-slate-100"}`}>Products</NavLink>
               <NavLink to="/seller/rfqs" className={({ isActive }) => `${link} ${isActive ? "bg-orange-50 text-orange-700" : "text-slate-600 hover:bg-slate-100"}`}>RFQ Leads</NavLink>
               <NavLink to="/seller/onboarding" className={({ isActive }) => `${link} ${isActive ? "bg-orange-50 text-orange-700" : "text-slate-600 hover:bg-slate-100"}`}>Onboarding</NavLink>
             </nav>
@@ -47,8 +50,9 @@ export default function SellerRoutes() {
       <Routes>
         <Route path="/seller/login" element={<SellerLogin />} />
         <Route path="/seller" element={<Navigate to="/seller/dashboard" replace />} />
-        <Route path="/seller/dashboard" element={<RequireSeller><SellerShell><SellerDashboard /></SellerShell></RequireSeller>} />
-        <Route path="/seller/rfqs" element={<RequireSeller><SellerShell><SellerRfqs /></SellerShell></RequireSeller>} />
+        <Route path="/seller/dashboard" element={<RequireSeller><SellerShell><RequireApproved><SellerDashboard /></RequireApproved></SellerShell></RequireSeller>} />
+        <Route path="/seller/products" element={<RequireSeller><SellerShell><RequireApproved><SellerProducts /></RequireApproved></SellerShell></RequireSeller>} />
+        <Route path="/seller/rfqs" element={<RequireSeller><SellerShell><RequireApproved><SellerRfqs /></RequireApproved></SellerShell></RequireSeller>} />
         <Route path="/seller/onboarding" element={<RequireSeller><SellerShell><Onboarding /></SellerShell></RequireSeller>} />
         <Route path="/seller/*" element={<Navigate to="/seller/dashboard" replace />} />
       </Routes>

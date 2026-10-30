@@ -48,6 +48,19 @@ export interface OnboardingProfile {
 }
 
 export const onboardingApi = {
+  // ---- Supplier catalog listings (ADR-001). Ownership and publication are
+  // decided server-side from the session; nothing here can set them.
+  products: (params: { status?: string; q?: string; page?: number; limit?: number } = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== "").map(([k, v]) => [k, String(v)])).toString();
+    return request<ListingPage>(`/sellers/me/products${qs ? `?${qs}` : ""}`);
+  },
+  createProduct: (body: Record<string, unknown>) =>
+    request<SupplierListing>("/sellers/me/products", { method: "POST", body }),
+  updateProduct: (id: string, body: Record<string, unknown>) =>
+    request<SupplierListing>(`/sellers/me/products/${id}`, { method: "PATCH", body }),
+  withdrawProduct: (id: string) =>
+    request<SupplierListing>(`/sellers/me/products/${id}/withdraw`, { method: "POST" }),
+
   get: () => request<OnboardingProfile>("/sellers/me/onboarding"),
   patch: (data: Record<string, unknown>) => request<OnboardingProfile>("/sellers/me/onboarding", { method: "PATCH", body: data }),
   submit: () => request<{ status: SupplierStatus }>("/sellers/me/onboarding/submit", { method: "POST" }),
@@ -88,7 +101,55 @@ export interface AdminSellerListItem {
   _count: { documents: number; capabilities: number; locations: number };
 }
 
+/** One catalog listing owned by a supplier. */
+export interface SupplierListing {
+  id: string;
+  sku: string;
+  name: string;
+  status: "draft" | "pending_review" | "active" | "archived";
+  basePriceMinor: number;
+  moq: number;
+  stock: number;
+  category: string;
+  subcategory?: string;
+  images: string[];
+  updatedAt: string;
+  rejectionNote?: string | null;
+}
+
+export interface ListingPage {
+  products: SupplierListing[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+  byStatus?: Record<string, number>;
+}
+
 export const adminSellerApi = {
+  /** Every listing owned by one supplier, with status counts. */
+  products: (id: string, params: { page?: number; limit?: number } = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])).toString();
+    return request<ListingPage>(`/admin/sellers/${id}/products${qs ? `?${qs}` : ""}`);
+  },
+
+  /** The cross-supplier moderation queue. */
+  pendingListings: (params: { page?: number; limit?: number } = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])).toString();
+    return request<ListingPage>(`/admin/product-listings/pending${qs ? `?${qs}` : ""}`);
+  },
+
+  /** Approve a listing. Commission (basis points) is set here, by the admin. */
+  approveListing: (id: string, commissionBps?: number) =>
+    request<{ product: SupplierListing }>(`/admin/product-listings/${id}/approve`, {
+      method: "POST",
+      body: commissionBps === undefined ? {} : { commissionBps },
+    }),
+
+  /** Send a listing back with a reason the supplier can act on. */
+  rejectListing: (id: string, reason: string) =>
+    request<{ product: SupplierListing }>(`/admin/product-listings/${id}/reject`, { method: "POST", body: { reason } }),
+
   list: (params: { status?: string; verificationStatus?: string; businessType?: string; search?: string } = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]).toString();
     return request<{ items: AdminSellerListItem[]; total: number }>(`/admin/sellers${qs ? `?${qs}` : ""}`);

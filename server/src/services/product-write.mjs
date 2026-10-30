@@ -55,7 +55,10 @@ export const productWriteSchema = z.object({
   moq: z.number().int().min(1, "MOQ must be at least 1").max(100_000_000).optional(),
   stock: z.number().int().min(0, "Stock cannot be negative").max(1_000_000_000).optional(),
   lowStockLevel: optInt(0, 1_000_000_000),
-  status: z.enum(["draft", "active", "archived"]).optional(),
+  // Mirrors the Prisma ProductStatus enum. `pending_review` is set by the
+  // seller service, never by a client: the admin routes strip `status` from
+  // request bodies, and seller-products.mjs forces it.
+  status: z.enum(["draft", "pending_review", "active", "archived"]).optional(),
   // Homepage merchandising (admin-controlled; see schema.prisma). Order is an
   // optional positive integer; it is forced to null whenever its flag is off.
   isFeatured: z.boolean().optional(),

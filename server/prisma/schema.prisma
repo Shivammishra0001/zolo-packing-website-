@@ -256,6 +256,7 @@ model SupplierProfile {
   rfqMatches     RfqMatch[]
   quotations     Quotation[]             @relation("QuotationSupplier")
   payouts        Payout[]
+  products       Product[]               @relation("SupplierProducts")
 
   @@index([status])
   @@index([verificationStatus])
@@ -580,79 +581,93 @@ model Notification {
 
 enum ProductStatus {
   draft
+  // Supplier-submitted and awaiting admin moderation. The storefront filters
+  // on `active`, so a pending listing is invisible to buyers by construction.
+  pending_review
   active
   archived
 }
 
 model Product {
-  id              String        @id // PRD-xxxx (app-generated, stable across UI)
-  sku             String        @unique
-  slug            String        @unique
-  name            String
+  id                 String              @id // PRD-xxxx (app-generated, stable across UI)
+  sku                String              @unique
+  slug               String              @unique
+  name               String
   // `category`/`subcategory` remain as denormalized taxonomy strings (used by
   // SupplierCapability matching and legacy queries); categoryId is the
   // normalized relation to the Category table.
-  category        String
-  subcategory     String        @default("General")
-  categoryId      String?
-  categoryRef     Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  category           String
+  subcategory        String              @default("General")
+  categoryId         String?
+  categoryRef        Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   // Normalized subcategory relation. The denormalized `subcategory` string
   // above is kept in sync (legacy queries + SupplierCapability matching read
   // it); this is the FK used for real taxonomy navigation.
-  subcategoryId   String?
-  subcategoryRef  Category?     @relation("ProductSubcategory", fields: [subcategoryId], references: [id], onDelete: SetNull)
-  sellerId        String? // owning supplier user (null = house catalog)
-  seller          User?         @relation("ProductSeller", fields: [sellerId], references: [id], onDelete: SetNull)
+  subcategoryId      String?
+  subcategoryRef     Category?           @relation("ProductSubcategory", fields: [subcategoryId], references: [id], onDelete: SetNull)
+  // OWNERSHIP vs ATTRIBUTION (see docs/adr/ADR-001-supplier-owned-products.md):
+  //   supplierProfileId = the approved COMPANY that owns this listing.
+  //   sellerId          = the USER who submitted it, for audit only.
+  // Ownership is on the organisation because that is what onboarding approves;
+  // tying it to a user would lose the listing when that employee leaves.
+  // Both null = house catalog, which is every pre-existing row.
+  supplierProfileId  String?
+  supplierProfile    SupplierProfile?    @relation("SupplierProducts", fields: [supplierProfileId], references: [id], onDelete: SetNull)
+  // Why an admin sent a supplier listing back. Shown to the supplier so they
+  // can fix it; cleared on approval.
+  rejectionNote      String?
+  sellerId           String? // submitting supplier user (attribution only)
+  seller             User?               @relation("ProductSeller", fields: [sellerId], references: [id], onDelete: SetNull)
   // Procurement lines that ordered this product (reference only — the PO line
   // snapshots its own name/sku, so this never restates history).
   purchaseOrderItems PurchaseOrderItem[]
-  status          ProductStatus @default(draft)
-  description     String?
+  status             ProductStatus       @default(draft)
+  description        String?
   // dimensions
-  length          Float?
-  width           Float?
-  height          Float?
-  dimUnit         String? // in | cm | mm
-  weightGrams     Int?
-  gsm             Int?
-  color           String?
-  material        String?
+  length             Float?
+  width              Float?
+  height             Float?
+  dimUnit            String? // in | cm | mm
+  weightGrams        Int?
+  gsm                Int?
+  color              String?
+  material           String?
   // Catalog "Type" column (e.g. "Packaging Box", "Cup") — a descriptor, not a
   // taxonomy node.
-  productType     String?
+  productType        String?
   // Catalog "Thickness" column; free text because sources mix units.
-  thickness       String?
+  thickness          String?
   // The Size cell VERBATIM ("12 oz", "500 ml", "A4", "12 x 4 x 4 inch").
   // Only true 3D sizes populate length/width/height; capacities and sheet
   // sizes would be meaningless as dimensions, so they are preserved here
   // instead of being discarded.
-  sizeLabel       String?
-  printing        String? // printing method (offset, flexo, digital…)
-  finishing       String? // lamination / foil / spot-UV / emboss…
-  customizable    Boolean       @default(false)
+  sizeLabel          String?
+  printing           String? // printing method (offset, flexo, digital…)
+  finishing          String? // lamination / foil / spot-UV / emboss…
+  customizable       Boolean             @default(false)
   // money — integer minor units (paise); base 0 = quotation-based
-  basePriceMinor  Int           @default(0)
-  salePriceMinor  Int? // optional promotional price
-  costMinor       Int? // internal unit cost (never exposed to buyers)
-  moq             Int           @default(500)
-  stock           Int           @default(0) // on-hand quantity
-  reservedStock   Int           @default(0) // held for in-flight orders (available = stock - reserved)
-  lowStockLevel   Int?
-  imageEmoji      String        @default("📦") // primary image (emoji or URL)
-  images          String[]      @default([]) // ordered; [0] = primary
-  variants        Json          @default("[]")
+  basePriceMinor     Int                 @default(0)
+  salePriceMinor     Int? // optional promotional price
+  costMinor          Int? // internal unit cost (never exposed to buyers)
+  moq                Int                 @default(500)
+  stock              Int                 @default(0) // on-hand quantity
+  reservedStock      Int                 @default(0) // held for in-flight orders (available = stock - reserved)
+  lowStockLevel      Int?
+  imageEmoji         String              @default("📦") // primary image (emoji or URL)
+  images             String[]            @default([]) // ordered; [0] = primary
+  variants           Json                @default("[]")
   // Homepage merchandising — set ONLY by an admin in the Add/Edit product form
   // (or the catalog row actions). The storefront rails read these flags; they
   // are never inferred from createdAt, API order or position. The two rails
   // are independent: a product may be in both, each with its own order
   // (null order = after every explicitly ordered product).
-  isFeatured      Boolean       @default(false)
-  featuredOrder   Int?
-  isNewArrival    Boolean       @default(false)
-  newArrivalOrder Int?
-  deletedAt       DateTime? // soft-delete; archived products keep order snapshots intact
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  isFeatured         Boolean             @default(false)
+  featuredOrder      Int?
+  isNewArrival       Boolean             @default(false)
+  newArrivalOrder    Int?
+  deletedAt          DateTime? // soft-delete; archived products keep order snapshots intact
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   reviews        Review[]
   wishlistItems  WishlistItem[]
@@ -678,6 +693,7 @@ model Product {
   @@index([categoryId, deletedAt, createdAt])
   @@index([subcategoryId, deletedAt, createdAt])
   @@index([sellerId])
+  @@index([supplierProfileId, status])
 }
 
 // ============================================================
@@ -2388,7 +2404,9 @@ enum PurchaseOrderStatus {
   CANCELLED
 }
 
-/** A purchase order raised on a supplier. */
+/**
+ * A purchase order raised on a supplier.
+ */
 model PurchaseOrder {
   id         String              @id @default(cuid())
   poNumber   String              @unique // PUR-xxxx, app-generated
@@ -2458,7 +2476,9 @@ model PurchaseOrderItem {
   @@index([purchaseOrderId])
 }
 
-/** A delivery against a purchase order. Several may arrive for one PO. */
+/**
+ * A delivery against a purchase order. Several may arrive for one PO.
+ */
 model GoodsReceipt {
   id              String        @id @default(cuid())
   receiptNumber   String        @unique // GRN-xxxx
@@ -2477,7 +2497,6 @@ model GoodsReceipt {
 
 /**
  * What actually arrived for one ordered line.
- *
  * `acceptedQty` and `rejectedQty` are separate because a short or damaged
  * delivery is a fact worth keeping: only accepted goods enter stock, while the
  * rejection stays on the record as the discrepancy.
@@ -2506,19 +2525,18 @@ enum SupplierPaymentStatus {
 
 /**
  * Money paid TO a supplier against a purchase order.
- *
  * Deliberately a separate model from Payment (customer receipts) and Payout
  * (marketplace settlements). One table for all three would make "what do we
  * owe" and "what are we owed" the same query, which is how those figures get
  * netted into nonsense.
  */
 model SupplierPayment {
-  id              String                @id @default(cuid())
-  paymentNumber   String                @unique // SPY-xxxx
+  id              String          @id @default(cuid())
+  paymentNumber   String          @unique // SPY-xxxx
   purchaseOrderId String
-  purchaseOrder   PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrder   PurchaseOrder   @relation(fields: [purchaseOrderId], references: [id])
   supplierId      String
-  supplier        SupplierProfile       @relation(fields: [supplierId], references: [id])
+  supplier        SupplierProfile @relation(fields: [supplierId], references: [id])
 
   amountMinor Int
   method      String // bank_transfer | upi | cheque | cash | other

@@ -280,6 +280,10 @@ export interface ProductPage {
 }
 
 export const catalogApi = {
+  // GET /products is a public route that returns only `active` products to
+  // anonymous callers; an authenticated admin automatically gets the whole
+  // catalog (drafts, archived, and supplier listings awaiting review), so no
+  // extra parameter is needed here.
   list: () => request<{ products: DbProduct[] }>("/products").then((d) => d.products.map(fromDb)),
 
   /**

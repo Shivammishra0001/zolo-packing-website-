@@ -17,7 +17,7 @@ import {
 import { recordImport } from "../services/catalog-imports.mjs";
 import { splitMultiValue } from "../services/catalog-normalize.mjs";
 import { createProduct, updateProduct } from "../services/product-write.mjs";
-import { authenticate, requireAdmin } from "../middleware/auth.mjs";
+import { authenticate, requireAdmin, isAdminRole } from "../middleware/auth.mjs";
 
 export const productsRouter = Router();
 
@@ -78,7 +78,29 @@ function productFilters(q) {
  */
 productsRouter.get("/products", wrap(async (req, res) => {
   const includeDeleted = req.query.includeDeleted === "1" || req.query.includeDeleted === "true";
+
+  // SECURITY: this route is PUBLIC, and it used to return every row whatever
+  // its status — drafts, and now supplier listings awaiting moderation. The
+  // storefront only looked safe because it filtered again in the browser.
+  // Unpublished products must not leave the server at all.
+  //
+  // An ADMIN always sees the whole catalog — requiring them to remember
+  // `?scope=admin` would mean a forgotten parameter silently hides drafts
+  // from the people whose job is to manage them. The optional parameter is
+  // kept so an admin tool can ASK for the public view, and so the existing
+  // /categories convention still reads the same way.
+  //
+  // Authentication is attempted but never enforced: this route stays public,
+  // and an anonymous or non-admin caller simply gets the public view.
+  await new Promise((resolve) => authenticate(req, res, (err) => resolve(err)));
+  const isAdminCaller = Boolean(req.user && isAdminRole(req.user.role));
+  const scope = isAdminCaller && req.query.scope !== "public" ? "admin" : "public";
+
   const where = { ...(includeDeleted ? {} : { deletedAt: null }), ...productFilters(req.query) };
+  // A public caller sees only live products. An explicit ?status= is still
+  // honoured for admins; for the public it is intersected with `active`, so
+  // `?status=draft` returns nothing rather than the draft catalog.
+  if (scope !== "admin") where.status = "active";
 
   const take = Math.min(Number(req.query.limit) || 0, 500);
   const page = Math.max(Number(req.query.page) || 0, 0);

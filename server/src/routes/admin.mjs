@@ -6,6 +6,7 @@ import * as admin from "../services/admin.mjs";
 import * as documents from "../services/documents.mjs";
 import * as orders from "../services/orders.mjs";
 import * as crm from "../services/crm.mjs";
+import * as sellerProducts from "../services/seller-products.mjs";
 import * as crmNotify from "../services/crm-notifications.mjs";
 import * as aiGen from "../services/ai-generate.mjs";
 import * as dashboards from "../services/dashboards.mjs";
@@ -345,6 +346,32 @@ adminRouter.post("/procurement/orders/:id/receipts", wrap(async (req, res) => {
 /** Pay a supplier. Separate from customer payments and seller payouts. */
 adminRouter.post("/procurement/orders/:id/payments", wrap(async (req, res) => {
   ok(res, await procurement.recordSupplierPayment(req.user, req.params.id, req.body ?? {}), 201);
+}));
+
+// ---------------------------------------------------------------------------
+// Supplier listing moderation (docs/adr/ADR-001-supplier-owned-products.md).
+// A supplier cannot publish: these are the only routes that move a listing to
+// `active`, and only an admin can call them.
+// ---------------------------------------------------------------------------
+
+/** The review queue — supplier listings waiting on a decision, oldest first. */
+adminRouter.get("/product-listings/pending", wrap(async (req, res) => {
+  ok(res, await sellerProducts.pendingQueue(req.query));
+}));
+
+/** Every listing owned by one supplier (the supplier detail page section). */
+adminRouter.get("/sellers/:id/products", wrap(async (req, res) => {
+  ok(res, await sellerProducts.listForSupplier(req.params.id, req.query));
+}));
+
+/** Approve: the listing goes live. Commission is set here, by the admin. */
+adminRouter.post("/product-listings/:id/approve", wrap(async (req, res) => {
+  ok(res, { product: await sellerProducts.approveListing(req.user.id, req.params.id, req.body ?? {}) });
+}));
+
+/** Reject back to the supplier with a reason they can act on. */
+adminRouter.post("/product-listings/:id/reject", wrap(async (req, res) => {
+  ok(res, { product: await sellerProducts.rejectListing(req.user.id, req.params.id, req.body?.reason) });
 }));
 
 adminRouter.get("/sellers", wrap(async (req, res) => {

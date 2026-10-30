@@ -9,6 +9,7 @@ import {
 } from "../lib/validation.mjs";
 import * as onboarding from "../services/onboarding.mjs";
 import * as documents from "../services/documents.mjs";
+import * as sellerProducts from "../services/seller-products.mjs";
 import { sellerDashboard } from "../services/dashboard.mjs";
 import * as ai from "../services/ai-tools.mjs";
 
@@ -120,3 +121,23 @@ sellerRouter.get("/me/payouts", wrap(async (req, res) => {
   const { listPayouts } = await import("../services/payouts.mjs");
   ok(res, await listPayouts({ supplierId: profileOf(req).id, status: req.query.status }));
 }));
+
+// ---------------------------------------------------------------------------
+// Supplier catalog listings (docs/adr/ADR-001-supplier-owned-products.md).
+//
+// Ownership and publication are decided by the service from the SESSION, never
+// from the body: `profileOf(req)` is the caller's own supplier profile, so a
+// supplier cannot list, edit or withdraw a product belonging to anyone else.
+// ---------------------------------------------------------------------------
+sellerRouter.get("/me/products", wrap(async (req, res) => {
+  ok(res, await sellerProducts.listMine(profileOf(req), req.query));
+}));
+
+sellerRouter.post("/me/products", write(201, (req) =>
+  sellerProducts.createMine(profileOf(req), req.user.id, req.body ?? {})));
+
+sellerRouter.patch("/me/products/:id", write(200, (req) =>
+  sellerProducts.updateMine(profileOf(req), req.user.id, req.params.id, req.body ?? {})));
+
+sellerRouter.post("/me/products/:id/withdraw", write(200, (req) =>
+  sellerProducts.withdrawMine(profileOf(req), req.user.id, req.params.id)));
