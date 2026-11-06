@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { ArrowRight, Check, Megaphone, Package } from "lucide-react";
-import { DK_GRADIENT, Glow, useCalm } from "./dark";
+import { Glow, useCalm } from "./dark";
 
 /* =========================================================
    "From Packaging to Promotion" — the brand-positioning section (§4).
@@ -25,19 +25,22 @@ export function PackagingPromotion({ onCta }: { onCta: () => void }) {
     : { initial: { opacity: 0, y: 16 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true, margin: "-60px" } };
 
   return (
-    <section className="relative border-t border-[var(--dk-line)] py-14 lg:py-20">
+    <section className="relative isolate overflow-hidden bg-[#0B1220] py-14 text-white lg:py-20">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -left-32 bottom-0 h-[460px] w-[460px] rounded-full"
+        style={{ background: "var(--dk-orange)", opacity: 0.16, filter: "blur(130px)" }}
+      />
       <Glow className="left-1/2 top-0 -translate-x-1/2" color="var(--dk-blue)" size={520} />
 
       <div className="shell relative">
         <motion.div {...rise} transition={{ duration: 0.45 }} className="mx-auto max-w-3xl text-center">
-          <h2 className="h2 text-[var(--dk-ink)]">
+          <h2 className="h2 text-white">
             From Packaging to Promotion.
             <br />
-            <span className="bg-clip-text text-transparent" style={{ backgroundImage: DK_GRADIENT }}>
-              One Platform for Your Business Growth.
-            </span>
+            <span className="text-[var(--dk-orange)]">One Business Growth Partner.</span>
           </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-[15px] leading-relaxed text-[var(--dk-muted)]">
+          <p className="mx-auto mt-4 max-w-2xl text-[15px] leading-relaxed text-white/70">
             Your packaging creates the first impression. Your marketing takes your brand to the right audience. With
             Zolo Packaging and AdSens, you get a connected partner for both.
           </p>
@@ -56,10 +59,9 @@ export function PackagingPromotion({ onCta }: { onCta: () => void }) {
 
           {/* The joint. Horizontal on desktop, vertical when the cards stack. */}
           <div aria-hidden className="relative flex items-center justify-center lg:w-16">
-            <span className="absolute h-px w-24 bg-gradient-to-r from-transparent via-[var(--dk-line-2)] to-transparent lg:h-full lg:w-px lg:bg-gradient-to-b" />
+            <span className="absolute h-px w-24 bg-gradient-to-r from-transparent via-white/25 to-transparent lg:h-full lg:w-px lg:bg-gradient-to-b" />
             <span
-              className="relative flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white shadow-[0_0_28px_rgba(79,123,255,0.5)]"
-              style={{ backgroundImage: DK_GRADIENT }}
+              className="relative flex h-10 w-10 items-center justify-center rounded-full bg-[var(--dk-orange)] text-sm font-bold text-white shadow-[0_0_28px_rgba(249,115,22,0.45)]"
             >
               +
             </span>
@@ -79,12 +81,11 @@ export function PackagingPromotion({ onCta }: { onCta: () => void }) {
         <div className="mt-10 text-center">
           <button
             onClick={onCta}
-            className="btn btn-lg text-white shadow-[0_10px_30px_rgba(79,123,255,0.35)]"
-            style={{ backgroundImage: DK_GRADIENT }}
+            className="btn btn-lg btn-primary"
           >
-            Build Your Brand With Zolo <ArrowRight className="h-4 w-4" aria-hidden />
+            Grow Your Brand With Zolo <ArrowRight className="h-4 w-4" aria-hidden />
           </button>
-          <p className="mx-auto mt-3 max-w-md text-xs text-[var(--dk-faint)]">
+          <p className="mx-auto mt-3 max-w-md text-xs text-white/50">
             Packaging and marketing are separate services, quoted and billed separately. Using one does not require
             the other.
           </p>
@@ -108,7 +109,7 @@ function Half({
   tone: string;
 }) {
   return (
-    <div className="h-full rounded-2xl border border-[var(--dk-line)] bg-[var(--dk-panel)] p-6 sm:p-7">
+    <div className="h-full rounded-2xl border border-white/15 bg-white/[0.06] p-6 backdrop-blur sm:p-7">
       <span
         className="flex h-11 w-11 items-center justify-center rounded-xl"
         style={{ background: `color-mix(in srgb, ${tone} 16%, transparent)`, color: tone }}
@@ -118,10 +119,10 @@ function Half({
       <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: tone }}>
         {eyebrow}
       </p>
-      <h3 className="mt-1 text-lg font-bold text-[var(--dk-ink)]">{title}</h3>
+      <h3 className="mt-1 text-lg font-bold text-white">{title}</h3>
       <ul className="mt-4 space-y-2">
         {items.map((x) => (
-          <li key={x} className="flex items-start gap-2.5 text-sm text-[var(--dk-muted)]">
+          <li key={x} className="flex items-start gap-2.5 text-sm text-white/75">
             <Check className="mt-0.5 h-4 w-4 shrink-0" style={{ color: tone }} aria-hidden />
             {x}
           </li>

@@ -1,5 +1,5 @@
 import { BarChart3, Lightbulb, Rocket, Search } from "lucide-react";
-import { DK_GRADIENT, DarkHead, Glow, useCalm } from "./dark";
+import { DarkHead, Glow, useCalm } from "./dark";
 import { useReveal } from "./flourish";
 
 /* =========================================================
@@ -42,7 +42,7 @@ export function Approach() {
           <span
             aria-hidden
             className="pointer-events-none absolute left-0 right-0 top-7 hidden h-px lg:block"
-            style={{ background: "linear-gradient(90deg, transparent, rgba(45,212,191,0.45) 12%, rgba(168,85,247,0.45) 88%, transparent)" }}
+            style={{ background: "linear-gradient(90deg, transparent, rgba(194,65,12,0.35) 12%, rgba(194,65,12,0.35) 88%, transparent)" }}
           />
 
           {STEPS.map((s) => (
@@ -52,12 +52,11 @@ export function Approach() {
                     background or the line shows through the icon. Fixed
                     height on the row keeps every ring on the same y, which
                     a two-line title below would otherwise shift. */}
-                <span className="relative z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[var(--dk-line-2)] bg-[var(--dk-bg-2)] text-[var(--dk-cyan)]">
+                <span className="relative z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[var(--dk-line-2)] bg-[var(--dk-bg-2)] text-[var(--dk-orange-ink)]">
                   <s.icon className="h-6 w-6" aria-hidden />
                 </span>
                 <span
-                  className="bg-clip-text font-display text-3xl font-extrabold leading-none text-transparent lg:mt-5 lg:block"
-                  style={{ backgroundImage: DK_GRADIENT }}
+                  className="font-display text-3xl font-extrabold leading-none text-[var(--dk-orange-ink)] lg:mt-5 lg:block"
                   aria-hidden
                 >
                   {s.n}

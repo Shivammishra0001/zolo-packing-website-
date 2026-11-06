@@ -55,7 +55,16 @@ export const darkPalette = {
   "--dk-cyan": "#0E7490",
   "--dk-blue": "#2563EB",
   "--dk-violet": "#7C3AED",
+  // Two oranges, deliberately.
+  //   --dk-orange      the brand fill. White text on it is 4.5:1+, and it
+  //                    is what buttons and badges use.
+  //   --dk-orange-ink  orange TEXT on a light surface. primary-500 on white
+  //                    is only 2.80:1 — it fails AA at every size — so
+  //                    eyebrows, enquiry links and heading accents use
+  //                    primary-700 (5.18:1). Same hue family, legible.
+  // On the dark bands plain --dk-orange is 6.68:1, so it is used there.
   "--dk-orange": "var(--color-primary-500)",
+  "--dk-orange-ink": "var(--color-primary-700)",
 } as CSSProperties;
 
 /** The gradient used for headline accents and chips, in one place. */
@@ -183,13 +192,27 @@ export function Glow({
   );
 }
 
-/** Section heading in the dark style: badge, two-tone title, subtitle. */
+/**
+ * Section heading: eyebrow, two-tone title, subtitle.
+ *
+ * The eyebrow is a short orange rule followed by an uppercase label, which
+ * is the mockup's treatment and ties every section back to Zolo's brand
+ * colour. It replaced a cyan pill badge; the pill competed with the chips
+ * and buttons nearby, and orange here costs nothing because an eyebrow is
+ * not an action — the design system's "orange is for CTAs" rule guards
+ * against orange text that LOOKS clickable, and a 11px tracked label above
+ * a heading does not.
+ *
+ * `accent` renders in Zolo orange rather than the cyan→violet gradient:
+ * the mockup sets the second half of each heading in orange, and it reads
+ * as one brand rather than two.
+ */
 export function DarkHead({
   badge, title, accent, subtitle, align = "center",
 }: {
   badge?: string;
   title: string;
-  /** Rendered in the gradient, after `title`. */
+  /** Rendered in Zolo orange, after `title`. */
   accent?: string;
   subtitle?: string;
   align?: "center" | "left";
@@ -198,19 +221,19 @@ export function DarkHead({
   return (
     <div className={centred ? "mx-auto max-w-2xl text-center" : "max-w-2xl"}>
       {badge && (
-        <span className="inline-flex items-center gap-2 rounded-full border border-[var(--dk-line)] bg-[var(--dk-panel)] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--dk-cyan)]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[var(--dk-cyan)]" aria-hidden />
+        <span
+          className={`flex items-center gap-2.5 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--dk-orange-ink)] ${centred ? "justify-center" : ""}`}
+        >
+          <span className="h-0.5 w-5 rounded-full bg-[var(--dk-orange)]" aria-hidden />
           {badge}
         </span>
       )}
-      <h2 className={`h2 text-[var(--dk-ink)] ${badge ? "mt-4" : ""}`}>
+      <h2 className={`h2 text-[var(--dk-ink)] ${badge ? "mt-3" : ""}`}>
         {title}
         {accent && (
           <>
             {" "}
-            <span className="bg-clip-text text-transparent" style={{ backgroundImage: DK_GRADIENT }}>
-              {accent}
-            </span>
+            <span className="text-[var(--dk-orange-ink)]">{accent}</span>
           </>
         )}
       </h2>

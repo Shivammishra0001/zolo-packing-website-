@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, ChevronLeft, ChevronRight, Megaphone, Package } from "lucide-react";
-import { DK_GRADIENT, Glow, Particles, platformMeta, useCalm } from "./dark";
-import { GradientFrame, Orbit, PLATE_FILTER, PlateTint, useReveal } from "./flourish";
+import { ArrowRight, ChevronLeft, ChevronRight, Megaphone, Package, PlayCircle, Sparkles, TrendingUp, Users } from "lucide-react";
+import { Glow, Particles, platformMeta, useCalm } from "./dark";
+import { Orbit, PLATE_FILTER, PlateTint, useReveal } from "./flourish";
 import { plateAt } from "./showcase-art";
 import { assetUrl } from "../../lib/asset-url";
 import type { AdsensCampaign } from "../../lib/api/adsens";
@@ -25,11 +25,19 @@ import type { AdsensCampaign } from "../../lib/api/adsens";
    fabricated analytics dashboard.
    ========================================================= */
 
+/**
+ * Four service areas, per the mockup — icon over a two-word label.
+ *
+ * Deliberately NOT statistics. The agency references this design came from
+ * fill this row with "250+ Clients Served" and "98% Client Satisfaction";
+ * both would be invented. Naming what AdSens does needs no evidence and
+ * tells the visitor more.
+ */
 const INDICATORS = [
-  { k: "Packaging + marketing", v: "One partner" },
-  { k: "Services offered", v: "8" },
-  { k: "Minimum engagement", v: "1 service" },
-  { k: "Campaign reporting", v: "Always" },
+  { icon: Package, label: "Packaging\nSolutions" },
+  { icon: Megaphone, label: "Digital\nAdvertising" },
+  { icon: TrendingUp, label: "Brand\nGrowth" },
+  { icon: Users, label: "Lead\nGeneration" },
 ];
 
 export function DarkHero({
@@ -45,7 +53,18 @@ export function DarkHero({
   const scope = useReveal<HTMLDivElement>("[data-hero-reveal]", { y: 22, stagger: 0.08 });
 
   return (
-    <section className="relative">
+    /* The hero and the Zolo Advantage section are the two DARK bands on an
+       otherwise light page, per the mockup. The band is local to this
+       section rather than a palette change: --dk-* stays light so every
+       other section keeps its tokens, and the few elements inside here that
+       need light-on-dark say so explicitly. */
+    <section className="relative isolate overflow-hidden bg-[#0B1220] text-white">
+      {/* Warm orange bloom bottom-right, as in the mockup. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-40 top-1/3 h-[520px] w-[520px] rounded-full"
+        style={{ background: "var(--dk-orange)", opacity: 0.18, filter: "blur(130px)" }}
+      />
       <Glow className="-left-32 -top-24" color="var(--dk-blue)" size={480} />
       <Glow className="-right-24 top-40" color="var(--dk-violet)" size={430} />
       <Glow className="bottom-0 left-1/3" color="var(--dk-cyan)" size={360} />
@@ -58,37 +77,42 @@ export function DarkHero({
         <div className="grid items-center gap-10 lg:grid-cols-[1.03fr_0.97fr] lg:gap-14">
           {/* ---------- Left ---------- */}
           <div>
-            <span
-              data-hero-reveal
-              className="inline-flex items-center gap-2 rounded-full border border-[var(--dk-line-2)] bg-[var(--dk-panel)] px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--dk-cyan)] backdrop-blur"
-            >
-              <span className="relative flex h-2 w-2" aria-hidden>
-                {!calm && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--dk-cyan)] opacity-70" />}
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--dk-cyan)]" />
+            {/* Brand chip + descriptor, per the mockup. The solid orange
+                carries the Zolo identity; the outlined half says what this
+                business unit is. */}
+            <div data-hero-reveal className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--dk-orange)] px-3 py-1.5 text-[11px] font-bold text-white">
+                <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                AdSens by Zolo
               </span>
-              Your complete business growth partner
-            </span>
+              <span className="rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-white/80 backdrop-blur">
+                Performance Marketing Agency
+              </span>
+            </div>
 
-            <h1 data-hero-reveal className="h1 mt-5 text-[var(--dk-ink)]">
+            <h1 data-hero-reveal className="h1 mt-5 text-white">
               We Pack Your Products.
               <br />
-              <span className="bg-clip-text text-transparent" style={{ backgroundImage: DK_GRADIENT }}>
-                We Power Your Promotion.
-              </span>
-              <br />
-              Everything Your Brand Needs to Grow.
+              <span className="text-[var(--dk-orange)]">We Power Your Promotion.</span>
             </h1>
 
-            <p data-hero-reveal className="mt-5 max-w-xl text-[15px] leading-relaxed text-[var(--dk-muted)] sm:text-base">
-              From premium packaging solutions to performance-driven digital marketing, Zolo brings everything your
-              business needs to build its brand, reach more customers and grow.
+            {/* The supporting line is a separate, lighter weight in the
+                mockup — it reads as a subhead rather than a third headline
+                clause. Kept inside the h1's block but outside the element,
+                so the page still has exactly one h1. */}
+            <p data-hero-reveal className="mt-3 text-xl font-bold text-white/90 sm:text-2xl">
+              Everything Your Brand Needs to Grow.
+            </p>
+
+            <p data-hero-reveal className="mt-4 max-w-xl text-[15px] leading-relaxed text-white/65">
+              From premium packaging solutions to performance-driven digital marketing, we help businesses build
+              stronger brands, reach the right audience and grow their online presence.
             </p>
 
             <div data-hero-reveal className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <button
                 onClick={onConsult}
-                className="btn btn-lg group relative w-full justify-center overflow-hidden text-white shadow-[0_12px_38px_rgba(79,123,255,0.42)] sm:w-auto"
-                style={{ backgroundImage: DK_GRADIENT }}
+                className="btn btn-lg btn-primary group relative w-full justify-center overflow-hidden sm:w-auto"
               >
                 {/* Sheen sweep on hover — the reference's glossy CTA. */}
                 {!calm && (
@@ -103,28 +127,25 @@ export function DarkHero({
               </button>
               <button
                 onClick={onExplore}
-                className="btn btn-lg w-full justify-center border border-[var(--dk-line-2)] bg-[var(--dk-panel)] text-[var(--dk-ink)] backdrop-blur transition-colors hover:border-[var(--dk-cyan)]/50 hover:bg-[var(--dk-panel-2)] sm:w-auto"
+                className="btn btn-lg w-full justify-center gap-2 border border-white/25 bg-white/5 text-white backdrop-blur transition-colors hover:bg-white/10 sm:w-auto"
               >
-                Explore Our Work
+                View Our Work <PlayCircle className="h-4 w-4" aria-hidden />
               </button>
             </div>
 
-            <dl data-hero-reveal className="mt-10 grid max-w-xl grid-cols-2 items-start gap-x-6 gap-y-5 sm:grid-cols-4">
-              {INDICATORS.map((x) => (
-                <div key={x.k} className="min-w-0">
-                  <dt className="sr-only">{x.k}</dt>
-                  <dd>
-                    <span
-                      className="block bg-clip-text font-display text-lg font-extrabold leading-tight text-transparent sm:text-xl"
-                      style={{ backgroundImage: DK_GRADIENT }}
-                    >
-                      {x.v}
-                    </span>
-                    <span className="mt-0.5 block text-[11px] leading-snug text-[var(--dk-faint)]">{x.k}</span>
-                  </dd>
-                </div>
+            <ul data-hero-reveal className="mt-10 grid max-w-xl grid-cols-2 gap-x-5 gap-y-5 sm:grid-cols-4">
+              {INDICATORS.map((x, i) => (
+                <li
+                  key={x.label}
+                  className={`flex items-center gap-2.5 ${i > 0 ? "sm:border-l sm:border-white/15 sm:pl-5" : ""}`}
+                >
+                  <x.icon className="h-5 w-5 shrink-0 text-[var(--dk-orange)]" aria-hidden />
+                  <span className="whitespace-pre-line text-[13px] font-semibold leading-tight text-white/85">
+                    {x.label}
+                  </span>
+                </li>
               ))}
-            </dl>
+            </ul>
           </div>
 
           {/* ---------- Right ---------- */}
@@ -140,16 +161,16 @@ export function DarkHero({
         {/* Packaging + promotion, stated once before the visitor scrolls. */}
         <div
           data-hero-reveal
-          className="mt-12 flex flex-wrap items-center justify-center gap-x-4 gap-y-3 rounded-2xl border border-[var(--dk-line)] bg-[var(--dk-panel)] px-5 py-4 text-center backdrop-blur sm:mt-14"
+          className="mt-12 flex flex-wrap items-center justify-center gap-x-4 gap-y-3 rounded-2xl border border-white/15 bg-white/[0.05] px-5 py-4 text-center backdrop-blur sm:mt-14"
         >
-          <span className="inline-flex items-center gap-2 text-sm font-bold text-[var(--dk-ink)]">
-            <Package className="h-4 w-4 text-[var(--dk-cyan)]" aria-hidden /> Zolo Packaging
+          <span className="inline-flex items-center gap-2 text-sm font-bold text-white">
+            <Package className="h-4 w-4 text-[var(--dk-orange)]" aria-hidden /> Zolo Packaging
           </span>
-          <span className="text-[var(--dk-faint)]" aria-hidden>+</span>
-          <span className="inline-flex items-center gap-2 text-sm font-bold text-[var(--dk-ink)]">
-            <Megaphone className="h-4 w-4 text-[var(--dk-violet)]" aria-hidden /> AdSens Digital Marketing
+          <span className="text-white/40" aria-hidden>+</span>
+          <span className="inline-flex items-center gap-2 text-sm font-bold text-white">
+            <Megaphone className="h-4 w-4 text-[var(--dk-orange)]" aria-hidden /> AdSens Digital Marketing
           </span>
-          <span className="w-full text-xs text-[var(--dk-faint)] sm:w-auto sm:border-l sm:border-[var(--dk-line)] sm:pl-4">
+          <span className="w-full text-xs text-white/55 sm:w-auto sm:border-l sm:border-white/15 sm:pl-4">
             Packaging and marketing are quoted and billed separately.
           </span>
         </div>
@@ -173,7 +194,7 @@ function HeroPreview({ campaigns }: { campaigns: AdsensCampaign[] }) {
   const step = (d: number) => setI((v) => (v + d + campaigns.length) % campaigns.length);
 
   return (
-    <GradientFrame glow className="relative">
+    <DarkPanel>
       {/* Floating status pill, as in the reference. Only a genuine live
           campaign gets it: `status` is already "illustrative" for any sample,
           because the server rewrites it before sending. */}
@@ -189,8 +210,8 @@ function HeroPreview({ campaigns }: { campaigns: AdsensCampaign[] }) {
       ) : null}
 
       <div className="p-2.5">
-        <div className="overflow-hidden rounded-[13px] bg-[var(--dk-bg)]">
-          <div className="relative aspect-[4/3] w-full">
+        <div className="overflow-hidden rounded-[13px] bg-[#070C16]">
+          <div className="relative aspect-[4/3] w-full bg-[#070C16]">
             <img
               src={assetUrl(c.imageUrl) ?? plateAt(i).src}
               alt={c.title}
@@ -213,11 +234,11 @@ function HeroPreview({ campaigns }: { campaigns: AdsensCampaign[] }) {
           </div>
 
           {c.metrics.length > 0 && (
-            <dl className="divide-y divide-[var(--dk-line)] px-4">
+            <dl className="divide-y divide-white/10 px-4">
               {c.metrics.map((m) => (
                 <div key={m.label} className="flex items-baseline justify-between gap-3 py-2.5">
-                  <dt className="text-xs text-[var(--dk-faint)]">{m.label}</dt>
-                  <dd className="text-sm font-bold text-[var(--dk-cyan)]">{m.value}</dd>
+                  <dt className="text-xs text-white/55">{m.label}</dt>
+                  <dd className="text-sm font-bold text-[var(--dk-orange)]">{m.value}</dd>
                 </div>
               ))}
             </dl>
@@ -233,8 +254,8 @@ function HeroPreview({ campaigns }: { campaigns: AdsensCampaign[] }) {
                   onClick={() => setI(n)}
                   aria-label={`Show ${x.title}`}
                   aria-current={n === i}
-                  className={`h-1.5 rounded-full transition-all ${n === i ? "w-6" : "w-1.5 bg-[var(--dk-line-2)]"}`}
-                  style={n === i ? { backgroundImage: DK_GRADIENT } : undefined}
+                  className={`h-1.5 rounded-full transition-all ${n === i ? "w-6 bg-[var(--dk-orange)]" : "w-1.5 bg-white/25"}`}
+                  
                 />
               ))}
             </div>
@@ -245,7 +266,23 @@ function HeroPreview({ campaigns }: { campaigns: AdsensCampaign[] }) {
           </div>
         )}
       </div>
-    </GradientFrame>
+    </DarkPanel>
+  );
+}
+
+/**
+ * Shell for the hero preview. GradientFrame is the light-page card and its
+ * white inner fill reads as a pale slab inside this dark band, so the hero
+ * carries its own: dark surface, hairline white border, orange-tinted glow.
+ */
+function DarkPanel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="relative rounded-[20px] border border-white/15 bg-white/[0.04] p-2.5 backdrop-blur"
+      style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.45), 0 0 60px rgba(249,115,22,0.10)" }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -254,7 +291,7 @@ function PreviewNav({ label, onClick, children }: { label: string; onClick: () =
     <button
       onClick={onClick}
       aria-label={label}
-      className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--dk-line)] bg-[var(--dk-panel)] text-[var(--dk-muted)] transition-colors hover:border-[var(--dk-cyan)]/50 hover:bg-[var(--dk-panel-2)] hover:text-[var(--dk-ink)]"
+      className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 bg-white/5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
     >
       {children}
     </button>
@@ -272,27 +309,27 @@ function PreviewNav({ label, onClick, children }: { label: string; onClick: () =
 function PreviewPlaceholder() {
   const plate = plateAt(0);
   return (
-    <GradientFrame glow className="relative">
+    <DarkPanel>
       <span className="absolute -top-3 right-5 z-20 rounded-full border border-[var(--dk-line-2)] bg-[var(--dk-bg)] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--dk-muted)]">
         Sample creative
       </span>
       <div className="p-2.5">
-        <div className="overflow-hidden rounded-[13px] bg-[var(--dk-bg)]">
-          <div className="relative aspect-[4/3] w-full">
+        <div className="overflow-hidden rounded-[13px] bg-[#070C16]">
+          <div className="relative aspect-[4/3] w-full bg-[#070C16]">
             <img src={plate.src} alt={plate.alt} className="h-full w-full object-cover" loading="eager" style={PLATE_FILTER} />
             <PlateTint />
             <div aria-hidden className="absolute inset-x-0 bottom-0 h-28" style={{ background: "linear-gradient(to top, rgba(2,6,23,0.88), rgba(2,6,23,0.52) 48%, transparent)" }} />
             <div className="absolute inset-x-4 bottom-3">
-              <p className="text-[11px] uppercase tracking-wider text-[var(--dk-cyan)]">Zolo packaging</p>
+              <p className="text-[11px] uppercase tracking-wider text-[var(--dk-orange)]">Zolo packaging</p>
               <p className="text-[15px] font-bold text-white">{plate.craft}</p>
             </div>
           </div>
-          <p className="px-4 py-3.5 text-[13px] leading-relaxed text-[var(--dk-muted)]">
+          <p className="px-4 py-3.5 text-[13px] leading-relaxed text-white/65">
             Campaign previews appear here. We show real creatives from campaigns we are running, with the client's
             permission — nothing is published until there is genuine work to show.
           </p>
         </div>
       </div>
-    </GradientFrame>
+    </DarkPanel>
   );
 }

@@ -1,5 +1,5 @@
 import { ArrowUpRight } from "lucide-react";
-import { DK_GRADIENT, DarkHead, Glow, platformMeta, useCalm } from "./dark";
+import { DarkHead, Glow, platformMeta, useCalm } from "./dark";
 import { PLATE_FILTER, PlateTint, useReveal } from "./flourish";
 import { plateAt } from "./showcase-art";
 import { assetUrl } from "../../lib/asset-url";
@@ -52,17 +52,29 @@ export function ActiveCampaigns({
   return (
     <section
       id="campaigns"
-      className="relative scroll-mt-20 border-t border-[var(--dk-line)] bg-[var(--dk-bg-2)] py-14 lg:py-20"
+      className="relative isolate scroll-mt-20 overflow-hidden bg-[#0B1220] py-14 text-white lg:py-20"
     >
       <Glow className="left-1/3 top-10" color="var(--dk-cyan)" size={420} />
 
       <div ref={scope} className="shell relative">
-        <DarkHead
-          badge="Campaign showcase"
-          title="Active"
-          accent="Campaigns"
-          subtitle="Creative campaigns and digital experiences built to move brands forward."
-        />
+        {/* Not DarkHead: that component renders --dk-ink, which is
+            near-black and unreadable here. Two sections sit on the dark
+            band, so they carry their own heading rather than adding a
+            `tone` prop used twice. */}
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="max-w-2xl">
+            <span className="flex items-center gap-2.5 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--dk-orange)]">
+              <span className="h-0.5 w-5 rounded-full bg-[var(--dk-orange)]" aria-hidden />
+              Campaign showcase
+            </span>
+            <h2 className="h2 mt-3 text-white">
+              Active <span className="text-[var(--dk-orange)]">Campaigns</span>
+            </h2>
+            <p className="mt-3 text-[15px] leading-relaxed text-white/65">
+              Creative campaigns and digital experiences built to move brands forward.
+            </p>
+          </div>
+        </div>
 
         <div className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
           {campaigns.map((c, i) => (
@@ -75,8 +87,8 @@ export function ActiveCampaigns({
         {/* Said once under the rail rather than per card — the badges mark
             which ones, and this explains what the badge means. */}
         {anyIllustrative && (
-          <p className="mx-auto mt-7 max-w-2xl text-center text-xs leading-relaxed text-[var(--dk-faint)]">
-            Cards marked <span className="font-semibold text-[var(--dk-muted)]">Illustrative</span> are design
+          <p className="mx-auto mt-7 max-w-2xl text-center text-xs leading-relaxed text-white/50">
+            Cards marked <span className="font-semibold text-white/75">Illustrative</span> are design
             previews showing the kind of work we produce, on Zolo's own packaging. They are not client campaigns
             and carry no performance claims.
           </p>
@@ -107,7 +119,7 @@ function CampaignCard({
   const body = (
     <>
       {/* ---- creative ---- */}
-      <div className="relative aspect-[4/5] w-full overflow-hidden bg-[var(--dk-panel-2)]">
+      <div className="relative aspect-[4/5] w-full overflow-hidden bg-[#070C16]">
         <img
           src={img}
           alt={c.imageUrl ? c.title : plate.alt}
@@ -135,7 +147,7 @@ function CampaignCard({
         {clickable && (
           <span
             aria-hidden
-            className={`absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[var(--dk-ink)] shadow-sm backdrop-blur transition-all duration-300 ${
+            className={`absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#0B1220] shadow-sm backdrop-blur transition-all duration-300 ${
               calm ? "" : "opacity-0 group-hover:opacity-100"
             }`}
           >
@@ -158,19 +170,14 @@ function CampaignCard({
           entirely, so the grid adapts rather than rendering an empty cell. */}
       {c.metrics.length > 0 && (
         <dl
-          className={`mt-auto grid border-t border-[var(--dk-line)] ${
-            c.metrics.length > 1 ? "grid-cols-2 divide-x divide-[var(--dk-line)]" : "grid-cols-1"
+          className={`mt-auto grid border-t border-white/12 ${
+            c.metrics.length > 1 ? "grid-cols-2 divide-x divide-white/12" : "grid-cols-1"
           }`}
         >
           {c.metrics.map((m) => (
             <div key={m.label} className="px-3 py-3.5 text-center">
-              <dd
-                className="bg-clip-text text-base font-extrabold text-transparent"
-                style={{ backgroundImage: DK_GRADIENT }}
-              >
-                {m.value}
-              </dd>
-              <dt className="mt-0.5 text-[11px] text-[var(--dk-faint)]">{m.label}</dt>
+              <dd className="text-base font-extrabold text-[var(--dk-orange)]">{m.value}</dd>
+              <dt className="mt-0.5 text-[11px] text-white/55">{m.label}</dt>
             </div>
           ))}
         </dl>
@@ -184,8 +191,8 @@ function CampaignCard({
      page's scoped tokens; the radius and shadows below are the same ones. */
   const shell = (
     <div
-      className={`group flex h-full flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--dk-line)] bg-[var(--dk-bg)] shadow-[var(--shadow-card)] transition-all duration-300 ${
-        calm ? "" : "hover:-translate-y-1.5 hover:border-[var(--dk-cyan)]/45 hover:shadow-[var(--shadow-card-hover)]"
+      className={`group flex h-full flex-col overflow-hidden rounded-[var(--radius-card)] border border-white/12 bg-white/[0.04] backdrop-blur transition-all duration-300 ${
+        calm ? "" : "hover:-translate-y-1.5 hover:border-[var(--dk-orange)]/45 hover:shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
       }`}
     >
       {body}

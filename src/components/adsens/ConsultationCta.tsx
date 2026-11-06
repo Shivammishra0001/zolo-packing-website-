@@ -1,5 +1,5 @@
 import { ArrowRight, Clock, Mail, Phone, ShieldCheck } from "lucide-react";
-import { DK_GRADIENT, Glow, useCalm } from "./dark";
+import { Glow, useCalm } from "./dark";
 import { GradientFrame, Orbit, useReveal } from "./flourish";
 import { plateAt } from "./showcase-art";
 
@@ -37,16 +37,15 @@ export function ConsultationCta({ onConsult }: { onConsult: () => void }) {
             <div className="p-7 sm:p-10 lg:p-12">
               <span
                 data-cta
-                className="inline-flex items-center gap-2 rounded-full border border-[var(--dk-line-2)] bg-[var(--dk-panel)] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--dk-cyan)]"
+                className="flex items-center gap-2.5 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--dk-orange-ink)]"
               >
+                <span className="h-0.5 w-5 rounded-full bg-[var(--dk-orange-ink)]" aria-hidden />
                 Free consultation
               </span>
 
               <h2 data-cta className="h2 mt-4 text-[var(--dk-ink)]">
                 Let's Talk About Your Next{" "}
-                <span className="bg-clip-text text-transparent" style={{ backgroundImage: DK_GRADIENT }}>
-                  Growth Opportunity.
-                </span>
+                <span className="text-[var(--dk-orange-ink)]">Growth Opportunity.</span>
               </h2>
 
               <p data-cta className="mt-4 max-w-lg text-[15px] leading-relaxed text-[var(--dk-muted)]">
@@ -57,7 +56,7 @@ export function ConsultationCta({ onConsult }: { onConsult: () => void }) {
               <ul data-cta className="mt-7 space-y-4">
                 {ASSURANCES.map((a) => (
                   <li key={a.title} className="flex items-start gap-3">
-                    <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--dk-panel-2)] text-[var(--dk-cyan)]">
+                    <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--dk-panel-2)] text-[var(--dk-orange-ink)]">
                       <a.icon className="h-4 w-4" aria-hidden />
                     </span>
                     <span className="min-w-0">
@@ -71,8 +70,7 @@ export function ConsultationCta({ onConsult }: { onConsult: () => void }) {
               <div data-cta className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <button
                   onClick={onConsult}
-                  className="btn btn-lg group relative w-full justify-center overflow-hidden text-white shadow-[0_12px_38px_rgba(79,123,255,0.42)] sm:w-auto"
-                  style={{ backgroundImage: DK_GRADIENT }}
+                  className="btn btn-lg btn-primary group relative w-full justify-center overflow-hidden sm:w-auto"
                 >
                   {!calm && (
                     <span
