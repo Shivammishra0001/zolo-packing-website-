@@ -1,22 +1,22 @@
-import { motion } from "framer-motion";
-import { ImageOff } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { DK_GRADIENT, DarkHead, Glow, platformMeta, useCalm } from "./dark";
+import { GradientFrame, PLATE_FILTER, PlateTint, Ribbon, useReveal } from "./flourish";
+import { plateAt } from "./showcase-art";
 import { assetUrl } from "../../lib/asset-url";
 import type { AdsensCampaign } from "../../lib/api/adsens";
 
 /* =========================================================
    Active Campaigns rail.
 
-   Four cards per row on large screens, each resembling an advertising
-   creative preview: full-bleed image, platform badge, client, title, status
-   and up to two metrics.
+   Four cards per row on large screens, each a tall advertising-creative
+   preview: full-bleed image, platform badge, client, title, status, and a
+   two-up metric strip across the foot — the reference's exact composition.
 
    What this component will NOT do, per the brief's data rule: invent a
    client, a click count, a conversion rate, a ROAS or a ranking, and never
-   show a LIVE badge on a sample. `status` is already "illustrative" for any
-   sample by the time it arrives — the server rewrites it — so the LIVE branch
-   here is unreachable for sample content by construction rather than by
-   discipline.
+   badge a sample LIVE. `status` is already "illustrative" for any sample by
+   the time it arrives — the server rewrites it — so the LIVE branch here is
+   unreachable for sample content by construction, not by discipline.
    ========================================================= */
 
 export function ActiveCampaigns({
@@ -27,47 +27,47 @@ export function ActiveCampaigns({
   onOpenCaseStudy: (slug: string) => void;
 }) {
   const calm = useCalm();
+  const scope = useReveal<HTMLDivElement>("[data-camp]", { y: 30, stagger: 0.08 });
 
-  // No published campaigns ⇒ no section. An empty results wall with
-  // placeholder cards would be exactly the fabrication we are avoiding.
+  // No published campaigns ⇒ no section. A wall of placeholder cards would
+  // be exactly the fabrication we are avoiding.
   if (campaigns.length === 0) return null;
 
   const anyIllustrative = campaigns.some((c) => c.isIllustrative);
 
   return (
-    <section className="relative border-t border-[var(--dk-line)] py-14 lg:py-20">
-      <Glow className="left-1/3 top-10" color="var(--dk-cyan)" size={380} />
+    <section className="relative border-t border-[var(--dk-line)]">
+      <Ribbon />
 
-      <div className="shell relative">
-        <DarkHead
-          badge="Live campaigns"
-          title="Active"
-          accent="Campaigns"
-          subtitle="Creative campaigns, strategic advertising and digital experiences built to move brands forward."
-        />
+      <div className="relative py-14 lg:py-20">
+        <Glow className="left-1/3 top-10" color="var(--dk-cyan)" size={400} />
 
-        <div className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-          {campaigns.map((c, i) => (
-            <motion.div
-              key={c.id}
-              initial={calm ? undefined : { opacity: 0, y: 16 }}
-              whileInView={calm ? undefined : { opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-60px" }}
-              transition={{ duration: 0.4, delay: Math.min(i * 0.06, 0.3) }}
-            >
-              <CampaignCard campaign={c} onOpenCaseStudy={onOpenCaseStudy} calm={calm} />
-            </motion.div>
-          ))}
+        <div ref={scope} className="shell relative">
+          <DarkHead
+            badge="Live campaigns"
+            title="Active"
+            accent="Campaigns"
+            subtitle="Creative campaigns, strategic advertising and digital experiences built to move brands forward."
+          />
+
+          <div className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            {campaigns.map((c, i) => (
+              <div key={c.id} data-camp>
+                <CampaignCard campaign={c} index={i} onOpenCaseStudy={onOpenCaseStudy} calm={calm} />
+              </div>
+            ))}
+          </div>
+
+          {/* Said once under the rail rather than per card — the badges mark
+              which ones, and this explains what the badge means. */}
+          {anyIllustrative && (
+            <p className="mx-auto mt-7 max-w-2xl text-center text-xs leading-relaxed text-[var(--dk-faint)]">
+              Cards marked <span className="font-semibold text-[var(--dk-muted)]">Illustrative</span> are design
+              previews showing the kind of work we produce, on Zolo's own packaging. They are not client campaigns
+              and carry no performance claims.
+            </p>
+          )}
         </div>
-
-        {/* Said once, under the rail, rather than per card — the per-card
-            badge already marks which ones, and this explains what it means. */}
-        {anyIllustrative && (
-          <p className="mt-6 text-center text-xs text-[var(--dk-faint)]">
-            Cards marked <span className="font-semibold text-[var(--dk-muted)]">Illustrative</span> are design previews
-            showing the kind of work we produce. They are not client campaigns and carry no performance claims.
-          </p>
-        )}
       </div>
     </section>
   );
@@ -75,56 +75,77 @@ export function ActiveCampaigns({
 
 function CampaignCard({
   campaign: c,
+  index,
   onOpenCaseStudy,
   calm,
 }: {
   campaign: AdsensCampaign;
+  index: number;
   onOpenCaseStudy: (slug: string) => void;
   calm: boolean;
 }) {
   const pm = platformMeta(c.platform);
   const clickable = Boolean(c.caseStudySlug);
+  const plate = plateAt(index);
+  // An admin campaign with no uploaded creative borrows a Zolo packaging
+  // plate, which is a real photograph of a real product rather than a grey
+  // placeholder box.
+  const img = assetUrl(c.imageUrl) ?? plate.src;
 
   const body = (
     <>
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[var(--dk-bg)]">
-        {c.imageUrl ? (
-          <img
-            src={assetUrl(c.imageUrl)}
-            alt={c.title}
-            loading="lazy"
-            className={`h-full w-full object-cover transition-transform duration-500 ${calm ? "" : "group-hover:scale-[1.06]"}`}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center" style={{ backgroundImage: DK_GRADIENT, opacity: 0.16 }}>
-            <ImageOff className="h-8 w-8 text-white/60" aria-hidden />
-          </div>
-        )}
+        <img
+          src={img}
+          alt={c.imageUrl ? c.title : plate.alt}
+          loading="lazy"
+          className={`h-full w-full object-cover transition-transform duration-[600ms] ease-out ${calm ? "" : "group-hover:scale-[1.07]"}`}
+          style={PLATE_FILTER}
+        />
+
+        <PlateTint />
 
         {/* Readability scrim under the caption. */}
-        <div aria-hidden className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#05080F] to-transparent" />
+        <div aria-hidden className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#05080F] via-[#05080F]/75 to-transparent" />
 
         <span
-          className="absolute left-3 top-3 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white"
+          className="absolute left-3 top-3 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg"
           style={{ background: pm.bg }}
         >
           {pm.label}
         </span>
 
+        {clickable && (
+          <span
+            aria-hidden
+            className={`absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-all duration-300 ${
+              calm ? "" : "opacity-0 group-hover:opacity-100"
+            }`}
+          >
+            <ArrowUpRight className="h-4 w-4" />
+          </span>
+        )}
+
         <div className="absolute inset-x-3 bottom-3 flex items-end justify-between gap-2">
           <div className="min-w-0">
-            {c.clientName && <p className="truncate text-[11px] text-white/70">{c.clientName}</p>}
+            <p className="truncate text-[11px] text-white/70">{c.clientName ?? plate.craft}</p>
             <p className="truncate text-sm font-bold text-white">{c.title}</p>
           </div>
           <StatusChip campaign={c} calm={calm} />
         </div>
       </div>
 
+      {/* Metrics arrive only as complete pairs, and may be absent entirely. */}
       {c.metrics.length > 0 && (
-        <dl className="grid grid-cols-2 divide-x divide-[var(--dk-line)] border-t border-[var(--dk-line)]">
+        <dl className={`grid border-t border-[var(--dk-line)] ${c.metrics.length > 1 ? "grid-cols-2 divide-x divide-[var(--dk-line)]" : "grid-cols-1"}`}>
           {c.metrics.map((m) => (
-            <div key={m.label} className="px-3 py-3 text-center">
-              <dd className="text-sm font-bold text-[var(--dk-cyan)]">{m.value}</dd>
+            <div key={m.label} className="px-3 py-3.5 text-center">
+              <dd
+                className="bg-clip-text text-base font-extrabold text-transparent"
+                style={{ backgroundImage: DK_GRADIENT }}
+              >
+                {m.value}
+              </dd>
               <dt className="mt-0.5 text-[11px] text-[var(--dk-faint)]">{m.label}</dt>
             </div>
           ))}
@@ -133,40 +154,39 @@ function CampaignCard({
     </>
   );
 
-  const shell =
-    "group relative block w-full overflow-hidden rounded-2xl border border-[var(--dk-line)] bg-[var(--dk-panel)] text-left transition-colors duration-300 hover:border-[var(--dk-cyan)]/55 hover:shadow-[0_0_0_1px_rgba(45,212,191,0.18),0_18px_50px_rgba(0,0,0,0.5)]";
+  const frame = (
+    <GradientFrame
+      className={`group h-full transition-transform duration-300 ${calm ? "" : "hover:-translate-y-1.5"}`}
+    >
+      {body}
+    </GradientFrame>
+  );
 
   // A card is only a button when there is somewhere to go. A clickable
   // element that does nothing is worse than a plain one.
   return clickable ? (
-    <button type="button" onClick={() => onOpenCaseStudy(c.caseStudySlug!)} className={shell}>
-      {body}
+    <button type="button" onClick={() => onOpenCaseStudy(c.caseStudySlug!)} className="block w-full text-left">
+      {frame}
       <span className="sr-only">View the case study for {c.title}</span>
     </button>
   ) : (
-    <article className={shell}>{body}</article>
+    <article>{frame}</article>
   );
 }
 
 function StatusChip({ campaign: c, calm }: { campaign: AdsensCampaign; calm: boolean }) {
   if (c.status === "live") {
     return (
-      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-[0_4px_14px_rgba(16,185,129,0.5)]">
         <span className={`h-1.5 w-1.5 rounded-full bg-white ${calm ? "" : "animate-pulse"}`} aria-hidden />
         Live
       </span>
     );
   }
-  if (c.isIllustrative) {
-    return (
-      <span className="shrink-0 rounded-full border border-white/25 bg-black/50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/80">
-        Illustrative
-      </span>
-    );
-  }
+  const label = c.isIllustrative ? "Illustrative" : c.status === "paused" ? "Paused" : "Completed";
   return (
-    <span className="shrink-0 rounded-full border border-white/25 bg-black/50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/80">
-      {c.status === "paused" ? "Paused" : "Completed"}
+    <span className="shrink-0 rounded-full border border-white/25 bg-black/55 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/80 backdrop-blur">
+      {label}
     </span>
   );
 }

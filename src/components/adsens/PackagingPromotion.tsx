@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { ArrowRight, Check, Megaphone, Package } from "lucide-react";
 import { DK_GRADIENT, Glow, useCalm } from "./dark";
+import { Ribbon } from "./flourish";
 
 /* =========================================================
    "From Packaging to Promotion" — the brand-positioning section (§4).
@@ -90,6 +91,10 @@ export function PackagingPromotion({ onCta }: { onCta: () => void }) {
           </p>
         </div>
       </div>
+
+      {/* Closes the dark block before the page turns light. Outline rather
+          than gradient, so it reads as a seam and not a second banner. */}
+      <Ribbon reverse tone="outline" className="mt-12 border-b-0" />
     </section>
   );
 }

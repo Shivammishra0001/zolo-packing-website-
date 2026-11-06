@@ -1,20 +1,22 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, ImageOff } from "lucide-react";
+import { ArrowRight, BadgeCheck } from "lucide-react";
 import { DK_GRADIENT, DarkHead, Glow, prettyCategory, useCalm } from "./dark";
+import { GradientFrame, Orbit, PLATE_FILTER, PlateTint, useReveal } from "./flourish";
+import { plateAt } from "./showcase-art";
 import { assetUrl } from "../../lib/asset-url";
 import type { AdsensCaseStudyCard } from "../../lib/api/adsens";
 
 /* =========================================================
    Our Portfolio.
 
-   Three columns on desktop, with category filters that update the grid in
+   Three columns on desktop with category filters that update the grid in
    place — no navigation, no refetch.
 
    The filter chips are built from the categories the SERVER derived from
-   published work. The brief lists eight suggested filters; offering all eight
-   when six of them have nothing behind them would advertise a portfolio we
-   do not have, so the list is whatever exists plus "All".
+   published work. The brief lists eight suggested filters; offering all
+   eight when six have nothing behind them would advertise a portfolio we do
+   not have, so the list is whatever exists, plus "All".
    ========================================================= */
 
 export function Portfolio({
@@ -28,6 +30,7 @@ export function Portfolio({
 }) {
   const [filter, setFilter] = useState<string>("all");
   const calm = useCalm();
+  const scope = useReveal<HTMLDivElement>("[data-port]", { y: 28, stagger: 0.06 });
 
   const shown = useMemo(
     () => (filter === "all" ? caseStudies : caseStudies.filter((c) => c.category === filter)),
@@ -38,9 +41,10 @@ export function Portfolio({
 
   return (
     <section id="portfolio" className="relative scroll-mt-20 border-t border-[var(--dk-line)] py-14 lg:py-20">
-      <Glow className="-right-20 top-24" color="var(--dk-violet)" size={420} />
+      <Glow className="-right-20 top-24" color="var(--dk-violet)" size={430} />
+      <Orbit className="absolute right-6 top-6 hidden text-[var(--dk-violet)] opacity-40 xl:block" size={220} />
 
-      <div className="shell relative">
+      <div ref={scope} className="shell relative">
         <DarkHead
           title="Our"
           accent="Portfolio"
@@ -64,19 +68,19 @@ export function Portfolio({
           {shown.map((c, i) => (
             <motion.div
               key={c.id}
-              // `layout` would be nicer, but it animates every card on every
-              // filter change; a short fade keyed to the filter is cheaper and
-              // reads the same.
-              initial={calm ? undefined : { opacity: 0, y: 14 }}
+              data-port
+              // Re-fade on filter change (the key includes the filter), which
+              // is cheaper than `layout` animating every card every time.
+              initial={calm ? undefined : { opacity: 0, y: 12 }}
               animate={calm ? undefined : { opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.24) }}
             >
-              <PortfolioCard item={c} onOpen={onOpen} calm={calm} />
+              <PortfolioCard item={c} index={i} onOpen={onOpen} calm={calm} />
             </motion.div>
           ))}
         </div>
 
-        {/* A filter that matches nothing can only happen transiently, but the
+        {/* A filter matching nothing can only happen transiently, but the
             visitor still deserves a sentence rather than a blank. */}
         {shown.length === 0 && (
           <p className="mt-10 text-center text-sm text-[var(--dk-muted)]">
@@ -97,9 +101,9 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`h-9 rounded-full px-4 text-[13px] font-semibold transition-colors ${
+      className={`h-9 rounded-full px-4 text-[13px] font-semibold transition-all ${
         active
-          ? "text-white"
+          ? "text-[#05080F] shadow-[0_6px_20px_rgba(45,212,191,0.3)]"
           : "border border-[var(--dk-line)] bg-[var(--dk-panel)] text-[var(--dk-muted)] hover:border-[var(--dk-line-2)] hover:text-[var(--dk-ink)]"
       }`}
       style={active ? { backgroundImage: DK_GRADIENT } : undefined}
@@ -111,53 +115,61 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
 
 function PortfolioCard({
   item: c,
+  index,
   onOpen,
   calm,
 }: {
   item: AdsensCaseStudyCard;
+  index: number;
   onOpen: (slug: string) => void;
   calm: boolean;
 }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onOpen(c.slug)}
-      className="group flex h-full w-full flex-col overflow-hidden rounded-2xl border border-[var(--dk-line)] bg-[var(--dk-panel)] text-left transition-colors duration-300 hover:border-[var(--dk-cyan)]/50 hover:shadow-[0_0_0_1px_rgba(45,212,191,0.16),0_18px_50px_rgba(0,0,0,0.5)]"
-    >
-      <div className="relative aspect-[16/10] w-full overflow-hidden bg-[var(--dk-bg)]">
-        {c.coverImage ? (
-          <img
-            src={assetUrl(c.coverImage)}
-            alt={c.title}
-            loading="lazy"
-            className={`h-full w-full object-cover transition-transform duration-500 ${calm ? "" : "group-hover:scale-[1.05]"}`}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center" style={{ backgroundImage: DK_GRADIENT, opacity: 0.16 }}>
-            <ImageOff className="h-8 w-8 text-white/60" aria-hidden />
-          </div>
-        )}
-      </div>
+  const plate = plateAt(index + 4);
+  const img = assetUrl(c.coverImage) ?? plate.src;
 
-      <div className="flex flex-1 flex-col p-5">
-        <div className="flex items-center justify-between gap-3">
-          <span
-            className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white"
-            style={{ backgroundImage: DK_GRADIENT }}
-          >
-            {prettyCategory(c.category)}
-          </span>
-          {c.clientName && <span className="truncate text-xs text-[var(--dk-faint)]">{c.clientName}</span>}
+  return (
+    <button type="button" onClick={() => onOpen(c.slug)} className="block h-full w-full text-left">
+      <GradientFrame
+        className={`group flex h-full flex-col transition-transform duration-300 ${calm ? "" : "hover:-translate-y-1.5"}`}
+      >
+        <div className="relative aspect-[16/10] w-full overflow-hidden bg-[var(--dk-bg)]">
+          <img
+            src={img}
+            alt={c.coverImage ? c.title : plate.alt}
+            loading="lazy"
+            className={`h-full w-full object-cover transition-transform duration-[600ms] ease-out ${calm ? "" : "group-hover:scale-[1.06]"}`}
+            style={PLATE_FILTER}
+          />
+          <PlateTint />
+          {/* Verified work earns a corner flag; unverified does not, so the
+              badge stays meaningful. */}
+          {c.resultsVerified && (
+            <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-emerald-500/95 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg">
+              <BadgeCheck className="h-3 w-3" aria-hidden /> Verified
+            </span>
+          )}
         </div>
 
-        <h3 className="mt-3 text-[15px] font-bold text-[var(--dk-ink)]">{c.title}</h3>
-        {c.summary && <p className="mt-1.5 text-sm leading-relaxed text-[var(--dk-muted)]">{c.summary}</p>}
+        <div className="flex flex-1 flex-col p-5">
+          <div className="flex items-center justify-between gap-3">
+            <span
+              className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#05080F]"
+              style={{ backgroundImage: DK_GRADIENT }}
+            >
+              {prettyCategory(c.category)}
+            </span>
+            {c.clientName && <span className="truncate text-xs text-[var(--dk-faint)]">{c.clientName}</span>}
+          </div>
 
-        <span className="mt-auto inline-flex items-center gap-1.5 pt-4 text-sm font-bold text-[var(--dk-cyan)]">
-          View Case Study
-          <ArrowRight className={`h-4 w-4 transition-transform ${calm ? "" : "group-hover:translate-x-0.5"}`} aria-hidden />
-        </span>
-      </div>
+          <h3 className="mt-3 text-[15px] font-bold text-[var(--dk-ink)]">{c.title}</h3>
+          {c.summary && <p className="mt-1.5 text-sm leading-relaxed text-[var(--dk-muted)]">{c.summary}</p>}
+
+          <span className="mt-auto inline-flex items-center gap-1.5 pt-4 text-sm font-bold text-[var(--dk-cyan)]">
+            View Case Study
+            <ArrowRight className={`h-4 w-4 transition-transform ${calm ? "" : "group-hover:translate-x-1"}`} aria-hidden />
+          </span>
+        </div>
+      </GradientFrame>
     </button>
   );
 }
