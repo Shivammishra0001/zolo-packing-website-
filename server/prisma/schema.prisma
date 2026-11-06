@@ -71,7 +71,7 @@ model User {
   memberships            OrganizationMember[]
   sessions               Session[]
   // audit/notification back-references
-  auditLogs              AuditLog[]             @relation("AuditActor")
+  auditLogs              AuditLog[]              @relation("AuditActor")
   notifications          Notification[]
   // commerce back-references
   customer               Customer?
@@ -80,32 +80,35 @@ model User {
   reviews                Review[]
   wishlist               Wishlist?
   cart                   Cart?
-  sellerProducts         Product[]              @relation("ProductSeller")
-  purchaseOrdersCreated  PurchaseOrder[]        @relation("PurchaseOrderCreatedBy")
-  goodsReceiptsTaken     GoodsReceipt[]         @relation("GoodsReceiptReceivedBy")
-  supplierPaymentsMade   SupplierPayment[]      @relation("SupplierPaymentPaidBy")
-  stockMovements         StockMovement[]        @relation("StockMovementActor")
+  sellerProducts         Product[]               @relation("ProductSeller")
+  purchaseOrdersCreated  PurchaseOrder[]         @relation("PurchaseOrderCreatedBy")
+  goodsReceiptsTaken     GoodsReceipt[]          @relation("GoodsReceiptReceivedBy")
+  supplierPaymentsMade   SupplierPayment[]       @relation("SupplierPaymentPaidBy")
+  stockMovements         StockMovement[]         @relation("StockMovementActor")
   rfqs                   Rfq[]
   quotations             Quotation[]
-  authoredQuotations     Quotation[]            @relation("QuotationAuthor")
+  authoredQuotations     Quotation[]             @relation("QuotationAuthor")
   // payment requests (custom payment links)
-  paymentRequests        PaymentRequest[]       @relation("PaymentRequestCustomer")
-  createdPaymentRequests PaymentRequest[]       @relation("PaymentRequestCreator")
+  paymentRequests        PaymentRequest[]        @relation("PaymentRequestCustomer")
+  createdPaymentRequests PaymentRequest[]        @relation("PaymentRequestCreator")
   notificationDeliveries NotificationDelivery[]
-  sentMessages           Message[]              @relation("MessageSender")
+  sentMessages           Message[]               @relation("MessageSender")
   savedRequirements      SavedRequirement[]
-  rfqFiles               RfqFile[]              @relation("RfqFileUploader")
+  rfqFiles               RfqFile[]               @relation("RfqFileUploader")
   returnRequests         ReturnRequest[]
   ecoCreditTransactions  EcoCreditTransaction[]
   recyclingRequests      RecyclingRequest[]
-  assignedCoupons        Coupon[]               @relation("AssignedCoupons")
-  catalogImports         CatalogImport[]        @relation("CatalogImporter")
-  createdOrders          Order[]                @relation("OrderCreatedBy")
-  receivedPayments       Payment[]              @relation("PaymentReceivedBy")
+  assignedCoupons        Coupon[]                @relation("AssignedCoupons")
+  catalogImports         CatalogImport[]         @relation("CatalogImporter")
+  createdOrders          Order[]                 @relation("OrderCreatedBy")
+  marketingLeadsAssigned MarketingLead[]         @relation("MarketingLeadAssignee")
+  marketingLeadsWon      MarketingLead[]         @relation("MarketingLeadCustomer")
+  marketingLeadActivity  MarketingLeadActivity[] @relation("MarketingLeadActor")
+  receivedPayments       Payment[]               @relation("PaymentReceivedBy")
   salespersonProfile     SalespersonProfile?
-  capturedOrders         Order[]                @relation("OrderSalesperson")
-  capturedCustomers      User[]                 @relation("CustomerCapturedBy")
-  capturedBy             User?                  @relation("CustomerCapturedBy", fields: [capturedById], references: [id])
+  capturedOrders         Order[]                 @relation("OrderSalesperson")
+  capturedCustomers      User[]                  @relation("CustomerCapturedBy")
+  capturedBy             User?                   @relation("CustomerCapturedBy", fields: [capturedById], references: [id])
   capturedById           String?
 
   @@index([role])
@@ -2553,4 +2556,164 @@ model SupplierPayment {
   @@index([purchaseOrderId])
   @@index([supplierId])
   @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// AdSens by Zolo — digital marketing services sold to businesses.
+//
+// A SEPARATE PIPELINE from the packaging store's Coupon/Campaign tables, which
+// model promotions rather than sales. These sit under Admin → Marketing as new
+// tabs so there is still one Marketing module, not a second CRM.
+//
+// A consultation request arrives from an ANONYMOUS visitor, so a lead cannot
+// hang off User (Rfq does, which is why Rfq is not reused). `convertedUserId`
+// links a won lead to a real customer account when one exists, so winning a
+// lead never duplicates a customer record.
+// ---------------------------------------------------------------------------
+
+enum MarketingLeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL_SENT
+  NEGOTIATION
+  WON
+  LOST
+}
+
+/// One digital-marketing service offered on /adsens. Admin-managed; the public
+/// page renders only `isActive` rows in `sortOrder`.
+model MarketingService {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  name         String
+  summary      String?
+  /// Bullet deliverables shown on the service card.
+  deliverables String[]
+  /// Lucide icon name, so the page never ships an image for a text card.
+  icon         String?
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  packages MarketingPackageService[]
+
+  @@index([isActive, sortOrder])
+}
+
+/// A published marketing package (Starter / Business / Enterprise).
+/// Prices are admin-set and nullable: a package with no price shows
+/// "Custom quote" rather than an invented figure.
+model MarketingPackage {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  name          String
+  tagline       String?
+  description   String?
+  /// Agency/service fee in paise. NULL = quote-only, never rendered as ₹0.
+  priceMinor    Int?
+  /// "month" | "one_time" — how the fee recurs.
+  billingPeriod String   @default("month")
+  deliverables  String[]
+  isPublished   Boolean  @default(false)
+  isFeatured    Boolean  @default(false)
+  sortOrder     Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  services MarketingPackageService[]
+  leads    MarketingLead[]
+
+  @@index([isPublished, sortOrder])
+}
+
+/// Which services a package includes.
+model MarketingPackageService {
+  id        String           @id @default(cuid())
+  packageId String
+  package   MarketingPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  serviceId String
+  service   MarketingService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, serviceId])
+  @@index([serviceId])
+}
+
+/// A consultation request from the public /adsens page.
+model MarketingLead {
+  id         String @id @default(cuid())
+  leadNumber String @unique // ADS-xxxxxxxx, app-generated
+
+  // Contact (required)
+  fullName String
+  phone    String
+  email    String
+
+  // Business
+  companyName String?
+  website     String?
+  industry    String?
+  location    String?
+
+  // Requirement
+  /// Service slugs the visitor ticked. Snapshotted as text so renaming a
+  /// service later never rewrites what they actually asked for.
+  services    String[]
+  budgetRange String?
+  challenges  String?
+  requirement String?
+  packageId   String?
+  package     MarketingPackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
+
+  // Contact preference + consent
+  preferredContact  String? // phone | email | whatsapp
+  bestTimeToContact String?
+  /// Explicit permission to be contacted. Required at submission.
+  consent           Boolean @default(false)
+
+  // Pipeline
+  status         MarketingLeadStatus @default(NEW)
+  source         String              @default("adsens_web")
+  assignedToId   String?
+  assignedTo     User?               @relation("MarketingLeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  nextFollowUpAt DateTime?
+  lostReason     String?
+
+  /// Set when a WON lead is linked to a customer account. Never creates a
+  /// duplicate customer: it points at the existing User.
+  convertedUserId String?
+  convertedUser   User?     @relation("MarketingLeadCustomer", fields: [convertedUserId], references: [id], onDelete: SetNull)
+  convertedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activities MarketingLeadActivity[]
+
+  @@index([status, createdAt])
+  @@index([assignedToId])
+  @@index([email])
+  @@index([phone])
+  @@index([nextFollowUpAt])
+}
+
+/// Append-only history for a lead: status moves, notes, follow-ups, contact
+/// attempts. Never edited or deleted, so the pipeline can be audited.
+model MarketingLeadActivity {
+  id         String               @id @default(cuid())
+  leadId     String
+  lead       MarketingLead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  /// status_changed | note | assigned | follow_up | contacted | converted
+  kind       String
+  body       String?
+  fromStatus MarketingLeadStatus?
+  toStatus   MarketingLeadStatus?
+  actorId    String?
+  actor      User?                @relation("MarketingLeadActor", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt  DateTime             @default(now())
+
+  @@index([leadId, createdAt])
 }
