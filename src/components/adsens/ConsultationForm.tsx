@@ -42,10 +42,16 @@ type Errors = Partial<Record<keyof typeof EMPTY | "services" | "consent" | "form
 export function ConsultationForm({
   services,
   preselect,
+  bare = false,
+  onDone,
 }: {
   services: AdsensService[];
   /** Set when the visitor clicked "Get started" on a service or package. */
   preselect: { services?: string[]; packageId?: string } | null;
+  /** Drop the card chrome — the dialog already draws a panel around this. */
+  bare?: boolean;
+  /** Dismiss handler for the host dialog, shown as "Done" after success. */
+  onDone?: () => void;
 }) {
   const [form, setForm] = useState(EMPTY);
   const [picked, setPicked] = useState<string[]>([]);
@@ -125,6 +131,8 @@ export function ConsultationForm({
       // Only now — the server has the lead and gave us its reference.
       setReference(res.leadNumber);
       setState("done");
+      // Deliberately NOT closing the dialog here: the visitor needs to read
+      // their reference number. `onDone` is wired to the "Done" button below.
     } catch (err) {
       const e = err as AdsensError;
       setState("idle");
@@ -145,6 +153,17 @@ export function ConsultationForm({
             Your reference: <span className="font-mono font-bold">{reference}</span>
           </p>
         )}
+        {/* In the dialog the visitor needs a way out; inline on the page the
+            success panel simply replaces the form and needs no button. */}
+        {bare && onDone && (
+          <button
+            type="button"
+            onClick={onDone}
+            className="btn btn-green btn-sm mt-6"
+          >
+            Done
+          </button>
+        )}
       </div>
     );
   }
@@ -152,7 +171,11 @@ export function ConsultationForm({
   const sending = state === "sending";
 
   return (
-    <form onSubmit={submit} noValidate className="rounded-2xl border border-[var(--ads-line)] bg-white p-6 sm:p-8">
+    <form
+      onSubmit={submit}
+      noValidate
+      className={bare ? "" : "rounded-2xl border border-[var(--ads-line)] bg-white p-6 sm:p-8"}
+    >
       <Group title="Your details">
         <Field label="Full name" required error={errors.fullName}>
           <input ref={firstFieldRef} className={inputCls(errors.fullName)} value={form.fullName} onChange={set("fullName")}

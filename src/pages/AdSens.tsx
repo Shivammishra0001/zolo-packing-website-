@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowRight, BarChart3, Check, ChevronDown, Globe2, Layers, LineChart,
@@ -6,7 +6,7 @@ import {
   TrendingUp, Users,
 } from "lucide-react";
 import { adsensApi, type AdsensService, type AdsensPackage } from "../lib/api/adsens";
-import { ConsultationForm } from "../components/adsens/ConsultationForm";
+import { ConsultationModal } from "../components/adsens/ConsultationModal";
 
 /* =========================================================
    ADSENS BY ZOLO — digital marketing services.
@@ -85,7 +85,7 @@ export default function AdSens() {
   const [packages, setPackages] = useState<AdsensPackage[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [preselect, setPreselect] = useState<{ services?: string[]; packageId?: string } | null>(null);
-  const formRef = useRef<HTMLDivElement>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   useEffect(() => {
     document.title = "AdSens by Zolo | Digital Marketing & Business Growth";
@@ -106,10 +106,10 @@ export default function AdSens() {
       .finally(() => setLoaded(true));
   }, []);
 
-  /** Jump to the form with a service or package already ticked (§5). */
+  /** Open the consultation dialog with a service or package already ticked (§5). */
   function startWith(next: { services?: string[]; packageId?: string }) {
     setPreselect(next);
-    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setFormOpen(true);
   }
 
   const featured = useMemo(() => services.slice(0, 5), [services]);
@@ -359,16 +359,20 @@ export default function AdSens() {
         </div>
       </section>
 
-      {/* ---- Consultation form (§10) ---- */}
-      <section ref={formRef} id="consultation" className="section scroll-mt-20 bg-[var(--ads-ground)]">
+      {/* ---- Consultation (§10). The form itself lives in a dialog, so this
+             section is the invitation rather than eleven fields the visitor
+             has to scroll past to reach the FAQ. ---- */}
+      <section id="consultation" className="section scroll-mt-20 bg-[var(--ads-ground)]">
         <div className="shell">
-          <SectionHead
-            eyebrow="Get started"
-            title="Request a free consultation"
-            subtitle="Tell us about your business and we'll come back with a plan — no obligation."
-          />
-          <div className="mt-8">
-            <ConsultationForm services={services} preselect={preselect} />
+          <div className="rounded-2xl border border-[var(--ads-line)] bg-white px-6 py-10 text-center sm:px-10 sm:py-12">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ads-orange)]">Get started</p>
+            <h2 className="h2 mt-2">Request a free consultation</h2>
+            <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-[var(--ads-muted)]">
+              Tell us about your business and we'll come back with a plan — no obligation.
+            </p>
+            <button onClick={() => startWith({})} className="btn btn-primary btn-lg mt-7">
+              Enquire now <ArrowRight className="h-4 w-4" aria-hidden />
+            </button>
           </div>
         </div>
       </section>
@@ -402,6 +406,13 @@ export default function AdSens() {
           </div>
         </div>
       </section>
+
+      <ConsultationModal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        services={services}
+        preselect={preselect}
+      />
     </main>
   );
 }
