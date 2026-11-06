@@ -220,19 +220,3 @@ export function PlateTint() {
   );
 }
 
-/** Small corner ribbon, the "flag" treatment from the reference cards. */
-export function CornerRibbon({ label, tone = "cyan" }: { label: string; tone?: "cyan" | "amber" }) {
-  return (
-    <span
-      className="pointer-events-none absolute -right-10 top-5 z-10 w-36 rotate-45 py-1 text-center text-[10px] font-bold uppercase tracking-wider text-[#05080F] shadow-lg"
-      style={{
-        backgroundImage:
-          tone === "cyan"
-            ? "linear-gradient(90deg,var(--dk-cyan),var(--dk-blue))"
-            : "linear-gradient(90deg,#FBBF24,var(--dk-orange))",
-      }}
-    >
-      {label}
-    </span>
-  );
-}

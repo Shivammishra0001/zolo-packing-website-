@@ -4,6 +4,24 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { ConsultationForm } from "./ConsultationForm";
 import type { AdsensService } from "../../lib/api/adsens";
+import type { CSSProperties } from "react";
+
+/**
+ * The dialog stays LIGHT over the dark page, deliberately.
+ *
+ * An eleven-field form is work, and a white panel is the more legible
+ * surface for filling one in — dark form fields with dark labels are where
+ * these pages usually fall down. The contrast also makes the dialog read as
+ * a distinct layer rather than another section of the page.
+ *
+ * These three tokens are what ConsultationForm references. They used to come
+ * from the page root, which is now dark, so the form carries its own.
+ */
+const formPalette = {
+  "--ads-line": "var(--color-dark-200)",
+  "--ads-muted": "var(--color-dark-500)",
+  "--ads-orange": "var(--color-primary-500)",
+} as CSSProperties;
 
 // ============================================================
 // The consultation form as a dialog.
@@ -99,6 +117,7 @@ export function ConsultationModal({
             // Bottom sheet on phones → centred card from sm. `2xl:max-w-3xl`
             // lets the two-column field grid breathe on a large screen without
             // the form stretching across an ultra-wide monitor.
+            style={formPalette}
             className="relative flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-[16px] rounded-b-none bg-white outline-none shadow-2xl sm:rounded-[16px] lg:max-w-2xl 2xl:max-w-3xl"
           >
             {/* Header stays put while the form scrolls under it, so the close

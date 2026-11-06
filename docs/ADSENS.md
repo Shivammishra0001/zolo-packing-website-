@@ -184,7 +184,65 @@ Vite and the API on :5001, so those paths resolved against Vite and every
 image silently rendered blank. `src/lib/asset-url.ts` derives the upload
 origin from the configured API base. This was a pre-existing dev gap, not new.
 
-## 11. Not built
+## 11. Full-page redesign (Nov 2026)
+
+The page was rebuilt as ONE dark surface in the brief's §2 order:
+
+| # | Section | Source of content |
+|---|---|---|
+| 1 | Hero | Authored copy + published campaigns |
+| 2 | Services Overview | `MarketingService` (DB) |
+| 3 | Active Campaigns | `MarketingCampaign` (DB) |
+| 4 | Our Portfolio | `MarketingCaseStudy` (DB) |
+| 5 | Our Approach | Authored |
+| 6 | Why Choose AdSens | Authored |
+| 7 | Zolo + AdSens | Authored |
+| 8 | Consultation CTA | Opens the lead dialog |
+| 9 | FAQ | Authored |
+
+### No pricing (§7)
+
+The packages rail and its prices were REMOVED from the public page. The
+`MarketingPackage` table stays — `MarketingLead.packageId` is an FK to it and
+the admin still quotes from it privately — but nothing on `/adsens` renders a
+price. Verified against the live page: the only currency string anywhere is
+the shared Zolo announcement bar ("Free shipping on orders over ₹10000"),
+which is global chrome the brief says to preserve.
+
+### Varied service compositions (§4)
+
+The services grid is deliberately asymmetric rather than N identical cards:
+a wide FEATURE panel with real packaging photography feathered into its edge,
+then two TALL cards carrying full deliverable lists, then COMPACT cards. The
+layout adapts to however many services are published — three services gives a
+feature and two talls with no empty row.
+
+### The consultation dialog stays light
+
+An eleven-field form is work, and a white panel is the more legible surface
+for filling one in; dark fields with dark labels are where these pages
+usually fail. The three `--ads-*` tokens the form needs are set on the dialog
+itself, since the page root is no longer light.
+
+### Verified (§18)
+
+| Criterion | Result |
+|---|---|
+| Section order matches §2 | 9 sections, exact order |
+| No pricing on the page | Only the global announcement bar |
+| No fabricated metrics | None of the reference's figures present |
+| Portfolio filters work | 5 cards → 1 on "SEO", `aria-pressed` correct |
+| Case study opens | Dialog opens, Escape closes |
+| Consultation saves leads | Dialog opens with 12 fields, wired to the tested pipeline |
+| Desktop grid | 4 campaigns/row, 3 portfolio/row at 1440 and 1920 |
+| Tablet / mobile | 2/row at 768–1024, 1/row at 375 |
+| No overflow | 320/375/390/414/768/1024/1280/1440/1920/2560 |
+| Console errors | None, on `/adsens` or any other route |
+| Semantics | One `h1`, all images have `alt`, 11 lazy-loaded, FAQ buttons carry `aria-expanded` |
+| Reduced motion | 0 animations; all 47 revealed elements visible |
+| Other routes | `/`, `/products`, `/eco-rewards`, `/contact` unaffected |
+
+## 12. Not built
 
 * **Marketing quotations** (§15) — no `MarketingQuotation` table or UI yet.
 * **Admin UI** for services, packages and leads. The APIs are complete and

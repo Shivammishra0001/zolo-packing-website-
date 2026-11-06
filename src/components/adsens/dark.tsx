@@ -1,5 +1,8 @@
 import { useMemo, type CSSProperties, type ReactNode } from "react";
 import { useReducedMotion } from "framer-motion";
+import {
+  Globe2, LineChart, Megaphone, MessageCircle, PenTool, Search, Share2, Sparkles, Target,
+} from "lucide-react";
 
 /* =========================================================
    AdSens dark showcase — shared surface.
@@ -188,6 +191,22 @@ export function DarkHead({
     </div>
   );
 }
+
+/** Icon per service slug, with a sensible fallback so a service an admin
+ *  adds later still renders something rather than a hole. Lives here, beside
+ *  the other shared showcase vocabulary, because the page, the services
+ *  section and the featured rail all need it. */
+const SERVICE_ICONS: Record<string, typeof Megaphone> = {
+  "digital-advertising": Megaphone,
+  "social-media-marketing": Share2,
+  seo: Search,
+  "website-development": Globe2,
+  "creative-content": PenTool,
+  "lead-generation": Target,
+  "whatsapp-marketing": MessageCircle,
+  "marketing-strategy": LineChart,
+};
+export const iconFor = (slug: string) => SERVICE_ICONS[slug] ?? Sparkles;
 
 /** Platform label + its accent colour. Unknown platforms fall back rather
  *  than disappearing, so an admin-added value still renders. */
