@@ -112,12 +112,85 @@ No horizontal overflow at **320 / 375 / 390 / 414 / 768 / 1024 / 1280 / 1440 /
 1920 / 2560**. Form measured in the DOM: 11 inputs, 0 overflowing, none under
 36px tall, 1 column at 375px → 2 at 1440px, 48px submit button.
 
-## 10. Not built
+## 10. The dark showcase sections
+
+Three reference designs (an agency hero, an "Active Campaigns" rail and an
+"Our Portfolio" grid) were supplied as the direction for the top of the page.
+They were recreated closely — dark navy ground, cyan/violet gradients, glowing
+borders, grid texture, drifting particles, four-up and three-up card grids.
+
+### The conflict, and how it was resolved
+
+Every number in those references is invented: "250+ Clients Served", "3.2x ROI
+Multiplier", "98% Client Satisfaction", "12.4K Clicks", "#1 Ranking", "89K
+Visits", plus six named clients with testimonials. The same brief that
+supplied them also says, in §2: *"Do not show invented live campaigns, client
+names, clicks, conversion rates, ROAS, rankings or leads."*
+
+So the **composition** was copied and the **content** was made admin-owned.
+Two tables back it (`MarketingCampaign`, `MarketingCaseStudy`), managed under
+**Admin → Marketing → AdSens campaigns / AdSens portfolio**. Nothing is
+hardcoded in the frontend.
+
+Four rules are enforced on the SERVER, not in the page:
+
+| Rule | Where | Effect |
+|---|---|---|
+| A sample preview can never claim LIVE | `publicCampaign()` rewrites `status` to `"illustrative"` whenever `isIllustrative` | The UI has no code path to badge it live |
+| Real client work needs a named client | `assertCampaignHonesty()`, on create AND update | A sample card cannot carry a real brand |
+| A metric is a complete label+value pair | `metricsOf()` | A half-filled pair is dropped, so there is no slot for a placeholder number |
+| Unverified results are never sent | `publicCaseStudyFull()` returns `results: []` unless `resultsVerified` | The page cannot leak what it never receives |
+
+`assertCaseStudyHonesty()` also refuses to set `resultsVerified` with no
+results behind it — verification is a claim about numbers, so there have to be
+numbers.
+
+These are covered by 21 tests in `server/test/adsens-showcase.test.mjs`,
+including one that seeds `status: "live"` on an illustrative row and asserts
+the public endpoint still reports `"illustrative"`.
+
+### Empty by default
+
+Both rails hide themselves entirely when nothing is published — no skeleton
+cards, no "coming soon" grid. The hero's preview slot falls back to a panel
+that says real creatives appear there once there is genuine work to show.
+Verified on the live page with the tables empty: `hasActiveCampaigns: false,
+hasPortfolio: false, hasPlaceholder: true`.
+
+The portfolio filter chips are built from `categories`, which the server
+derives from published case studies. The brief lists eight suggested filters;
+offering all eight with six of them empty would advertise a portfolio that
+does not exist.
+
+### Two palettes, one page
+
+The showcase block is dark; services, process, packages, consultation and FAQ
+stay on the original light ground. Both palettes are scoped CSS variables on
+their own wrapper, so the global theme and every other page are untouched.
+
+### Motion
+
+`prefers-reduced-motion` is honoured: particles are not rendered at all (0 vs
+22, measured), entrance offsets collapse to a plain fade, hover zooms and the
+pulsing live dot are dropped. Particles are CSS keyframes on transform and
+opacity — no rAF loop and no per-frame React work — with positions from a
+seeded LCG so re-renders do not reshuffle them.
+
+### Dev-only image fix
+
+Stored uploads are root-relative (`/uploads/x.jpg`), which is correct in
+production where one process serves API and SPA. In development the SPA is on
+Vite and the API on :5001, so those paths resolved against Vite and every
+image silently rendered blank. `src/lib/asset-url.ts` derives the upload
+origin from the configured API base. This was a pre-existing dev gap, not new.
+
+## 11. Not built
 
 * **Marketing quotations** (§15) — no `MarketingQuotation` table or UI yet.
 * **Admin UI** for services, packages and leads. The APIs are complete and
-  tested; the screens under `Admin → Marketing` are phase 2. Services are
-  manageable today only via `npm run seed:adsens` or direct SQL.
+  tested; those three screens are still phase 2. Services are manageable today
+  only via `npm run seed:adsens` or direct SQL. (Campaigns and portfolio DO
+  have admin screens — see §10.)
 * **Packages** — the data model and the public section exist, but nothing is
   published, so the section hides itself. No invented tiers or prices.
 * **Marketing clients / billing** (§16) — deliberately not stubbed.

@@ -28,6 +28,61 @@ export interface AdsensPackage {
   services: { slug: string; name: string }[];
 }
 
+// ---- Showcase: campaigns + portfolio ----
+//
+// All of this is admin-entered. The two fields that look like marketing
+// claims are deliberately constrained at the source:
+//   status "illustrative"  the server returns this for any sample preview,
+//                          so the UI cannot badge it LIVE.
+//   resultsVerified        false means the `results` array arrives EMPTY —
+//                          the server strips it, the page never sees it.
+
+export type CampaignPlatform = "meta" | "google" | "linkedin" | "email" | "youtube" | "whatsapp" | "other";
+export type CampaignStatus = "live" | "completed" | "paused" | "illustrative";
+
+export interface AdsensCampaign {
+  id: string;
+  slug: string;
+  title: string;
+  clientName: string | null;
+  platform: CampaignPlatform;
+  imageUrl: string | null;
+  status: CampaignStatus;
+  isIllustrative: boolean;
+  /** Only complete label+value pairs arrive. May be empty. */
+  metrics: { label: string; value: string }[];
+  caseStudySlug: string | null;
+}
+
+export interface AdsensCaseStudyCard {
+  id: string;
+  slug: string;
+  title: string;
+  clientName: string | null;
+  industry: string | null;
+  category: string;
+  coverImage: string | null;
+  summary: string | null;
+  resultsVerified: boolean;
+}
+
+export interface AdsensCaseStudy extends AdsensCaseStudyCard {
+  overview: string | null;
+  strategy: string | null;
+  execution: string | null;
+  servicesProvided: string[];
+  gallery: string[];
+  /** Empty unless resultsVerified. Never populate this client-side. */
+  results: string[];
+}
+
+export interface AdsensShowcase {
+  campaigns: AdsensCampaign[];
+  caseStudies: AdsensCaseStudyCard[];
+  /** Derived server-side from published work — never a hardcoded list. */
+  categories: string[];
+}
+
 export interface ConsultationInput {
   fullName: string;
   email: string;
@@ -83,6 +138,9 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const adsensApi = {
   catalog: () => call<{ services: AdsensService[]; packages: AdsensPackage[] }>("/public/adsens/catalog"),
+  showcase: () => call<AdsensShowcase>("/public/adsens/showcase"),
+  caseStudy: (slug: string) =>
+    call<{ caseStudy: AdsensCaseStudy }>(`/public/adsens/case-studies/${encodeURIComponent(slug)}`),
   submitConsultation: (input: ConsultationInput) =>
     call<ConsultationResult>("/public/adsens/consultation", { method: "POST", body: JSON.stringify(input) }),
 };

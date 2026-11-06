@@ -6,6 +6,7 @@ import { Check, ImageOff, MoreHorizontal, Search, Upload, X, type LucideIcon } f
 import { cn } from "@/utils/cn";
 import { ApiError } from "@/lib/api/client";
 import { catalogApi } from "@/lib/catalog-api";
+import { assetUrl } from "@/lib/asset-url";
 import type { CampaignStatus, CouponStatus } from "@/lib/api/marketing";
 import { Badge, Button } from "../../components/ui";
 
@@ -360,7 +361,7 @@ export function CampaignImageField({
       <div className={cn("flex flex-col gap-3 rounded-lg border border-dashed erp-border p-3 sm:flex-row sm:items-center", shown && "border-red-500")}>
         <div className="flex h-24 w-full shrink-0 items-center justify-center overflow-hidden rounded-md erp-surface-2 sm:w-40">
           {value
-            ? <img src={value} alt="" className="h-full w-full object-cover" />
+            ? <img src={assetUrl(value)} alt="" className="h-full w-full object-cover" />
             : <ImageOff className="h-6 w-6 erp-text-faint" aria-hidden />}
         </div>
         <div className="min-w-0 flex-1">

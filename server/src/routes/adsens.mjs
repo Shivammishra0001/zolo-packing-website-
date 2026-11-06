@@ -9,6 +9,7 @@ import { Router } from "express";
 import { ok, wrap } from "../lib/http.mjs";
 import { rateLimit } from "../middleware/rate-limit.mjs";
 import * as adsens from "../services/adsens.mjs";
+import * as showcase from "../services/adsens-showcase.mjs";
 
 // ---- Public -------------------------------------------------------------
 
@@ -18,6 +19,20 @@ export const publicAdsensRouter = Router();
 publicAdsensRouter.get("/catalog", wrap(async (_req, res) => {
   res.setHeader("Cache-Control", "public, max-age=60");
   ok(res, await adsens.publicCatalog());
+}));
+
+/** Campaign previews + portfolio cards for the showcase sections. Published
+ *  rows only — the service strips unverified results before they reach here. */
+publicAdsensRouter.get("/showcase", wrap(async (_req, res) => {
+  res.setHeader("Cache-Control", "public, max-age=60");
+  ok(res, await showcase.publicShowcase());
+}));
+
+/** One case study. An unpublished slug is a 404, like any record the caller
+ *  is not entitled to — we never confirm that a draft exists. */
+publicAdsensRouter.get("/case-studies/:slug", wrap(async (req, res) => {
+  res.setHeader("Cache-Control", "public, max-age=60");
+  ok(res, { caseStudy: await showcase.publicCaseStudy(req.params.slug) });
 }));
 
 /** Spam brake. Keyed on IP **and** email, like the login limiter: a shared
@@ -80,4 +95,46 @@ adminAdsensRouter.patch("/leads/:id", wrap(async (req, res) => {
 /** Link a WON lead to an EXISTING customer account — never creates one. */
 adminAdsensRouter.post("/leads/:id/convert", wrap(async (req, res) => {
   ok(res, { lead: await adsens.convertLead(req.user.id, req.params.id, req.body ?? {}) });
+}));
+
+// ---- Admin: showcase content -------------------------------------------
+//
+// Campaigns and case studies are the content behind the two showcase rails on
+// /adsens. Nothing is hardcoded in the frontend, so these are the only way
+// that content exists at all.
+
+adminAdsensRouter.get("/campaigns", wrap(async (_req, res) => {
+  ok(res, await showcase.listCampaigns());
+}));
+
+adminAdsensRouter.post("/campaigns", wrap(async (req, res) => {
+  ok(res, { campaign: await showcase.createCampaign(req.user.id, req.body ?? {}) }, 201);
+}));
+
+adminAdsensRouter.patch("/campaigns/:id", wrap(async (req, res) => {
+  ok(res, { campaign: await showcase.updateCampaign(req.user.id, req.params.id, req.body ?? {}) });
+}));
+
+adminAdsensRouter.delete("/campaigns/:id", wrap(async (req, res) => {
+  ok(res, await showcase.deleteCampaign(req.user.id, req.params.id));
+}));
+
+adminAdsensRouter.get("/case-studies", wrap(async (_req, res) => {
+  ok(res, await showcase.listCaseStudies());
+}));
+
+adminAdsensRouter.get("/case-studies/:id", wrap(async (req, res) => {
+  ok(res, { caseStudy: await showcase.getCaseStudy(req.params.id) });
+}));
+
+adminAdsensRouter.post("/case-studies", wrap(async (req, res) => {
+  ok(res, { caseStudy: await showcase.createCaseStudy(req.user.id, req.body ?? {}) }, 201);
+}));
+
+adminAdsensRouter.patch("/case-studies/:id", wrap(async (req, res) => {
+  ok(res, { caseStudy: await showcase.updateCaseStudy(req.user.id, req.params.id, req.body ?? {}) });
+}));
+
+adminAdsensRouter.delete("/case-studies/:id", wrap(async (req, res) => {
+  ok(res, await showcase.deleteCaseStudy(req.user.id, req.params.id));
 }));

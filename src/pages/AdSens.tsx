@@ -5,12 +5,29 @@ import {
   MessageCircle, Megaphone, PenTool, Search, Share2, Sparkles, Target,
   TrendingUp, Users,
 } from "lucide-react";
-import { adsensApi, type AdsensService, type AdsensPackage } from "../lib/api/adsens";
+import { adsensApi, type AdsensService, type AdsensPackage, type AdsensShowcase } from "../lib/api/adsens";
 import { ConsultationModal } from "../components/adsens/ConsultationModal";
+import { DarkGround } from "../components/adsens/dark";
+import { DarkHero } from "../components/adsens/DarkHero";
+import { ActiveCampaigns } from "../components/adsens/ActiveCampaigns";
+import { Portfolio } from "../components/adsens/Portfolio";
+import { PackagingPromotion } from "../components/adsens/PackagingPromotion";
+import { CaseStudyModal } from "../components/adsens/CaseStudyModal";
 
 /* =========================================================
    ADSENS BY ZOLO — digital marketing services.
    Route: /adsens
+
+   DESIGN — TWO ZONES, deliberately:
+
+   The showcase block at the top (hero, Active Campaigns, Our Portfolio,
+   Packaging+Promotion) runs on a dark navy ground with cyan/violet accents,
+   per the supplied agency references. Everything below it — services,
+   process, packages, consultation, FAQ — stays on the original light
+   "Modern Growth" ground, because that half is practical information rather
+   than a showcase, and because the brief said to keep the rest of the Zolo
+   site unchanged. Both palettes are SCOPED to their wrapper; the global
+   theme is untouched.
 
    DESIGN (§2, "Modern Growth"): white and light grey ground, Zolo orange kept
    as the primary brand colour so this still reads as Zolo, with purple/blue
@@ -84,8 +101,10 @@ export default function AdSens() {
   const [services, setServices] = useState<AdsensService[]>([]);
   const [packages, setPackages] = useState<AdsensPackage[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [showcase, setShowcase] = useState<AdsensShowcase>({ campaigns: [], caseStudies: [], categories: [] });
   const [preselect, setPreselect] = useState<{ services?: string[]; packageId?: string } | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [caseStudySlug, setCaseStudySlug] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = "AdSens by Zolo | Digital Marketing & Business Growth";
@@ -106,17 +125,55 @@ export default function AdSens() {
       .finally(() => setLoaded(true));
   }, []);
 
+  useEffect(() => {
+    // Separate request from the catalog: the showcase sections hide
+    // themselves when empty, so a failure here must not blank the services
+    // list, and vice versa.
+    adsensApi
+      .showcase()
+      .then(setShowcase)
+      .catch(() => { /* the showcase rails simply do not render */ });
+  }, []);
+
   /** Open the consultation dialog with a service or package already ticked (§5). */
   function startWith(next: { services?: string[]; packageId?: string }) {
     setPreselect(next);
     setFormOpen(true);
   }
 
+  /**
+   * "Explore Our Work" target. Prefers the portfolio, falls back to the
+   * services list when nothing is published yet — the button must never be
+   * a no-op, and `scroll-behavior` is respected so a reduced-motion visitor
+   * does not get a long animated jump.
+   */
+  function scrollToWork() {
+    const el = document.getElementById("portfolio") ?? document.getElementById("services");
+    el?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "start",
+    });
+  }
+
   const featured = useMemo(() => services.slice(0, 5), [services]);
 
   return (
     <main style={palette} className="bg-[var(--ads-surface)] text-[var(--ads-ink)]">
-      <Hero onConsult={() => startWith({})} />
+      {/* ---- Dark showcase block (hero, campaigns, portfolio, positioning) ---- */}
+      <DarkGround>
+        <DarkHero
+          campaigns={showcase.campaigns}
+          onConsult={() => startWith({})}
+          onExplore={scrollToWork}
+        />
+        <ActiveCampaigns campaigns={showcase.campaigns} onOpenCaseStudy={setCaseStudySlug} />
+        <Portfolio
+          caseStudies={showcase.caseStudies}
+          categories={showcase.categories}
+          onOpen={setCaseStudySlug}
+        />
+        <PackagingPromotion onCta={() => startWith({})} />
+      </DarkGround>
 
       {/* ---- Value props (§4) ---- */}
       <section className="section bg-[var(--ads-ground)]">
@@ -407,6 +464,8 @@ export default function AdSens() {
         </div>
       </section>
 
+      <CaseStudyModal slug={caseStudySlug} onClose={() => setCaseStudySlug(null)} />
+
       <ConsultationModal
         open={formOpen}
         onClose={() => setFormOpen(false)}
@@ -418,81 +477,6 @@ export default function AdSens() {
 }
 
 /* ---------- pieces ---------- */
-
-function Hero({ onConsult }: { onConsult: () => void }) {
-  return (
-    <section className="relative overflow-hidden border-b border-[var(--ads-line)] bg-[var(--ads-ground)]">
-      <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-[var(--ads-violet)]/10 blur-[100px]" />
-      <div aria-hidden className="pointer-events-none absolute -bottom-32 left-1/4 h-80 w-80 rounded-full bg-[var(--ads-orange)]/10 blur-[100px]" />
-
-      <div className="shell relative">
-        <div className="grid items-center gap-10 py-12 lg:grid-cols-[1.05fr_1fr] lg:py-16">
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--ads-line)] bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--ads-orange)]">
-              <Sparkles className="h-3.5 w-3.5" aria-hidden /> AdSens by Zolo
-            </span>
-            <h1 className="h1 mt-4">
-              Grow your business.<br />
-              Reach more customers.<br />
-              <span className="bg-gradient-to-r from-[var(--ads-violet)] to-[var(--ads-blue)] bg-clip-text text-transparent">Sell more.</span>
-            </h1>
-            <p className="lead mt-5 max-w-lg">
-              From digital advertising to complete online brand growth, AdSens helps businesses reach the right audience,
-              generate quality leads and build a stronger online presence.
-            </p>
-            <div className="mt-7 flex flex-wrap gap-3">
-              <button onClick={onConsult} className="btn btn-primary btn-lg">
-                Get free marketing consultation <ArrowRight className="h-4 w-4" aria-hidden />
-              </button>
-              <a href="#services" className="btn btn-secondary btn-lg">Explore our services</a>
-            </div>
-          </motion.div>
-
-          {/* A clean analytics-style panel built in markup. No invented metrics:
-              the bars are decorative and carry no numbers, because we have no
-              campaign data to show and will not fabricate any. */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.45, delay: 0.1 }}
-            className="hidden lg:block"
-            aria-hidden
-          >
-            <div className="rounded-3xl border border-[var(--ads-line)] bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.10)]">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-bold">Campaign overview</span>
-                <BarChart3 className="h-4 w-4 text-[var(--ads-muted)]" />
-              </div>
-              <div className="mt-6 flex h-32 items-end gap-2.5">
-                {[38, 52, 44, 68, 59, 81, 72, 95].map((h, i) => (
-                  <motion.span
-                    key={i}
-                    initial={{ height: 0 }}
-                    animate={{ height: `${h}%` }}
-                    transition={{ duration: 0.5, delay: 0.2 + i * 0.05, ease: "easeOut" }}
-                    className="flex-1 rounded-t-md bg-gradient-to-t from-[var(--ads-violet)] to-[var(--ads-blue)]"
-                  />
-                ))}
-              </div>
-              <div className="mt-6 grid grid-cols-3 gap-3">
-                {[
-                  { icon: Megaphone, label: "Ads" },
-                  { icon: Share2, label: "Social" },
-                  { icon: Users, label: "Leads" },
-                ].map((x) => (
-                  <div key={x.label} className="rounded-xl bg-[var(--ads-ground)] p-3 text-center">
-                    <x.icon className="mx-auto h-4 w-4 text-[var(--ads-orange)]" />
-                    <span className="mt-1.5 block text-[11px] font-semibold text-[var(--ads-muted)]">{x.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 function SectionHead({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle?: string }) {
   return (

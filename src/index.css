@@ -313,6 +313,18 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* AdSens dark showcase: drifting background particles. Transform + opacity
+   only, so each dot stays on the compositor and never triggers layout. The
+   JSX also declines to render these under reduced motion; the media query
+   below is the belt to that braces. */
+@keyframes ads-drift {
+  0%, 100% { transform: translate3d(0, 0, 0); opacity: 0.18; }
+  50%      { transform: translate3d(0, -24px, 0); opacity: 0.6; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [style*="ads-drift"] { animation: none !important; }
+}
+
 /* Product gallery main-image crossfade on thumbnail change. */
 @keyframes fadeIn {
   from { opacity: 0; }

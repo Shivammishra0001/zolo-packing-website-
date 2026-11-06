@@ -2717,3 +2717,88 @@ model MarketingLeadActivity {
 
   @@index([leadId, createdAt])
 }
+
+/// A campaign preview shown in the "Active Campaigns" rail on /adsens.
+///
+/// HONESTY RULE: nothing here is invented by the frontend. Every field is
+/// admin-entered, and the two metric slots are NULLABLE — a campaign with no
+/// metrics renders without them rather than with a plausible-looking number.
+/// `isIllustrative` marks a design/sample preview so the card can say so out
+/// loud; only a row with isIllustrative = false and status = "live" may show
+/// a LIVE badge.
+model MarketingCampaign {
+  id             String              @id @default(cuid())
+  slug           String              @unique
+  /// Campaign title, e.g. "Festive season launch".
+  title          String
+  /// Which brand the work was for. Nullable: an illustrative preview has none.
+  clientName     String?
+  /// meta | google | linkedin | email | youtube | whatsapp | other
+  platform       String              @default("other")
+  /// The creative itself — a URL from the existing /uploads pipeline.
+  imageUrl       String?
+  /// live | completed | paused
+  status         String              @default("completed")
+  /// Optional pair of metrics. Label AND value must both be set to render.
+  metric1Label   String?
+  metric1Value   String?
+  metric2Label   String?
+  metric2Value   String?
+  /// TRUE = a sample/design preview, not a real client campaign. The card is
+  /// then badged "Illustrative" and may never claim LIVE.
+  isIllustrative Boolean             @default(true)
+  isPublished    Boolean             @default(false)
+  sortOrder      Int                 @default(0)
+  /// Optional link to the case study behind this campaign.
+  caseStudyId    String?
+  caseStudy      MarketingCaseStudy? @relation(fields: [caseStudyId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isPublished, sortOrder])
+}
+
+/// A portfolio entry / case study shown on /adsens.
+///
+/// `results` are only rendered when `resultsVerified` is true — the admin has
+/// to say, explicitly and per record, that the numbers are real and the client
+/// agreed to them being published. An unverified case study still shows its
+/// strategy and execution, which is work we can describe without claiming an
+/// outcome we cannot evidence.
+model MarketingCaseStudy {
+  id   String @id @default(cuid())
+  slug String @unique
+
+  title            String
+  clientName       String?
+  industry         String?
+  /// Service slug (matches MarketingService.slug) used for the filter chips.
+  category         String
+  coverImage       String?
+  summary          String?
+  /// Long-form sections. All optional — a short entry is better than padding.
+  overview         String?
+  strategy         String?
+  execution        String?
+  /// Service names delivered on the project, snapshotted as text so renaming
+  /// a service later never rewrites what was actually done.
+  servicesProvided String[]
+  /// Extra creative asset URLs beyond the cover.
+  gallery          String[]
+
+  /// Outcome lines, e.g. "Cost per lead down 38%". Shown ONLY when verified.
+  results         String[]
+  resultsVerified Boolean  @default(false)
+
+  isPublished Boolean @default(false)
+  sortOrder   Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaigns MarketingCampaign[]
+
+  @@index([isPublished, sortOrder])
+  @@index([category])
+}

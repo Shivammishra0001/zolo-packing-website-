@@ -1,4 +1,4 @@
-import { CalendarClock, CheckCircle2, LayoutDashboard, Megaphone, Plus, Tag, TimerOff } from "lucide-react";
+import { Briefcase, CalendarClock, CheckCircle2, LayoutDashboard, Megaphone, Plus, Sparkles, Tag, TimerOff } from "lucide-react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { Button, PageHeader, Tabs } from "../components/ui";
 import { EmptyState, ErrorState, ListSkeleton, Panel } from "../components/Panel";
@@ -7,6 +7,8 @@ import type { MarketingOverview } from "@/lib/api/marketing";
 import { formatStoreDate } from "@/lib/store-time";
 import CouponsPage, { discountLabel } from "./marketing/CouponsPage";
 import CampaignsPage, { CONTENT_TYPE_LABEL } from "./marketing/CampaignsPage";
+import AdsensCampaignsPage from "./marketing/AdsensCampaignsPage";
+import AdsensPortfolioPage from "./marketing/AdsensPortfolioPage";
 import { PLACEMENT_LABEL } from "./marketing/CampaignPreview";
 import { StatusBadge, SummaryCards } from "./marketing/shared";
 
@@ -20,7 +22,14 @@ const TABS = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
   { key: "coupons", label: "Coupons", icon: Tag },
   { key: "campaigns", label: "Campaigns", icon: Megaphone },
+  // AdSens showcase content. Separate from "Campaigns" above, which is the
+  // STOREFRONT promotional system — these two rails live on /adsens and share
+  // nothing but the word.
+  { key: "adsens-campaigns", label: "AdSens campaigns", icon: Sparkles },
+  { key: "adsens-portfolio", label: "AdSens portfolio", icon: Briefcase },
 ];
+
+const TAB_LABEL: Record<string, string> = Object.fromEntries(TABS.map((t) => [t.key, t.label]));
 
 function Overview() {
   const q = useAdminQuery<MarketingOverview>("/admin/marketing", 60_000);
@@ -109,7 +118,7 @@ export default function Marketing() {
   return (
     <div className="shell-admin">
       <PageHeader
-        breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Marketing", to: tab === "overview" ? undefined : "/admin/marketing" }, ...(tab === "overview" ? [] : [{ label: tab === "coupons" ? "Coupons" : "Campaigns" }])]}
+        breadcrumb={[{ label: "Home", to: "/admin" }, { label: "Marketing", to: tab === "overview" ? undefined : "/admin/marketing" }, ...(tab === "overview" ? [] : [{ label: TAB_LABEL[tab] ?? "Marketing" }])]}
         title="Marketing"
         subtitle="Coupons and campaigns — created, scheduled and published from here, no code changes."
       />
@@ -119,6 +128,8 @@ export default function Marketing() {
       {tab === "overview" && <Overview />}
       {tab === "coupons" && <CouponsPage />}
       {tab === "campaigns" && <CampaignsPage />}
+      {tab === "adsens-campaigns" && <AdsensCampaignsPage />}
+      {tab === "adsens-portfolio" && <AdsensPortfolioPage />}
     </div>
   );
 }
