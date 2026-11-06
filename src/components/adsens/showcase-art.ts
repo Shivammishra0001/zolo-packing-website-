@@ -56,14 +56,3 @@ export const ART_PLATES: ArtPlate[] = [
 /** Stable pick, so a given slot shows the same plate on every render. */
 export const plateAt = (i: number) => ART_PLATES[i % ART_PLATES.length];
 
-/** The ribbon marquee's words. Services, not claims. */
-export const RIBBON_WORDS = [
-  "Digital Advertising",
-  "SEO",
-  "Social Media",
-  "Lead Generation",
-  "Creative & Content",
-  "WhatsApp Marketing",
-  "Website Development",
-  "Marketing Strategy",
-];

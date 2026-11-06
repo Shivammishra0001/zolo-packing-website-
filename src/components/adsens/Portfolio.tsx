@@ -103,7 +103,7 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
       aria-pressed={active}
       className={`h-9 rounded-full px-4 text-[13px] font-semibold transition-all ${
         active
-          ? "text-[#05080F] shadow-[0_6px_20px_rgba(45,212,191,0.3)]"
+          ? "text-white shadow-[0_6px_20px_rgba(45,212,191,0.3)]"
           : "border border-[var(--dk-line)] bg-[var(--dk-panel)] text-[var(--dk-muted)] hover:border-[var(--dk-line-2)] hover:text-[var(--dk-ink)]"
       }`}
       style={active ? { backgroundImage: DK_GRADIENT } : undefined}
@@ -153,7 +153,7 @@ function PortfolioCard({
         <div className="flex flex-1 flex-col p-5">
           <div className="flex items-center justify-between gap-3">
             <span
-              className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#05080F]"
+              className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white"
               style={{ backgroundImage: DK_GRADIENT }}
             >
               {prettyCategory(c.category)}

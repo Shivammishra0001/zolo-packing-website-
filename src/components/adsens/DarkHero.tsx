@@ -199,7 +199,7 @@ function HeroPreview({ campaigns }: { campaigns: AdsensCampaign[] }) {
               style={PLATE_FILTER}
             />
             <PlateTint />
-            <div aria-hidden className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#05080F] via-[#05080F]/70 to-transparent" />
+            <div aria-hidden className="absolute inset-x-0 bottom-0 h-28" style={{ background: "linear-gradient(to top, rgba(2,6,23,0.88), rgba(2,6,23,0.52) 48%, transparent)" }} />
             <span
               className="absolute left-3 top-3 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg"
               style={{ background: pm.bg }}
@@ -281,7 +281,7 @@ function PreviewPlaceholder() {
           <div className="relative aspect-[4/3] w-full">
             <img src={plate.src} alt={plate.alt} className="h-full w-full object-cover" loading="eager" style={PLATE_FILTER} />
             <PlateTint />
-            <div aria-hidden className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#05080F] via-[#05080F]/80 to-transparent" />
+            <div aria-hidden className="absolute inset-x-0 bottom-0 h-28" style={{ background: "linear-gradient(to top, rgba(2,6,23,0.88), rgba(2,6,23,0.52) 48%, transparent)" }} />
             <div className="absolute inset-x-4 bottom-3">
               <p className="text-[11px] uppercase tracking-wider text-[var(--dk-cyan)]">Zolo packaging</p>
               <p className="text-[15px] font-bold text-white">{plate.craft}</p>

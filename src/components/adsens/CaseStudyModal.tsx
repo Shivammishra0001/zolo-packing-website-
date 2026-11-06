@@ -114,7 +114,7 @@ export function CaseStudyModal({ slug, onClose }: { slug: string | null; onClose
               <button
                 onClick={onClose}
                 aria-label="Close"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--dk-muted)] transition-colors hover:bg-white/10 hover:text-[var(--dk-ink)]"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--dk-muted)] transition-colors hover:bg-[var(--dk-panel-2)] hover:text-[var(--dk-ink)]"
               >
                 <X className="h-5 w-5" aria-hidden />
               </button>
@@ -142,10 +142,10 @@ export function CaseStudyModal({ slug, onClose }: { slug: string | null; onClose
 function Skeleton() {
   return (
     <div className="space-y-4" aria-hidden>
-      <div className="aspect-[16/9] w-full animate-pulse rounded-xl bg-white/5" />
-      <div className="h-4 w-1/3 animate-pulse rounded bg-white/5" />
-      <div className="h-3 w-full animate-pulse rounded bg-white/5" />
-      <div className="h-3 w-5/6 animate-pulse rounded bg-white/5" />
+      <div className="aspect-[16/9] w-full animate-pulse rounded-xl bg-[var(--dk-panel-2)]" />
+      <div className="h-4 w-1/3 animate-pulse rounded bg-[var(--dk-panel-2)]" />
+      <div className="h-3 w-full animate-pulse rounded bg-[var(--dk-panel-2)]" />
+      <div className="h-3 w-5/6 animate-pulse rounded bg-[var(--dk-panel-2)]" />
     </div>
   );
 }

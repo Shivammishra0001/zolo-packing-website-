@@ -93,7 +93,7 @@ function FeatureService({ service: s, onStart }: { service: AdsensService; onSta
         <div className="grid items-stretch lg:grid-cols-[1.15fr_0.85fr]">
           <div className="p-6 sm:p-8 lg:p-10">
             <span
-              className="inline-flex h-12 w-12 items-center justify-center rounded-xl text-[#05080F]"
+              className="inline-flex h-12 w-12 items-center justify-center rounded-xl text-white"
               style={{ backgroundImage: DK_GRADIENT }}
             >
               <Icon className="h-6 w-6" aria-hidden />
@@ -113,7 +113,7 @@ function FeatureService({ service: s, onStart }: { service: AdsensService; onSta
 
             <button
               onClick={() => onStart(s.slug)}
-              className="btn btn-sm mt-7 text-[#05080F]"
+              className="btn btn-sm mt-7 text-white"
               style={{ backgroundImage: DK_GRADIENT }}
             >
               Get started <ArrowRight className="h-4 w-4" aria-hidden />
@@ -129,19 +129,19 @@ function FeatureService({ service: s, onStart }: { service: AdsensService; onSta
               alt={plate.alt}
               loading="lazy"
               className={`h-full w-full object-cover transition-transform duration-[700ms] ease-out ${calm ? "" : "group-hover:scale-[1.04]"}`}
-              style={{ filter: "saturate(0.9) contrast(1.02) brightness(0.52)" }}
+              style={{ filter: "saturate(1.02) contrast(1.02) brightness(1.04)" }}
             />
             <div
               aria-hidden
               className="pointer-events-none absolute inset-0 mix-blend-multiply"
-              style={{ background: "linear-gradient(200deg, rgba(60,88,155,0.55), rgba(10,16,32,0.90))" }}
+              style={{ background: "linear-gradient(150deg, rgba(14,116,144,0.14), rgba(124,58,237,0.12))" }}
             />
             {/* Feather the photo into the panel so it reads as one surface
                 rather than a pasted-in rectangle. */}
             <div
               aria-hidden
               className="pointer-events-none absolute inset-0"
-              style={{ background: "linear-gradient(90deg, var(--dk-bg-2) 0%, rgba(8,13,24,0.88) 26%, rgba(8,13,24,0.35) 72%, transparent)" }}
+              style={{ background: "linear-gradient(90deg, var(--dk-bg) 0%, var(--dk-bg) 8%, rgba(255,255,255,0.80) 30%, rgba(255,255,255,0.30) 62%, transparent 92%)" }}
             />
           </div>
         </div>
@@ -158,7 +158,7 @@ function TallService({ service: s, onStart }: { service: AdsensService; onStart:
     <div data-svc className="h-full">
       <GradientFrame className={`group h-full transition-transform duration-300 ${calm ? "" : "hover:-translate-y-1"}`}>
         <div className="flex h-full flex-col p-6 sm:p-7">
-          <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white/[0.06] text-[var(--dk-cyan)]">
+          <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--dk-panel-2)] text-[var(--dk-cyan)]">
             <Icon className="h-5 w-5" aria-hidden />
           </span>
           <h3 className="mt-4 text-lg font-bold text-[var(--dk-ink)]">{s.name}</h3>
@@ -195,7 +195,7 @@ function CompactService({ service: s, onStart }: { service: AdsensService; onSta
     <div data-svc className="h-full">
       <GradientFrame className={`group h-full transition-transform duration-300 ${calm ? "" : "hover:-translate-y-1"}`}>
         <button onClick={() => onStart(s.slug)} className="flex h-full w-full flex-col p-6 text-left">
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-white/[0.06] text-[var(--dk-violet)]">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--dk-panel-2)] text-[var(--dk-violet)]">
             <Icon className="h-5 w-5" aria-hidden />
           </span>
           <h3 className="mt-3.5 text-[15px] font-bold text-[var(--dk-ink)]">{s.name}</h3>

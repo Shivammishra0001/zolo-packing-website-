@@ -242,7 +242,86 @@ itself, since the page root is no longer light.
 | Reduced motion | 0 animations; all 47 revealed elements visible |
 | Other routes | `/`, `/products`, `/eco-rewards`, `/contact` unaffected |
 
-## 12. Not built
+## 12. Light theme (Nov 2026)
+
+The page was flipped from the dark agency surface to Zolo's light theme, at
+the user's request, with the Active Campaigns section rebuilt to the supplied
+reference's exact composition.
+
+### One change point
+
+The flip is the `darkPalette` token block in `components/adsens/dark.tsx` and
+nothing else. The variables keep their `--dk-*` names — renaming them would
+touch nine components for no behavioural gain, and they are already scoped to
+this page. Values now come from the design system in `index.css`
+(`dark-50/100/200/500/600/900`, `primary-500`) rather than one-off hex codes.
+
+Four things needed real adaptation rather than a token swap, because they
+were *built* for a dark ground:
+
+| Thing | Dark version | Light version |
+|---|---|---|
+| Grid texture | white hairlines at 3.5% | `rgba(15,23,42,0.045)` — white-on-white showed nothing |
+| `GradientFrame` edge | glow + translucent whites | visible hairline + `--shadow-card` |
+| `PlateTint` | heavy multiply + vignette, to drag light photos onto a dark page | a 10% brand wash; the plates already belong on white |
+| Particles / `Glow` | 0.5 and 0.16 opacity | 0.28 and 0.10 — a colour blur at 0.16 vanishes into white |
+
+### Contrast
+
+Measured every visible text node in the page's own sections against its
+painted background. **55 failures → 2**, and both remaining are white on a
+`background-image` gradient, which the script reads as white-on-white; they
+measure 5.17–5.70:1 by hand across all three gradient stops.
+
+The one real fix: `--dk-faint` was `dark-400` (#94a3b8), **2.56:1 on white**
+— under the 4.5 AA floor for the small text it carries (metric labels,
+indicator captions). It is now `dark-500` (4.76:1), and `--dk-muted` moved to
+`dark-600` (7.58:1) to keep the two tiers distinct. The accent trio was also
+darkened from the neon set for the same reason: `#2DD4BF` → `#0E7490`,
+`#4F7BFF` → `#2563EB`, `#A855F7` → `#7C3AED`.
+
+### Active Campaigns, matched to the reference
+
+```
+┌──────────────────────────┐
+│ [PLATFORM]               │  badge, top-left
+│      campaign creative   │  4:5 image fills the card top
+│ BrandName                │  brand line …
+│ Campaign title    [LIVE] │  … title + status chip, over a scrim
+├────────────┬─────────────┤
+│   value    │    value    │  two metrics, divided
+│   label    │    label    │  value over label
+└────────────┴─────────────┘
+```
+
+The reference draws this dark; the card is white with a hairline border and
+the scrim carries contrast over the photo. The layout is identical. The
+section sits on `--dk-bg-2` (dark-50) so it reads as a band against the white
+sections either side, and the `Ribbon` marquee above it was dropped — on a
+light page it competed with the heading instead of separating sections.
+
+### Still verified after the flip
+
+Filters 5 → 1; both dialogs open and close; 4 campaign cards and 3 portfolio
+cards per row at 1440/1920, 2 at tablet, 1 at mobile; no overflow at any of
+the ten widths; reduced motion kills all animation with all 47 revealed
+elements visible; no console errors on `/adsens` or on `/`, `/products`,
+`/eco-rewards`, `/contact`.
+
+### A flaky test, fixed
+
+One run of the suite failed with `actual: 12, expected: 1` in "a half-filled
+metric pair is dropped"; the next run passed. The cause was the test, not the
+code: `publicShowcase()` takes the first 12 campaigns, this suite creates 12,
+and the tests looked their row up **by title** in that listing. Once the
+limit truncated, `.find()` returned the wrong row or none at all.
+
+All five such lookups now match on the **id the create returned**, each
+asserted row is pinned to the front with a distinct negative `sortOrder`, and
+every lookup has an `assert.ok(row, …)` so a truncated listing fails with a
+clear message instead of a confusing one further down.
+
+## 13. Not built
 
 * **Marketing quotations** (§15) — no `MarketingQuotation` table or UI yet.
 * **Admin UI** for services, packages and leads. The APIs are complete and

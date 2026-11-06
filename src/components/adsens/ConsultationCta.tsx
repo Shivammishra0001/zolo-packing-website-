@@ -57,7 +57,7 @@ export function ConsultationCta({ onConsult }: { onConsult: () => void }) {
               <ul data-cta className="mt-7 space-y-4">
                 {ASSURANCES.map((a) => (
                   <li key={a.title} className="flex items-start gap-3">
-                    <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.06] text-[var(--dk-cyan)]">
+                    <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--dk-panel-2)] text-[var(--dk-cyan)]">
                       <a.icon className="h-4 w-4" aria-hidden />
                     </span>
                     <span className="min-w-0">
@@ -102,17 +102,17 @@ export function ConsultationCta({ onConsult }: { onConsult: () => void }) {
                 alt={plate.alt}
                 loading="lazy"
                 className="h-full w-full object-cover"
-                style={{ filter: "saturate(0.9) contrast(1.02) brightness(0.52)" }}
+                style={{ filter: "saturate(1.02) contrast(1.02) brightness(1.04)" }}
               />
               <div
                 aria-hidden
                 className="pointer-events-none absolute inset-0 mix-blend-multiply"
-                style={{ background: "linear-gradient(200deg, rgba(60,88,155,0.55), rgba(10,16,32,0.90))" }}
+                style={{ background: "linear-gradient(150deg, rgba(14,116,144,0.14), rgba(124,58,237,0.12))" }}
               />
               <div
                 aria-hidden
                 className="pointer-events-none absolute inset-0"
-                style={{ background: "linear-gradient(90deg, var(--dk-bg-2) 0%, rgba(8,13,24,0.88) 26%, rgba(8,13,24,0.35) 72%, transparent)" }}
+                style={{ background: "linear-gradient(90deg, var(--dk-bg) 0%, var(--dk-bg) 8%, rgba(255,255,255,0.80) 30%, rgba(255,255,255,0.30) 62%, transparent 92%)" }}
               />
             </div>
           </div>

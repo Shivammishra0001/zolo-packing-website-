@@ -78,41 +78,55 @@ test("an illustrative campaign never reports itself as live to the public", asyn
     status: "live",
     isIllustrative: true,
     isPublished: true,
+    // Distinct negative orders across these tests: four rows all claiming
+    // -1 would tie, and the createdAt tiebreak could still push an early
+    // one past the listing's 12-row limit.
+    sortOrder: -40,
   });
   assert.equal(made.status, 201);
 
   const res = await api("/public/adsens/showcase");
-  const row = res.body.data.campaigns.find((c) => c.title === `${TAG} illustrative live`);
+  const row = res.body.data.campaigns.find((c) => c.id === made.body.data.campaign.id);
   assert.ok(row, "the published campaign should be listed");
   assert.equal(row.status, "illustrative");
   assert.equal(row.isIllustrative, true);
 });
 
 test("a real, live campaign does keep its live status", async () => {
-  await mkCampaign({
+  const made = await mkCampaign({
     title: `${TAG} genuine`,
     clientName: "A Real Client",
     status: "live",
     isIllustrative: false,
     isPublished: true,
+    sortOrder: -39,
   });
   const res = await api("/public/adsens/showcase");
-  const row = res.body.data.campaigns.find((c) => c.title === `${TAG} genuine`);
+  const row = res.body.data.campaigns.find((c) => c.id === made.body.data.campaign.id);
+  assert.ok(row, "the published campaign should be listed");
   assert.equal(row.status, "live");
   assert.equal(row.isIllustrative, false);
 });
 
 test("a half-filled metric pair is dropped rather than rendered", async () => {
-  await mkCampaign({
+  const made = await mkCampaign({
     title: `${TAG} metrics`,
     isPublished: true,
+    // A distinct negative sortOrder keeps this row at the front. `publicShowcase`
+    // takes only 12 campaigns and this suite creates more than that, so a
+    // row left at the default order can fall off the end — and a lookup by
+    // title would then match nothing, or worse, the wrong row.
+    sortOrder: -38,
     metric1Label: "Reach",
     metric1Value: "Growing",
     // Label with no value: this pair must not survive.
     metric2Label: "Clicks",
   });
+  assert.equal(made.status, 201);
+
   const res = await api("/public/adsens/showcase");
-  const row = res.body.data.campaigns.find((c) => c.title === `${TAG} metrics`);
+  const row = res.body.data.campaigns.find((c) => c.id === made.body.data.campaign.id);
+  assert.ok(row, "the campaign should be within the public listing");
   assert.equal(row.metrics.length, 1);
   assert.deepEqual(row.metrics[0], { label: "Reach", value: "Growing" });
 });
@@ -203,14 +217,17 @@ test("filter categories are derived from published work, not a fixed list", asyn
 
 test("a campaign only links to a case study the public can actually open", async () => {
   const draft = await mkCaseStudy({ title: `${TAG} link draft`, category: "seo", isPublished: false });
-  await mkCampaign({
+  const made = await mkCampaign({
     title: `${TAG} links to draft`,
     isPublished: true,
+    sortOrder: -37,
     caseStudyId: draft.body.data.caseStudy.id,
   });
+  const campaignId = made.body.data.campaign.id;
 
   const res = await api("/public/adsens/showcase");
-  const row = res.body.data.campaigns.find((c) => c.title === `${TAG} links to draft`);
+  const row = res.body.data.campaigns.find((c) => c.id === campaignId);
+  assert.ok(row, "the published campaign should be listed");
   assert.equal(row.caseStudySlug, null, "a link to an unpublished study would 404 for the visitor");
 
   // Publishing the study should surface the link.
@@ -219,7 +236,8 @@ test("a campaign only links to a case study the public can actually open", async
     body: { isPublished: true },
   });
   const after2 = await api("/public/adsens/showcase");
-  const row2 = after2.body.data.campaigns.find((c) => c.title === `${TAG} links to draft`);
+  const row2 = after2.body.data.campaigns.find((c) => c.id === campaignId);
+  assert.ok(row2, "the published campaign should be listed");
   assert.equal(row2.caseStudySlug, draft.body.data.caseStudy.slug);
 });
 

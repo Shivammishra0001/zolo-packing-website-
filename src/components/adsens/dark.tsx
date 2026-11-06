@@ -18,23 +18,44 @@ import {
    anything unverified before it is sent.
    ========================================================= */
 
-/** Scoped tokens. Set on the dark wrapper; nothing outside it is affected. */
+/* ---------------------------------------------------------------------------
+   Scoped tokens, set on the page wrapper. Nothing outside it is affected.
+
+   These are the LIGHT values, built from the Zolo design system in
+   index.css rather than from new one-off hex codes: surfaces are
+   dark-50/100/200/300, text is dark-900/600/500, and Zolo's orange stays
+   the conversion colour, per the design system's rule that orange is for
+   CTAs only. The three accents are the exception — see below.
+
+   The variables keep their `--dk-*` names. Renaming them would touch nine
+   components for no behavioural gain, and the names are already scoped to
+   this page. Flipping the page's theme is therefore this block and nothing
+   else — which is the point of having tokens.
+   --------------------------------------------------------------------------- */
 export const darkPalette = {
-  "--dk-bg": "#05080F",
-  "--dk-bg-2": "#080D18",
-  "--dk-panel": "rgba(255,255,255,0.035)",
-  "--dk-panel-2": "rgba(255,255,255,0.06)",
-  "--dk-line": "rgba(255,255,255,0.10)",
-  "--dk-line-2": "rgba(255,255,255,0.18)",
-  "--dk-ink": "#F2F6FF",
-  "--dk-muted": "#93A3BF",
-  "--dk-faint": "#64748B",
-  "--dk-cyan": "#2DD4BF",
-  "--dk-blue": "#4F7BFF",
-  "--dk-violet": "#A855F7",
-  // Zolo's own orange still appears, so a visitor arriving from the
-  // storefront can tell this is the same company.
-  "--dk-orange": "#F97316",
+  "--dk-bg": "#ffffff",
+  "--dk-bg-2": "var(--color-dark-50)",
+  // Panels are a tint rather than translucent white: over a light ground,
+  // `rgba(255,255,255,…)` is invisible.
+  "--dk-panel": "var(--color-dark-50)",
+  "--dk-panel-2": "var(--color-dark-100)",
+  "--dk-line": "var(--color-dark-200)",
+  "--dk-line-2": "var(--color-dark-300)",
+  "--dk-ink": "var(--color-dark-900)",
+  // dark-500 for both: dark-400 measures 2.56:1 on white, under the 4.5 AA
+  // floor for the small text --dk-faint carries (metric labels, captions).
+  // They stay separate tokens so a future surface can re-split them.
+  "--dk-muted": "var(--color-dark-600)",
+  "--dk-faint": "var(--color-dark-500)",
+  // The one place this page leaves the design system's palette. The neon
+  // trio the dark page used (#2DD4BF / #4F7BFF / #A855F7) all fail contrast
+  // on white, and the system has no mid-dark cyan or violet to reach for.
+  // These are the darkened equivalents, measured with white text on each:
+  // 5.36, 5.17 and 5.70:1 — all clear of the 4.5 AA floor.
+  "--dk-cyan": "#0E7490",
+  "--dk-blue": "#2563EB",
+  "--dk-violet": "#7C3AED",
+  "--dk-orange": "var(--color-primary-500)",
 } as CSSProperties;
 
 /** The gradient used for headline accents and chips, in one place. */
@@ -53,10 +74,14 @@ export function useCalm() {
 }
 
 /**
- * The dark ground: base colour, a faint technical grid and two soft glows.
+ * The page ground: base colour plus a faint technical grid.
  *
- * `--dk-grid` is a CSS-only background, so it costs no DOM and no paint
- * beyond the single element.
+ * Kept the name `DarkGround` because nine call sites import it and the
+ * component's JOB — own the scoped palette and the texture — did not change
+ * when the palette did.
+ *
+ * The grid is a CSS-only background, so it costs no DOM and no paint beyond
+ * the single element.
  */
 export function DarkGround({
   children,
@@ -69,14 +94,15 @@ export function DarkGround({
       style={darkPalette}
       className={`relative isolate overflow-hidden bg-[var(--dk-bg)] text-[var(--dk-ink)] ${className}`}
     >
-      {/* Grid. 56px cells, barely visible — it reads as texture, not as a table. */}
+      {/* Grid. 56px cells, barely visible — it reads as texture, not as a
+          table. Dark hairlines now: white-on-white showed nothing. */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-[0.55]"
         style={{
           backgroundImage:
-            "linear-gradient(to right, rgba(255,255,255,0.035) 1px, transparent 1px)," +
-            "linear-gradient(to bottom, rgba(255,255,255,0.035) 1px, transparent 1px)",
+            "linear-gradient(to right, rgba(15,23,42,0.045) 1px, transparent 1px)," +
+            "linear-gradient(to bottom, rgba(15,23,42,0.045) 1px, transparent 1px)",
           backgroundSize: "56px 56px",
           // Fade the grid out at the edges so it never collides with the
           // section boundary as a hard line.
@@ -92,10 +118,13 @@ export function DarkGround({
 /**
  * Drifting particles.
  *
- * Rendered as a handful of absolutely-positioned dots animated with CSS
- * keyframes rather than JS — no rAF loop, no per-frame React work. Positions
- * come from a seeded sequence so the layout is stable between renders, and
- * the whole thing returns null under reduced motion.
+ * Rendered as absolutely-positioned dots animated with CSS keyframes rather
+ * than JS — no rAF loop, no per-frame React work. Positions come from a
+ * seeded sequence so the layout is stable between renders, and the whole
+ * thing returns null under reduced motion.
+ *
+ * On a light ground these read as dust specks rather than stars, so they are
+ * fewer, larger and softer than the dark version was.
  */
 export function Particles({ count = 18 }: { count?: number }) {
   const calm = useCalm();
@@ -128,7 +157,7 @@ export function Particles({ count = 18 }: { count?: number }) {
             width: d.size,
             height: d.size,
             background: d.cyan ? "var(--dk-cyan)" : "var(--dk-violet)",
-            opacity: 0.5,
+            opacity: 0.28,
             animation: `ads-drift ${d.duration}s ease-in-out ${d.delay}s infinite`,
           }}
         />
@@ -147,7 +176,9 @@ export function Glow({
     <div
       aria-hidden
       className={`pointer-events-none absolute rounded-full ${className}`}
-      style={{ width: size, height: size, background: color, opacity: 0.16, filter: "blur(110px)" }}
+      // Lighter ground needs a tighter, slightly stronger wash or the blur
+      // simply disappears into the white.
+      style={{ width: size, height: size, background: color, opacity: 0.10, filter: "blur(90px)" }}
     />
   );
 }

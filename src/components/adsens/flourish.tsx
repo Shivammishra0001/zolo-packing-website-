@@ -3,7 +3,6 @@ import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useCalm } from "./dark";
-import { RIBBON_WORDS } from "./showcase-art";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
 
@@ -59,63 +58,6 @@ export function useReveal<T extends HTMLElement = HTMLDivElement>(
   );
 
   return scope;
-}
-
-/**
- * A scrolling ribbon of service names.
- *
- * Two identical tracks sit side by side and the pair translates by exactly
- * -50%, so the loop is seamless without measuring anything. Duplicated text
- * is hidden from assistive tech; the first copy carries the meaning.
- */
-export function Ribbon({
-  reverse = false,
-  tone = "gradient",
-  className = "",
-}: {
-  reverse?: boolean;
-  tone?: "gradient" | "outline";
-  className?: string;
-}) {
-  const calm = useCalm();
-  const gradient = tone === "gradient";
-
-  const track = (
-    <span className="flex shrink-0 items-center gap-8 px-4">
-      {RIBBON_WORDS.map((w) => (
-        <span key={w} className="flex shrink-0 items-center gap-8">
-          <span className="text-[13px] font-bold uppercase tracking-[0.16em] whitespace-nowrap">{w}</span>
-          <span className="h-1.5 w-1.5 shrink-0 rotate-45 bg-current opacity-50" aria-hidden />
-        </span>
-      ))}
-    </span>
-  );
-
-  return (
-    <div
-      className={`relative flex overflow-hidden border-y py-3 ${
-        gradient
-          ? "border-transparent text-[#05080F]"
-          : "border-[var(--dk-line)] text-[var(--dk-muted)]"
-      } ${className}`}
-      style={gradient ? { backgroundImage: "linear-gradient(100deg,var(--dk-cyan),var(--dk-blue) 55%,var(--dk-violet))" } : undefined}
-      // One ribbon's worth of text is enough for a screen reader; the visual
-      // duplication is noise.
-      role="presentation"
-    >
-      <div
-        className="flex min-w-full shrink-0 will-change-transform"
-        style={
-          calm
-            ? undefined
-            : { animation: `ads-marquee ${reverse ? "38s" : "32s"} linear infinite${reverse ? " reverse" : ""}` }
-        }
-      >
-        {track}
-        <span aria-hidden className="flex">{track}</span>
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -175,12 +117,16 @@ export function GradientFrame({
     <div
       className={`relative rounded-[18px] p-px ${className}`}
       style={{
+        // On white the edge has to be a visible hairline, not a glow: the
+        // dark version's translucent whites vanished completely.
         background:
-          "linear-gradient(145deg, rgba(45,212,191,0.38), rgba(79,123,255,0.14) 38%, rgba(255,255,255,0.05) 62%, rgba(168,85,247,0.30))",
-        boxShadow: glow ? "0 24px 70px rgba(5,8,15,0.75), 0 0 48px rgba(79,123,255,0.14)" : undefined,
+          "linear-gradient(145deg, rgba(14,116,144,0.30), rgba(37,99,235,0.16) 38%, rgba(15,23,42,0.10) 62%, rgba(124,58,237,0.26))",
+        boxShadow: glow
+          ? "0 18px 48px rgba(15,23,42,0.10), 0 2px 6px rgba(15,23,42,0.04)"
+          : "0 1px 3px rgba(15,23,42,0.04)",
       }}
     >
-      <div className="h-full w-full overflow-hidden rounded-[17px] bg-[var(--dk-bg-2)]">{children}</div>
+      <div className="h-full w-full overflow-hidden rounded-[17px] bg-[var(--dk-bg)]">{children}</div>
     </div>
   );
 }
@@ -193,28 +139,19 @@ export function GradientFrame({
  * the brand gradient brings them into the palette without hiding the product.
  * Spread `PLATE_FILTER` on the <img> and render <PlateTint/> as its sibling.
  */
-export const PLATE_FILTER = { filter: "saturate(1.05) contrast(1.06) brightness(0.92)" } as const;
+export const PLATE_FILTER = { filter: "saturate(1.04) contrast(1.03)" } as const;
 
 export function PlateTint() {
   return (
     <>
+      {/* A whisper of the brand gradient so the photographs read as one set
+          rather than a dozen unrelated studio shots. On the dark page this
+          was a heavy multiply tint plus a vignette; on white the plates
+          already sit correctly, so all that is left is the unifying wash. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 mix-blend-multiply"
-        style={{ background: "linear-gradient(165deg, rgba(74,104,175,0.44), rgba(22,30,56,0.72))" }}
-      />
-      {/* Vignette. The reference cards are dark at every edge with the
-          subject lit in the middle; a plate shot on a white sweep is the
-          opposite, so this darkens the corners back down. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{ background: "radial-gradient(ellipse 78% 62% at 50% 46%, transparent 18%, rgba(5,8,15,0.80) 100%)" }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-[0.14] mix-blend-screen"
-        style={{ backgroundImage: "linear-gradient(100deg,var(--dk-cyan),var(--dk-blue) 55%,var(--dk-violet))" }}
+        className="pointer-events-none absolute inset-0 opacity-[0.10] mix-blend-multiply"
+        style={{ backgroundImage: "linear-gradient(150deg, var(--dk-cyan), var(--dk-violet))" }}
       />
     </>
   );

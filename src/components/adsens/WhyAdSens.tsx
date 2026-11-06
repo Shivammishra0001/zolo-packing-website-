@@ -57,7 +57,7 @@ export function WhyAdSens() {
             <div key={r.title} data-why className={r.wide ? "sm:col-span-2 lg:col-span-3" : undefined}>
               <GradientFrame className={`h-full transition-transform duration-300 ${calm ? "" : "hover:-translate-y-1"}`}>
                 <div className={`flex h-full gap-4 p-5 sm:p-6 ${r.wide ? "items-start" : "flex-col"}`}>
-                  <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/[0.06] text-[var(--dk-cyan)]">
+                  <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--dk-panel-2)] text-[var(--dk-cyan)]">
                     <r.icon className="h-5 w-5" aria-hidden />
                   </span>
                   <div className="min-w-0">
