@@ -23,7 +23,6 @@ import {
 import type { Product } from "./data/products";
 import logoImg from "../images/logo.jpg";
 import { ToastProvider } from "./components/ui/Toast";
-import AdSens from "./pages/AdSens";
 import { AuthProvider, useAuthSession } from "./components/auth/AuthContext";
 import * as authService from "./lib/auth/service";
 import { homeRouteForRole, type UserRole } from "./lib/auth/types";
@@ -157,7 +156,6 @@ function Navbar() {
     { to: "/products", label: "Products" },
     { to: "/categories", label: "Categories" },
     { to: "/eco-rewards", label: "Eco Rewards" },
-    { to: "/adsens", label: "AdSens" },
     { to: "/contact", label: "Contact" },
   ];
 
@@ -638,7 +636,6 @@ function AnimatedRoutes() {
           <Route path="/category/:slug" element={<CategoryRedirect />} />
           <Route path="/category/:slug/:sub" element={<CategoryRedirect />} />
           <Route path="/eco-rewards" element={<EcoRewards />} />
-          <Route path="/adsens" element={<AdSens />} />
           <Route path="/sustainability" element={<Navigate to="/eco-rewards" replace />} />
            <Route path="/cart" element={<CartPage />} />
            {/* RFQ: collect many products into one request, then review/send. */}

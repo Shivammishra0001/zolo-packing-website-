@@ -23,8 +23,7 @@
     "admin:dedupe": "node --env-file=.env scripts/admin-dedupe.mjs",
     "db:reset-data": "node --env-file=.env scripts/reset-database.mjs",
     "import:legacy": "node --env-file=.env scripts/import-legacy-orders.mjs",
-    "backfill:cost": "node --env-file=.env scripts/backfill-legacy-cost.mjs",
-    "seed:adsens": "node --env-file=.env scripts/seed-adsens-services.mjs"
+    "backfill:cost": "node --env-file=.env scripts/backfill-legacy-cost.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",

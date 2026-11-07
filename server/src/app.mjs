@@ -22,7 +22,6 @@ import { addressRouter } from "./routes/addresses.mjs";
 import { orderRouter } from "./routes/orders.mjs";
 import { adminSettingsRouter } from "./routes/settings.mjs";
 import { adminCouponsRouter, adminCampaignsRouter, publicCampaignsRouter } from "./routes/marketing.mjs";
-import { publicAdsensRouter, adminAdsensRouter } from "./routes/adsens.mjs";
 import { publicRecyclingRouter, recyclingRouter, ecoCreditsRouter, adminRecyclingRouter, adminEcoCreditsRouter } from "./routes/recycling.mjs";
 import { adminPaymentRequestsRouter, buyerPaymentRequestsRouter, publicPayRouter } from "./routes/payment-requests.mjs";
 
@@ -147,10 +146,6 @@ export function createApp() {
   // Payment links: token-only access (no session), rate-limited per link.
   app.use(`${API}/public/pay`, publicPayRouter);
 
-  // AdSens by Zolo: the consultation form is open to anonymous visitors, so
-  // the router carries its own rate limit and returns only a reference number.
-  app.use(`${API}/public/adsens`, publicAdsensRouter);
-
   app.get(`${API}/health`, wrap(async (_req, res) => {
     const products = await prisma.product.count();
     ok(res, { db: "postgresql/zolo_packing", products });
@@ -206,7 +201,6 @@ export function createApp() {
   app.use(`${API}/admin/payment-requests`, authenticate, requireAdmin, adminPaymentRequestsRouter);
   app.use(`${API}/admin/coupons`, authenticate, requireAdmin, adminCouponsRouter);
   app.use(`${API}/admin/campaigns`, authenticate, requireAdmin, adminCampaignsRouter);
-  app.use(`${API}/admin/marketing`, authenticate, requireAdmin, adminAdsensRouter);
   app.use(`${API}/admin`, authenticate, requireAdmin, adminRouter);
 
   // 404 for unknown API routes
