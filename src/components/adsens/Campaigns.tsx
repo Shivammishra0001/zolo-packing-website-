@@ -1,6 +1,7 @@
 import { useReducedMotion } from "framer-motion";
 import { CAMPAIGNS, PLATFORM_TINT, type Campaign } from "./content";
-import { CardArt } from "./CardArt";
+import { CardPhoto } from "./CardPhoto";
+import { CAMPAIGN_PHOTO } from "./photos";
 import { Reveal, RevealGroup } from "./shared";
 
 /* =========================================================
@@ -69,13 +70,15 @@ function CampaignCard({ campaign: c }: { campaign: Campaign }) {
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-[var(--radius-card)] border border-white/12 bg-white/[0.04] backdrop-blur transition-all duration-300 hover:-translate-y-1.5 hover:border-green-400/50 motion-reduce:transform-none motion-reduce:transition-none">
       {/* creative */}
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-white">
-        <CardArt
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#0B1220]">
+        <CardPhoto
+          photo={CAMPAIGN_PHOTO[c.photo]}
           monogram={c.monogram}
           category={c.tint}
           shape={c.shape}
           label={c.brand}
-          className="h-full w-full transition-transform duration-[600ms] ease-out group-hover:scale-[1.06] motion-reduce:transform-none motion-reduce:transition-none"
+          sizes="(min-width:1280px) 25vw, (min-width:640px) 50vw, 100vw"
+          className="transition-transform duration-[600ms] ease-out group-hover:scale-[1.06] motion-reduce:transform-none motion-reduce:transition-none"
         />
 
         <span

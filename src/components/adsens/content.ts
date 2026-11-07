@@ -17,6 +17,7 @@
 /* ---------------------------------------------------------- hero */
 
 import type { ArtShape } from "./CardArt";
+import type { ARTICLE_PHOTO, CAMPAIGN_PHOTO } from "./photos";
 
 export const HERO_STATS = [
   { value: "250+", label: "Clients Served" },
@@ -71,11 +72,13 @@ export interface Campaign {
   title: string;
   status: "LIVE";
   metrics: [string, string];
-  /** Client initials for the card artwork. */
+  /** Client initials, kept as the fallback mark if the photo fails. */
   monogram: string;
   shape: ArtShape;
   /** Which palette the artwork uses. */
   tint: string;
+  /** Key into CAMPAIGN_PHOTO. */
+  photo: keyof typeof CAMPAIGN_PHOTO;
 }
 
 export const CAMPAIGNS: Campaign[] = [
@@ -83,21 +86,25 @@ export const CAMPAIGNS: Campaign[] = [
     platform: "META", brand: "StyleHaus", title: "Spring Collection 2025", status: "LIVE",
     metrics: ["12.4K Clicks", "4.8% Engagement"],
     monogram: "SH", shape: "bag", tint: "Social",
+    photo: "stylehaus",
   },
   {
     platform: "GOOGLE", brand: "GreenLeaf", title: "Organic Growth Boost", status: "LIVE",
     metrics: ["#1 Ranking", "89K Visits"],
     monogram: "GL", shape: "mailer", tint: "SEO",
+    photo: "greenleaf",
   },
   {
     platform: "LINKEDIN", brand: "TechSprint", title: "SaaS Scale Playbook", status: "LIVE",
     metrics: ["28% CVR", "1,800 Leads"],
     monogram: "TS", shape: "box", tint: "PPC",
+    photo: "techsprint",
   },
   {
     platform: "EMAIL", brand: "FitZone", title: "VIP Retention Series", status: "LIVE",
     metrics: ["45% Open", "18K Emails"],
     monogram: "FZ", shape: "envelope", tint: "Email",
+    photo: "fitzone",
   },
 ];
 
@@ -196,6 +203,7 @@ export interface Article {
   body: string;
   /** An article's artwork is keyed by category, so it needs no monogram. */
   shape: ArtShape;
+  photo: keyof typeof ARTICLE_PHOTO;
 }
 
 export const ARTICLES: Article[] = [
@@ -204,18 +212,21 @@ export const ARTICLES: Article[] = [
     title: "How to Scale Your Meta Ads Without Hurting Performance",
     body: "Learn proven strategies to grow your campaigns while maintaining healthy returns.",
     shape: "box",
+    photo: "meta-ads",
   },
   {
     category: "SEO", date: "Dec 2, 2024", readingTime: "10 min read",
     title: "SEO in 2025: What Actually Moves the Needle",
     body: "Forget outdated tactics. Here's what's working this year based on real data.",
     shape: "cup",
+    photo: "seo-2025",
   },
   {
     category: "Content", date: "Nov 28, 2024", readingTime: "7 min read",
     title: "Building a Content Engine That Converts",
     body: "How we built a content system generating 50+ qualified leads per month.",
     shape: "carton",
+    photo: "content-engine",
   },
 ];
 

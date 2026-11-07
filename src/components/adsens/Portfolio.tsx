@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { PORTFOLIO, PORTFOLIO_FILTERS, type PortfolioFilter } from "./content";
-import { CardArt } from "./CardArt";
+import { CardPhoto } from "./CardPhoto";
+import { PORTFOLIO_PHOTO } from "./photos";
 import { Reveal, RevealGroup, SectionHead } from "./shared";
 
 /* =========================================================
@@ -68,12 +69,14 @@ export function Portfolio() {
             <Reveal key={p.slug} as="li" className="h-full">
               <article className="card card-hover group flex h-full flex-col overflow-hidden">
                 <div className="relative aspect-[4/3] w-full overflow-hidden bg-cream-50">
-                  <CardArt
+                  <CardPhoto
+                    photo={PORTFOLIO_PHOTO[p.slug as keyof typeof PORTFOLIO_PHOTO]}
                     monogram={p.monogram}
                     category={p.category}
                     shape={p.shape}
                     label={p.client}
-                    className="h-full w-full transition-transform duration-500 ease-out group-hover:scale-[1.06] motion-reduce:transform-none motion-reduce:transition-none"
+                    sizes="(min-width:1024px) 33vw, (min-width:640px) 50vw, 100vw"
+                    className="transition-transform duration-500 ease-out group-hover:scale-[1.06] motion-reduce:transform-none motion-reduce:transition-none"
                   />
                   <span className="badge absolute left-3 top-3 bg-green-500 text-white">{p.category}</span>
                 </div>

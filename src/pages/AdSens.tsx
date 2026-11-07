@@ -6,7 +6,6 @@ import { Portfolio } from "../components/adsens/Portfolio";
 import { Testimonials } from "../components/adsens/Testimonials";
 import { Insights } from "../components/adsens/Insights";
 import { FinalCta } from "../components/adsens/FinalCta";
-import { AdsensFooter } from "../components/adsens/AdsensFooter";
 
 /* =========================================================
    AdSense by Zolo — performance marketing landing page.
@@ -15,7 +14,11 @@ import { AdsensFooter } from "../components/adsens/AdsensFooter";
      1 Hero (+ stats, live ad panel)   5 Testimonials
      2 Our Services (8)                6 Latest Insights (3)
      3 Active Campaigns (4)            7 Final CTA
-     4 Our Portfolio (6, filterable)   8 Footer block
+     4 Our Portfolio (6, filterable)
+
+   The AdSens footer band was removed from the composition; the global
+   <Footer> in App.tsx closes the page. AdsensFooter.tsx is still present
+   if it is wanted back.
 
    Content lives in ./components/adsens/content.ts; this file is pure
    composition. The page is built from the app's own tokens and utilities
@@ -41,7 +44,6 @@ export default function AdSens() {
       <Testimonials />
       <Insights />
       <FinalCta />
-      <AdsensFooter />
     </main>
   );
 }
