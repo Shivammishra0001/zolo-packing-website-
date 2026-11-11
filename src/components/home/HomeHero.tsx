@@ -3,12 +3,13 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import heroVideo from "../../../images/banner-video .mp4";
+import heroBanner from "../../../images/Zolo Packing Startup Solutions Collage.png";
 
 // ============================================================
 // HomeHero — the video carousel.
 //
-// Slide 1 is a looping, muted video that carries the headline and CTAs.
-// Slide 2 is a clean full-bleed banner with no text. Arrows and dots give
+// Slide 1 is a still banner that holds for BANNER_MS, then hands over to
+// slide 2, a muted video that advances when it actually ends. Dots give
 // manual control; both slides auto-advance.
 //
 // Restored from the pre-471b191 design at the owner's request. It lives in
@@ -20,21 +21,30 @@ import heroVideo from "../../../images/banner-video .mp4";
 // ============================================================
 
 const heroSlides = [
-  { type: "video" as const, src: heroVideo, showContent: true },
+  // The banner carries its own artwork and its own prices, so the page's
+  // CTAs stay off it — showContent is false. They return with the video.
+  {
+    type: "image" as const,
+    src: heroBanner,
+    showContent: false,
+    alt: "Zolo Packaging: one stop for startups — packaging, branding, marketing, social media and lead generation",
+  },
+  { type: "video" as const, src: heroVideo, showContent: true, alt: undefined },
 ];
 
 /**
- * How long the still banner holds before returning to the video.
+ * How long the still banner holds before handing over to the video.
  *
  * The VIDEO has no timer: it advances when it actually ends (onEnded), so the
  * clip is never cut off mid-way and the sequence does not drift if the file is
  * re-encoded to a different length.
  */
-const IMAGE_MS = 6000;
+const BANNER_MS = 5000;
 
 export function HomeHero() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const blurRef = useRef<HTMLVideoElement>(null);
 
   const nextSlide = () => setCurrentSlide((prev) => (prev === heroSlides.length - 1 ? 0 : prev + 1));
 
@@ -42,7 +52,7 @@ export function HomeHero() {
   // (or loops, when it is the only slide).
   useEffect(() => {
     if (heroSlides[currentSlide].type === "video") return;
-    const timer = setTimeout(nextSlide, IMAGE_MS);
+    const timer = setTimeout(nextSlide, BANNER_MS);
     return () => clearTimeout(timer);
   }, [currentSlide]);
 
@@ -54,6 +64,10 @@ export function HomeHero() {
     const v = videoRef.current;
     if (!v) return;
     v.currentTime = 0;
+
+    // Keep the blurred backdrop in step with the clip it is blurring.
+    const blur = blurRef.current;
+    if (blur) { blur.currentTime = 0; blur.play().catch(() => {}); }
 
     // The video normally hands over in onEnded. If autoplay is REFUSED — a
     // data-saver setting, reduced-motion, an unsupported codec — onEnded never
@@ -70,7 +84,7 @@ export function HomeHero() {
       // Autoplay refused. With more than one slide, move on so the hero is
       // not stuck on a frozen frame; with a single looping slide there is
       // nowhere to go, and the poster frame stays.
-      if (heroSlides.length > 1) fallback = window.setTimeout(nextSlide, IMAGE_MS);
+      if (heroSlides.length > 1) fallback = window.setTimeout(nextSlide, BANNER_MS);
     });
 
     return () => {
@@ -129,7 +143,7 @@ export function HomeHero() {
                 aria-hidden
                 tabIndex={-1}
                 className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl"
-                autoPlay
+                ref={blurRef}
                 muted
                 playsInline
                 loop
@@ -147,7 +161,10 @@ export function HomeHero() {
                 // the top. `contain` shows the whole clip and lets the navy
                 // backdrop take the leftover width instead.
                 className="relative h-full w-full object-contain"
-                autoPlay
+                // No autoPlay. The effect above rewinds this to 0 and plays it
+                // when its slide becomes current; with autoPlay it ALSO ran
+                // behind the banner and burned ~4s of the clip before anyone
+                // could see it.
                 muted
                 playsInline
                 // The still banner was removed, so the video is the only
@@ -175,7 +192,7 @@ export function HomeHero() {
                 />
                 <img
                   src={slide.src}
-                  alt={`Zolo Packaging hero ${index + 1}`}
+                  alt={slide.alt ?? `Zolo Packaging hero ${index + 1}`}
                   className="absolute inset-0 h-full w-full object-contain"
                 />
               </>
